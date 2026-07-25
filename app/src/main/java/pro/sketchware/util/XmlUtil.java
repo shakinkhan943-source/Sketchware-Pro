@@ -20,6 +20,11 @@ public class XmlUtil {
 
     public static DocumentBuilderFactory newSecureDocumentBuilderFactory() {
         DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+
+        // Enable namespace awareness so attributes with prefixes (e.g. android:textColor)
+        // are preserved when parsing and serializing.
+        factory.setNamespaceAware(true);
+
         setFeatureIfSupported(factory, XMLConstants.FEATURE_SECURE_PROCESSING, true);
         setFeatureIfSupported(factory, "http://apache.org/xml/features/disallow-doctype-decl", true);
         setFeatureIfSupported(factory, "http://xml.org/sax/features/external-general-entities", false);
@@ -43,12 +48,17 @@ public class XmlUtil {
     }
 
     public static String replaceXml(String text) {
-        return text.replace("<?xml version=\"1.0\" encoding=\"utf-8\"?>", "")
-                .replace("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\" ?>", "")
-                .replace("\r", "")
-                .replace("\n", "")
-                .replace(" ", "")
-                .replace("\t", "");
+        if (text == null) return "";
+
+        // Safer normalization: remove BOM, normalize line endings, and remove only
+        // known XML declarations. Do NOT strip spaces/tabs — that can break XML.
+        String result = text.replace("\uFEFF", "");
+        result = result.replace("\r\n", "\n").replace("\r", "\n");
+
+        result = result.replace("<?xml version=\"1.0\" encoding=\"utf-8\"?>", "")
+                .replace("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\" ?>", "");
+
+        return result;
     }
 
     public static void saveXml(String path, String xml) {
