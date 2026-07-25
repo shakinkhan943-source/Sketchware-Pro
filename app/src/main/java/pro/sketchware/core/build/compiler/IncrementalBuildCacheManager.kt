@@ -26,7 +26,7 @@ class IncrementalBuildCacheManager(
     private val javaCacheDir = File(cacheRoot, JAVA_CACHE_DIR)
     private val kotlinCacheDir = File(cacheRoot, KOTLIN_CACHE_DIR)
     private val resourceCacheDir = File(cacheRoot, RESOURCE_CACHE_DIR)
-    
+
     private val kotlinCache: IncrementalKotlinCompilationCache?
     private val cacheStats = ConcurrentHashMap<String, Map<String, String>>()
 
@@ -35,7 +35,7 @@ class IncrementalBuildCacheManager(
         javaCacheDir.mkdirs()
         kotlinCacheDir.mkdirs()
         resourceCacheDir.mkdirs()
-        
+
         try {
             kotlinCache = IncrementalKotlinCompilationCache(kotlinCacheDir)
             LogUtil.d(TAG, "Incremental build cache initialized")
@@ -68,8 +68,9 @@ class IncrementalBuildCacheManager(
         stats.append("\n╔════════════════════════════════════════════════════╗\n")
         stats.append("║         INCREMENTAL BUILD CACHE STATISTICS         ║\n")
         stats.append("╠════════════════════════════════════════════════════╣\n")
-        
+
         // Kotlin cache stats
+        var kotlinSize = 0L
         try {
             stats.append("║ KOTLIN COMPILATION CACHE:                          ║\n")
             val kotlinStats = kotlinCache?.getCacheStats()
@@ -78,35 +79,37 @@ class IncrementalBuildCacheManager(
                     stats.append("║ $line\n")
                 }
             }
+            // KB, used below for the total size calculation
+            kotlinSize = kotlinCacheDir.walk().map { it.length() }.sum() / 1024
         } catch (e: Exception) {
             LogUtil.e(TAG, "Error getting Kotlin cache stats", e)
         }
-        
+
         stats.append("║                                                    ║\n")
-        
+
         // Java cache stats
         stats.append("║ JAVA COMPILATION CACHE:                            ║\n")
         val javaSize = javaCacheDir.walk().map { it.length() }.sum() / 1024 // KB
         val javaFiles = javaCacheDir.walk().filter { it.isFile }.count()
         stats.append("║   Files cached: $javaFiles                          ║\n")
         stats.append("║   Directory size: ${javaSize}KB                         ║\n")
-        
+
         stats.append("║                                                    ║\n")
-        
+
         // Resource cache stats
         stats.append("║ RESOURCE COMPILATION CACHE:                        ║\n")
         val resourceSize = resourceCacheDir.walk().map { it.length() }.sum() / 1024 // KB
         val resourceFiles = resourceCacheDir.walk().filter { it.isFile }.count()
         stats.append("║   Files cached: $resourceFiles                          ║\n")
         stats.append("║   Directory size: ${resourceSize}KB                         ║\n")
-        
+
         stats.append("║                                                    ║\n")
-        
-        // Total stats
-        val totalSize = (javaSize + kotlinCache?.getCacheStats()?.let { 0 } ?: 0 + resourceSize) / 1024
+
+        // Total stats (sizes above are in KB, so divide by 1024 to get MB)
+        val totalSize = (javaSize + kotlinSize + resourceSize) / 1024
         stats.append("║ TOTAL CACHE SIZE: ${totalSize}MB                          ║\n")
         stats.append("╚════════════════════════════════════════════════════╝\n")
-        
+
         return stats.toString()
     }
 
@@ -116,14 +119,14 @@ class IncrementalBuildCacheManager(
     fun invalidateAllCaches() {
         try {
             LogUtil.d(TAG, "Invalidating all build caches...")
-            
+
             // Clear Kotlin cache
             try {
                 kotlinCache?.clearCache()
             } catch (e: Exception) {
                 LogUtil.w(TAG, "Error clearing Kotlin cache", e)
             }
-            
+
             // Clear Java cache
             try {
                 javaCacheDir.deleteRecursively()
@@ -132,7 +135,7 @@ class IncrementalBuildCacheManager(
             } catch (e: Exception) {
                 LogUtil.w(TAG, "Error clearing Java cache", e)
             }
-            
+
             // Clear resource cache
             try {
                 resourceCacheDir.deleteRecursively()
@@ -141,7 +144,7 @@ class IncrementalBuildCacheManager(
             } catch (e: Exception) {
                 LogUtil.w(TAG, "Error clearing resource cache", e)
             }
-            
+
             LogUtil.d(TAG, "All build caches invalidated - full rebuild will be performed")
         } catch (e: Exception) {
             LogUtil.e(TAG, "Error invalidating caches", e)
@@ -204,14 +207,14 @@ class IncrementalBuildCacheManager(
      */
     fun validateCaches(): Boolean {
         var isValid = true
-        
+
         try {
             // Validate Kotlin cache
             if (kotlinCache == null) {
                 LogUtil.w(TAG, "Kotlin cache is null")
                 isValid = false
             }
-            
+
             // Validate directory structure
             if (!cacheRoot.exists() || !cacheRoot.isDirectory) {
                 LogUtil.w(TAG, "Cache root directory is invalid")
@@ -221,7 +224,7 @@ class IncrementalBuildCacheManager(
             LogUtil.e(TAG, "Error validating caches", e)
             isValid = false
         }
-        
+
         return isValid
     }
 
@@ -231,10 +234,10 @@ class IncrementalBuildCacheManager(
     fun cleanupCache() {
         try {
             LogUtil.d(TAG, "Starting cache cleanup...")
-            
+
             // Remove old/stale cache entries (older than 30 days)
             val thirtyDaysAgo = System.currentTimeMillis() - (30 * 24 * 60 * 60 * 1000)
-            
+
             cacheRoot.walk().forEach { file ->
                 if (file.isFile && file.lastModified() < thirtyDaysAgo) {
                     try {
@@ -245,7 +248,7 @@ class IncrementalBuildCacheManager(
                     }
                 }
             }
-            
+
             LogUtil.d(TAG, "Cache cleanup completed")
         } catch (e: Exception) {
             LogUtil.e(TAG, "Error during cache cleanup", e)
@@ -258,13 +261,13 @@ class IncrementalBuildCacheManager(
     fun saveAllCaches() {
         try {
             LogUtil.d(TAG, "Saving all cache manifests...")
-            
+
             try {
                 kotlinCache?.saveCacheManifest()
             } catch (e: Exception) {
                 LogUtil.w(TAG, "Error saving Kotlin cache manifest", e)
             }
-            
+
             LogUtil.d(TAG, "All caches saved")
         } catch (e: Exception) {
             LogUtil.e(TAG, "Error saving caches", e)
