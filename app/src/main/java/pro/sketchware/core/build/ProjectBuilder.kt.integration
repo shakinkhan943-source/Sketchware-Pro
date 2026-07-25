@@ -1,0 +1,59 @@
+// ============================================================================
+// INTEGRATION GUIDE: Add this to ProjectBuilder.kt or ProjectBuilder.java
+// ============================================================================
+
+// 1. Add field to ProjectBuilder class:
+//    private IncrementalBuildCacheManager cacheManager;
+
+// 2. Initialize in ProjectBuilder constructor:
+//    this.cacheManager = new IncrementalBuildCacheManager(
+//        new File(projectFilePaths.binDirectoryPath)
+//    );
+
+// 3. Add getter method:
+//    public IncrementalBuildCacheManager getCacheManager() {
+//        return cacheManager;
+//    }
+
+// 4. Call save caches after successful build:
+//    In the build completion method, add:
+//    if (buildSuccessful) {
+//        cacheManager.saveAllCaches();
+//    }
+
+// 5. Clear caches on "Clean Build":
+//    When user clicks "Clean Build", add:
+//    cacheManager.invalidateAllCaches();
+
+// ============================================================================
+// Example usage in ProjectBuilder:
+// ============================================================================
+
+// public void build() throws Throwable {
+//     try {
+//         // ... existing build steps ...
+//         
+//         // Compile Kotlin
+//         KotlinCompilerBridge.compileKotlinCodeIfPossible(progressReceiver, this);
+//         
+//         // ... more build steps ...
+//         
+//         if (buildSuccessful) {
+//             // Save cache for next build
+//             cacheManager.saveAllCaches();
+//             
+//             // Log cache statistics
+//             LogUtil.d("ProjectBuilder", cacheManager.getCacheStatistics());
+//         }
+//     } catch (Exception e) {
+//         // On build error, you may want to invalidate caches:
+//         // cacheManager.invalidateAllCaches();
+//         throw e;
+//     }
+// }
+
+// public void cleanBuild() throws Throwable {
+//     // Clear all caches for fresh rebuild
+//     cacheManager.invalidateAllCaches();
+//     build(); // Start fresh build
+// }
