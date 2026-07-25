@@ -37,7 +37,7 @@ public class KotlinCompilerUtil {
      * are actually compiled by kotlinc, `.java` files are used for
      * classpath. (for Java-Kotlin interoperability)
      */
-    static List<File> getFilesToCompile(ProjectFilePaths workspace) {
+    public static List<File> getFilesToCompile(ProjectFilePaths workspace) {
         String scId = workspace.sc_id;
         List<File> mFilesToCompile = new ArrayList<>();
 
@@ -63,7 +63,7 @@ public class KotlinCompilerUtil {
      * Returns a list of available kotlin compiler plugins (.jar)
      * found in `/.sketchware/data/xxx/files/kt_plugins` dir.
      */
-    static List<File> getCompilerPlugins(ProjectFilePaths workspace) {
+    public static List<File> getCompilerPlugins(ProjectFilePaths workspace) {
         String scId = workspace.sc_id;
 
         File pluginDir = new File(SketchwarePaths.getProjectKotlinCompilerPluginsPath(scId));
