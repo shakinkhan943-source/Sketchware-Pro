@@ -105,6 +105,8 @@ public class SrcCodeEditor extends BaseAppCompatActivity {
 
         try {
             DocumentBuilderFactory factory = XmlUtil.newSecureDocumentBuilderFactory();
+            // defensive: ensure namespace-aware so android:... attributes survive parsing
+            factory.setNamespaceAware(true);
             DocumentBuilder builder = factory.newDocumentBuilder();
             Document document = builder.parse(new InputSource(
                     new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8))));
@@ -162,7 +164,7 @@ public class SrcCodeEditor extends BaseAppCompatActivity {
                         String tagName = trimmed.substring(1, tagEnd);
                         String attrPart = trimmed.substring(tagEnd + 1)
                                 .replaceAll("/?>$", "").trim();
-                        String[] attrs = attrPart.split("\\s+(?=[^=]+\\=)");
+                        String[] attrs = attrPart.split("\\s+(?=[^=]+\\=");
 
                         formatted.append(baseIndent).append("<").append(tagName).append("\n");
                         for (String attr : attrs) {
@@ -372,160 +374,4 @@ public class SrcCodeEditor extends BaseAppCompatActivity {
             binding.toolbar.setTitle(title);
             Menu toolbarMenu = binding.toolbar.getMenu();
             toolbarMenu.clear();
-            toolbarMenu.add(Menu.NONE, MENU_UNDO, Menu.NONE, Helper.getResString(R.string.code_editor_menu_undo)).setIcon(AppCompatResources.getDrawable(this, R.drawable.ic_mtrl_undo)).setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS);
-            toolbarMenu.add(Menu.NONE, MENU_REDO, Menu.NONE, Helper.getResString(R.string.code_editor_menu_redo)).setIcon(AppCompatResources.getDrawable(this, R.drawable.ic_mtrl_redo)).setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS);
-            toolbarMenu.add(Menu.NONE, MENU_SAVE, Menu.NONE, Helper.getResString(R.string.common_word_save)).setIcon(AppCompatResources.getDrawable(this, R.drawable.ic_mtrl_save)).setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS);
-            if (isFileInLayoutFolder() && getIntent().hasExtra("sc_id")) {
-                toolbarMenu.add(Menu.NONE, MENU_LAYOUT_PREVIEW, Menu.NONE, Helper.getResString(R.string.code_editor_menu_layout_preview));
-            }
-            toolbarMenu.add(Menu.NONE, MENU_FIND_REPLACE, Menu.NONE, Helper.getResString(R.string.code_editor_menu_find_replace));
-            toolbarMenu.add(Menu.NONE, MENU_WORD_WRAP, Menu.NONE, Helper.getResString(R.string.code_editor_menu_word_wrap)).setCheckable(true).setChecked(editorPrefs.getWordWrap());
-            toolbarMenu.add(Menu.NONE, MENU_PRETTY_PRINT, Menu.NONE, Helper.getResString(R.string.code_editor_menu_pretty_print));
-            toolbarMenu.add(Menu.NONE, MENU_FONT_SIZE, Menu.NONE, Helper.getResString(R.string.code_editor_menu_font_size));
-            toolbarMenu.add(Menu.NONE, MENU_LINE_NUMBERS, Menu.NONE, Helper.getResString(R.string.code_editor_menu_line_numbers)).setCheckable(true).setChecked(editorPrefs.getLineNumbers());
-            toolbarMenu.add(Menu.NONE, MENU_STICKY_SCROLL, Menu.NONE, Helper.getResString(R.string.code_editor_menu_sticky_scroll)).setCheckable(true).setChecked(editorPrefs.getStickyScroll());
-            toolbarMenu.add(Menu.NONE, MENU_SELECT_LANGUAGE, Menu.NONE, Helper.getResString(R.string.code_editor_select_language));
-            toolbarMenu.add(Menu.NONE, MENU_SELECT_THEME, Menu.NONE, Helper.getResString(R.string.code_editor_select_theme));
-            toolbarMenu.add(Menu.NONE, MENU_AUTO_COMPLETE, Menu.NONE, Helper.getResString(R.string.code_editor_menu_auto_complete)).setCheckable(true).setChecked(editorPrefs.getAutoComplete());
-            toolbarMenu.add(Menu.NONE, MENU_AUTO_COMPLETE_SYMBOL_PAIR, Menu.NONE, Helper.getResString(R.string.code_editor_menu_auto_complete_symbol_pair)).setCheckable(true).setChecked(editorPrefs.getSymbolPair());
-
-            binding.toolbar.setOnMenuItemClickListener(item -> {
-
-                switch (item.getItemId()) {
-                    case MENU_UNDO:
-                        binding.editor.undo();
-                        break;
-
-                    case MENU_REDO:
-                        binding.editor.redo();
-                        break;
-
-                    case MENU_SAVE:
-                        save();
-                        break;
-
-                    case MENU_PRETTY_PRINT:
-                        if (getIntent().hasExtra("java")) {
-                            StringBuilder b = new StringBuilder();
-
-                            for (String line : binding.editor.getText().toString().split("\n")) {
-                                String trims = (line + "X").trim();
-                                trims = trims.substring(0, trims.length() - 1);
-
-                                b.append(trims);
-                                b.append("\n");
-                            }
-
-                            boolean err = false;
-                            String ss = b.toString();
-
-                            try {
-                                ss = ComponentCodeGenerator.formatCode(ss, true);
-                            } catch (Exception e) {
-                                err = true;
-                                SketchwareUtil.toastError(Helper.getResString(R.string.error_incorrect_parentheses));
-                            }
-
-                            if (!err) binding.editor.setText(ss);
-
-                        } else if (getIntent().hasExtra("xml")) {
-                            String format = prettifyXml(binding.editor.getText().toString(), 4, getIntent());
-
-                            if (format != null) {
-                                binding.editor.setText(format);
-                            } else {
-                                SketchwareUtil.toastError(Helper.getResString(R.string.error_format_xml_failed), Toast.LENGTH_LONG);
-                            }
-                        } else {
-                            SketchwareUtil.toast(Helper.getResString(R.string.toast_only_java_xml_format));
-                        }
-                        break;
-
-                    case MENU_SELECT_LANGUAGE:
-                        showSwitchLanguageDialog(this, binding.editor, (dialog, which) -> {
-                            selectLanguage(binding.editor, which);
-                            dialog.dismiss();
-                        });
-                        break;
-
-                    case MENU_FIND_REPLACE:
-                        binding.editor.getSearcher().stopSearch();
-                        binding.editor.beginSearchMode();
-                        break;
-
-                    case MENU_SELECT_THEME:
-                        editorPrefs.showThemeDialog(SrcCodeEditor.this, binding.editor);
-                        break;
-
-                    case MENU_WORD_WRAP:
-                        item.setChecked(!item.isChecked());
-                        binding.editor.setWordwrap(item.isChecked());
-                        editorPrefs.setWordWrap(item.isChecked());
-                        break;
-
-                    case MENU_FONT_SIZE:
-                        editorPrefs.showFontSizeDialog(SrcCodeEditor.this, binding.editor, null);
-                        break;
-
-                    case MENU_LINE_NUMBERS:
-                        item.setChecked(!item.isChecked());
-                        binding.editor.setLineNumberEnabled(item.isChecked());
-                        editorPrefs.setLineNumbers(item.isChecked());
-                        break;
-
-                    case MENU_STICKY_SCROLL:
-                        item.setChecked(!item.isChecked());
-                        binding.editor.getProps().stickyScroll = item.isChecked();
-                        binding.editor.invalidate();
-                        editorPrefs.setStickyScroll(item.isChecked());
-                        break;
-
-                    case MENU_AUTO_COMPLETE_SYMBOL_PAIR:
-                        item.setChecked(!item.isChecked());
-                        binding.editor.getProps().symbolPairAutoCompletion = item.isChecked();
-                        editorPrefs.setSymbolPair(item.isChecked());
-                        break;
-
-                    case MENU_AUTO_COMPLETE:
-                        item.setChecked(!item.isChecked());
-                        binding.editor.getComponent(EditorAutoCompletion.class).setEnabled(item.isChecked());
-                        editorPrefs.setAutoComplete(item.isChecked());
-                        break;
-
-                    case MENU_LAYOUT_PREVIEW:
-                        toLayoutPreview();
-                        break;
-
-                    default:
-                        return false;
-                }
-                return true;
-            });
-        }
-    }
-
-    @Override
-    public void onStop() {
-        super.onStop();
-        editorPrefs.saveTextSizeFromEditor(binding.editor, getResources().getDisplayMetrics().scaledDensity);
-    }
-
-    private boolean isFileInLayoutFolder() {
-        String content = getIntent().getStringExtra("content");
-        if (content != null) {
-            File file = new File(content);
-            if (content.contains("/resource/layout/")) {
-                String layoutFolder = file.getParent();
-                return layoutFolder != null && layoutFolder.endsWith("/resource/layout");
-            }
-        }
-        return false;
-    }
-
-    private void toLayoutPreview() {
-        Intent intent = new Intent(getApplicationContext(), LayoutPreviewActivity.class);
-        intent.putExtras(getIntent());
-        intent.putExtra("xml", binding.editor.getText().toString());
-        startActivity(intent);
-    }
-}
+            toolbarMenu.add(Menu.NONE, MENU_UNDO, Menu.NONE, Helper.getResString(R.string.code_editor_menu_undo)).setIcon(AppCompatResources.getDrawable(this, R.drawable.ic_mtrl_undo)).setShowAsA[...]
