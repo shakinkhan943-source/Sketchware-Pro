@@ -104,7 +104,7 @@ class KotlinCompilerEnhanced(
                         try {
                             compileSingleFile(file, allKtFiles)
                         } catch (e: Exception) {
-                            LogUtil.e(TAG, "Error compiling ${file.name}", e)
+                            throw e
                         }
                     }
                 )
@@ -198,7 +198,7 @@ class KotlinCompilerEnhanced(
         paths.add(workspace.compiledClassesPath)
 
         // Add dependencies
-        val libsDir = File(workspace.projectFilePaths.binDirectoryPath, "libs")
+        val libsDir = File(workspace.binDirectoryPath, "libs")
         if (libsDir.exists()) {
             libsDir.listFiles()?.filter { it.extension == "jar" }
                 ?.forEach { paths.add(it.absolutePath) }
