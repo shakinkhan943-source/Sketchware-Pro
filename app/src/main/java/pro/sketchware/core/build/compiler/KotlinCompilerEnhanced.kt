@@ -152,11 +152,27 @@ class KotlinCompilerEnhanced(
      */
     @Synchronized
     private fun compileSingleFile(sourceFile: File, allKtFiles: List<File>) {
+        // kotlinc-for-sketchware is a patched, ART-compatible build of the
+        // Kotlin compiler. Its compiler plugin(s) work around platform gaps
+        // (e.g. missing java.awt/javax.swing on Android) - these MUST be
+        // loaded via pluginClasspaths, exactly like the non-incremental
+        // KotlinCompiler.kt does, or compilation fails at runtime with
+        // NoClassDefFoundError deep inside the compiler's own container setup.
+        val mKotlinHome = File(KotlinCompilerBridge.getKotlinHome(workspace)).apply { mkdirs() }
+        val plugins = getCompilerPlugins(workspace).map(File::getAbsolutePath).toTypedArray()
+
         val args = K2JVMCompilerArguments().apply {
-            classpath = buildClasspath(allKtFiles)
+            // Use the full project classpath (android.jar, libs, etc.), not
+            // just previously-compiled classes - matches KotlinCompiler.kt.
+            classpath = builder.getClasspath()
             destination = workspace.compiledClassesPath
-            noStdlib = false
+            compileJava = false
+            includeRuntime = false
+            noJdk = true
             noReflect = true
+            noStdlib = true
+            kotlinHome = mKotlinHome.absolutePath
+            pluginClasspaths = plugins
             jvmTarget = "17"
             apiVersion = "1.9"
             languageVersion = "1.9"
@@ -189,26 +205,6 @@ class KotlinCompilerEnhanced(
         }
 
         LogUtil.d(TAG, "Successfully compiled: ${sourceFile.name}")
-    }
-
-    /**
-     * Build classpath for Kotlin compilation
-     * Includes all necessary dependencies and previously compiled classes
-     */
-    private fun buildClasspath(allKtFiles: List<File>): String {
-        val paths = mutableListOf<String>()
-
-        // Add previously compiled classes
-        paths.add(workspace.compiledClassesPath)
-
-        // Add dependencies
-        val libsDir = File(workspace.binDirectoryPath, "libs")
-        if (libsDir.exists()) {
-            libsDir.listFiles()?.filter { it.extension == "jar" }
-                ?.forEach { paths.add(it.absolutePath) }
-        }
-
-        return paths.joinToString(File.pathSeparator)
     }
 
     /**
