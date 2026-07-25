@@ -13,7 +13,7 @@ import java.util.concurrent.TimeUnit
 
 /**
  * Enhanced Kotlin compiler with incremental compilation and parallel support.
- * 
+ *
  * Improvements over standard KotlinCompiler:
  * - Incremental compilation: Skip compilation if no .kt files changed
  * - Parallel compilation: Compile multiple files concurrently
@@ -58,7 +58,7 @@ class KotlinCompilerEnhanced(
 
         // Get changed files (files that need recompilation)
         val changedFiles = incrementalCache.getChangedFiles(allKtFiles)
-        
+
         // Optimization: Skip compilation entirely if nothing changed
         if (changedFiles.isEmpty() && incrementalCache.getCachedCompiledClasses(allKtFiles).isNotEmpty()) {
             LogUtil.d(
@@ -152,27 +152,31 @@ class KotlinCompilerEnhanced(
      */
     @Synchronized
     private fun compileSingleFile(sourceFile: File, allKtFiles: List<File>) {
-        val args = K2JVMCompilerArguments()
-        args.classpath = buildClasspath(allKtFiles)
-        args.destination = workspace.compiledClassesPath
-        args.noStdlib = false
-        args.noReflect = true
-        args.jvmTarget = "17"
-        args.apiVersion = "1.9"
-        args.languageVersion = "1.9"
-        args.sourceRoots = arrayOf(sourceFile.absolutePath)
-        args.allowNoSourceFiles = true
+        val args = K2JVMCompilerArguments().apply {
+            classpath = buildClasspath(allKtFiles)
+            destination = workspace.compiledClassesPath
+            noStdlib = false
+            noReflect = true
+            jvmTarget = "17"
+            apiVersion = "1.9"
+            languageVersion = "1.9"
+            // K2JVMCompilerArguments has no `sourceRoots` setter - source files
+            // are passed through the inherited `freeArgs` list instead.
+            freeArgs = listOf(sourceFile.absolutePath)
+            allowNoSourceFiles = true
+        }
 
-        // Run compilation
+        // Run compilation. exec() takes a MessageCollector as its first
+        // argument (not a raw PrintStream) - reuse the same DiagnosticCollector
+        // pattern used by KotlinCompiler.kt so errors are captured properly.
         val compiler = K2JVMCompiler()
-        val exitCode = compiler.exec(
-            System.err,
-            Services.EMPTY,
-            args
-        )
+        val collector = DiagnosticCollector()
+        compiler.exec(collector, Services.EMPTY, args)
 
-        if (exitCode.exitCode != 0) {
-            throw RuntimeException("Kotlin compilation failed for ${sourceFile.name}")
+        if (collector.hasErrors()) {
+            throw RuntimeException(
+                "Kotlin compilation failed for ${sourceFile.name}:\n${collector.getDiagnostics(areWarningsEnabled())}"
+            )
         }
 
         // Cache the compiled class after successful compilation
