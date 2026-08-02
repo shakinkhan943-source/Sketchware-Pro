@@ -649,16 +649,21 @@ class DependencyResolver(
      * Compiles a JAR to DEX using D8, trying without classpath first to minimize memory usage.
      * If the minimal-classpath attempt fails (e.g. desugaring needs type info from dependencies),
      * retries with full classpath. This reduces D8 memory from O(N) to O(1) for most libraries.
+     *
+     * All `.jar` files bundled inside the dependency folder (e.g. extra jars shipped in
+     * AAR subfolders like `libs/`) are dexed together with `classes.jar`, so their classes
+     * are not silently dropped from the produced DEX.
      */
     private fun compileJarWithFallback(jarFile: Path, jars: List<Path>, libraryJars: List<Path>) {
         Files.createDirectories(jarFile.parent)
         val minApi = buildSettings?.minSdkVersion ?: 26
+        val programFiles = collectProgramJars(jarFile)
         try {
             // Fast path: no classpath, minimal memory
             D8.run(
                 D8Command.builder().setIntermediate(true).setMode(CompilationMode.RELEASE)
                     .setMinApiLevel(minApi)
-                    .addProgramFiles(jarFile).addLibraryFiles(libraryJars)
+                    .addProgramFiles(programFiles).addLibraryFiles(libraryJars)
                     .setOutput(jarFile.parent, OutputMode.DexIndexed).build()
             )
         } catch (_: Throwable) {
@@ -667,11 +672,33 @@ class DependencyResolver(
             D8.run(
                 D8Command.builder().setIntermediate(true).setMode(CompilationMode.RELEASE)
                     .setMinApiLevel(minApi)
-                    .addProgramFiles(jarFile).addLibraryFiles(libraryJars).addClasspathFiles(jars)
+                    .addProgramFiles(programFiles).addLibraryFiles(libraryJars).addClasspathFiles(jars)
                     .setOutput(jarFile.parent, OutputMode.DexIndexed).build()
             )
         } finally {
             System.gc()
         }
+    }
+
+    /**
+     * Collects the main classes.jar plus every other `.jar` bundled inside the
+     * dependency folder (e.g. AARs that ship extra jars in subfolders such as
+     * `libs/`). These must be compiled together, otherwise their classes are
+     * missing from the final DEX.
+     */
+    private fun collectProgramJars(jarFile: Path): List<Path> {
+        val programFiles = LinkedHashSet<Path>()
+        programFiles.add(jarFile.toAbsolutePath())
+
+        val dependencyDir = jarFile.parent.toFile()
+        if (dependencyDir.isDirectory) {
+            dependencyDir.walk().forEach { file ->
+                if (file.isFile && file.name.endsWith(".jar")) {
+                    programFiles.add(file.toPath().toAbsolutePath())
+                }
+            }
+        }
+
+        return programFiles.toList()
     }
 }

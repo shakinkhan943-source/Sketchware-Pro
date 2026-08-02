@@ -1,5 +1,6 @@
 package pro.sketchware.activities.editor.manage.library.downloader;
 
+import android.content.res.ColorStateList;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -10,8 +11,10 @@ import androidx.recyclerview.widget.RecyclerView;
 import java.util.ArrayList;
 import java.util.List;
 
+import pro.sketchware.R;
 import pro.sketchware.databinding.ItemDependencyDownloadBinding;
 
+import com.google.android.material.color.MaterialColors;
 
 
 public class DependencyDownloadAdapter extends RecyclerView.Adapter<DependencyDownloadAdapter.ViewHolder> {
@@ -72,31 +75,65 @@ public class DependencyDownloadAdapter extends RecyclerView.Adapter<DependencyDo
 
         public void bind(@NonNull DependencyDownloadItem item) {
             binding.dependencyName.setText(item.getDisplayName());
-            binding.progressText.setText(item.getStatusMessage());
+            binding.statusText.setText(item.getStatusMessage());
 
             switch (item.getState()) {
                 case PENDING:
-                case RESOLVING, UNZIPPING, DEXING:
+                    setStatusIcon(R.drawable.ic_mtrl_info, MaterialColors.getColor(binding.getRoot(),
+                                    com.google.android.material.R.attr.colorOnSurfaceVariant),
+                            MaterialColors.getColor(binding.getRoot(),
+                                    com.google.android.material.R.attr.colorSurfaceContainerHigh));
+                    binding.progressIndicator.setIndeterminate(true);
+                    binding.progressIndicator.setVisibility(View.VISIBLE);
+                    break;
+
+                case RESOLVING:
+                case UNZIPPING:
+                case DEXING:
+                    setStatusIcon(R.drawable.ic_mtrl_file, MaterialColors.getColor(binding.getRoot(),
+                                    com.google.android.material.R.attr.colorPrimary),
+                            MaterialColors.getColor(binding.getRoot(),
+                                    com.google.android.material.R.attr.colorPrimaryContainer));
                     binding.progressIndicator.setIndeterminate(true);
                     binding.progressIndicator.setVisibility(View.VISIBLE);
                     break;
 
                 case DOWNLOADING:
+                    setStatusIcon(R.drawable.ic_mtrl_download, MaterialColors.getColor(binding.getRoot(),
+                                    com.google.android.material.R.attr.colorPrimary),
+                            MaterialColors.getColor(binding.getRoot(),
+                                    com.google.android.material.R.attr.colorPrimaryContainer));
                     binding.progressIndicator.setIndeterminate(false);
                     binding.progressIndicator.setProgress(item.getProgress());
                     binding.progressIndicator.setVisibility(View.VISIBLE);
                     break;
 
                 case COMPLETED:
-                    binding.progressIndicator.setIndeterminate(false);
-                    binding.progressIndicator.setProgress(100);
-                    binding.progressIndicator.setVisibility(View.VISIBLE);
+                    setStatusIcon(R.drawable.ic_mtrl_done, MaterialColors.getColor(binding.getRoot(),
+                                    com.google.android.material.R.attr.colorPrimary),
+                            MaterialColors.getColor(binding.getRoot(),
+                                    com.google.android.material.R.attr.colorPrimaryContainer));
+                    binding.progressIndicator.setVisibility(View.GONE);
+                    break;
+
+                case ERROR:
+                    setStatusIcon(R.drawable.ic_mtrl_bt_error, MaterialColors.getColor(binding.getRoot(),
+                                    com.google.android.material.R.attr.colorError),
+                            MaterialColors.getColor(binding.getRoot(),
+                                    com.google.android.material.R.attr.colorErrorContainer));
+                    binding.progressIndicator.setVisibility(View.GONE);
                     break;
 
                 default:
                     binding.progressIndicator.setVisibility(View.GONE);
                     break;
             }
+        }
+
+        private void setStatusIcon(int iconRes, int iconColor, int containerColor) {
+            binding.statusIcon.setImageResource(iconRes);
+            binding.statusIcon.setImageTintList(ColorStateList.valueOf(iconColor));
+            binding.statusIconContainer.setBackgroundTintList(ColorStateList.valueOf(containerColor));
         }
     }
 }

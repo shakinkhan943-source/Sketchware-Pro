@@ -27,7 +27,9 @@
         android:layout_marginTop="16dp"
         android:hint="@string/lib_downloader_hint"
         android:importantForAutofill="noExcludeDescendants"
-        app:placeholderText="@string/local_library_manager_dependency_example">
+        app:boxStrokeWidth="1dp"
+        app:placeholderText="@string/local_library_manager_dependency_example"
+        app:startIconDrawable="@drawable/ic_mtrl_download">
 
         <com.google.android.material.textfield.TextInputEditText
             android:id="@+id/dependency_input"

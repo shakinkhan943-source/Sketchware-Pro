@@ -8,17 +8,19 @@ import org.jetbrains.kotlin.cli.common.arguments.K2JVMCompilerArguments
 import org.jetbrains.kotlin.cli.jvm.K2JVMCompiler
 import org.jetbrains.kotlin.config.Services
 import java.io.File
-import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
 
 /**
- * Enhanced Kotlin compiler with incremental compilation and parallel support.
+ * Enhanced Kotlin compiler with incremental compilation.
  *
  * Improvements over standard KotlinCompiler:
- * - Incremental compilation: Skip compilation if no .kt files changed
- * - Parallel compilation: Compile multiple files concurrently
- * - Class file caching: Reuse bytecode from unchanged sources
+ * - Incremental compilation: Skip kotlinc entirely if no .kt file changed
  * - Build time reduction: 30-50% faster for projects with many files
+ *
+ * Note: Kotlin is a whole-module compiler - files reference each other's
+ * top-level declarations, so compilation is ALWAYS run over the complete
+ * module in a single kotlinc invocation (like KotlinCompiler.kt does).
+ * The incremental cache is only used to SKIP the compiler when nothing
+ * changed; it never decides which files get compiled.
  *
  * Usage: Drop-in replacement for KotlinCompiler
  */
@@ -27,23 +29,22 @@ class KotlinCompilerEnhanced(
 ) {
     private val workspace = builder.projectFilePaths
     private val incrementalCache: IncrementalKotlinCompilationCache
-    private val enableParallelCompilation: Boolean
 
     companion object {
         private const val TAG = "KotlinCompilerEnhanced"
-        private const val ENABLE_PARALLEL_COMPILATION = true
-        private const val PARALLEL_THREAD_COUNT = 4 // Override as needed
     }
 
     init {
         val cacheDir = File(workspace.binDirectoryPath, "kotlin_build_cache")
         cacheDir.mkdirs()
-        incrementalCache = IncrementalKotlinCompilationCache(cacheDir, PARALLEL_THREAD_COUNT)
-        enableParallelCompilation = ENABLE_PARALLEL_COMPILATION
+        incrementalCache = IncrementalKotlinCompilationCache(cacheDir)
     }
 
     /**
-     * Compile Kotlin files with incremental caching and optional parallel processing
+     * Compile Kotlin files with incremental caching.
+     *
+     * If no .kt file changed since the last successful build, kotlinc is
+     * skipped entirely and the previously compiled classes are reused.
      */
     @Throws(Throwable::class)
     fun compile() {
@@ -73,14 +74,10 @@ class KotlinCompilerEnhanced(
             "Found ${changedFiles.size}/${allKtFiles.size} changed Kotlin files"
         )
 
-        // Prepare parallel compilation if enabled and beneficial
-        if (enableParallelCompilation && changedFiles.size > 1) {
-            compileParallel(changedFiles, allKtFiles)
-        } else {
-            compileSequential(changedFiles, allKtFiles)
-        }
+        // Always compile the whole module in a single kotlinc invocation.
+        compileAll(allKtFiles)
 
-        // Save cache for next build
+        // Persist cache so the next build can skip kotlinc if nothing changed
         incrementalCache.saveCacheManifest()
 
         LogUtil.d(
@@ -90,74 +87,17 @@ class KotlinCompilerEnhanced(
     }
 
     /**
-     * Compile Kotlin files in parallel for better performance
-     */
-    private fun compileParallel(changedFiles: List<File>, allKtFiles: List<File>) {
-        val executor = Executors.newFixedThreadPool(incrementalCache.getParallelThreadCount())
-        val futures = mutableListOf<java.util.concurrent.Future<*>>()
-
-        try {
-            // Submit each changed file for compilation
-            for (file in changedFiles) {
-                futures.add(
-                    executor.submit {
-                        try {
-                            compileSingleFile(file, allKtFiles)
-                        } catch (e: Exception) {
-                            throw e
-                        }
-                    }
-                )
-            }
-
-            // Wait for all compilations to complete
-            executor.shutdown()
-            if (!executor.awaitTermination(5, TimeUnit.MINUTES)) {
-                LogUtil.w(TAG, "Parallel compilation timeout")
-                executor.shutdownNow()
-            }
-
-            // Check for errors in futures
-            for (future in futures) {
-                try {
-                    future.get()
-                } catch (e: Exception) {
-                    throw e
-                }
-            }
-
-            LogUtil.d(TAG, "Parallel compilation completed successfully")
-        } finally {
-            executor.shutdownNow()
-        }
-    }
-
-    /**
-     * Compile Kotlin files sequentially (fallback)
-     */
-    private fun compileSequential(changedFiles: List<File>, allKtFiles: List<File>) {
-        for (file in changedFiles) {
-            try {
-                compileSingleFile(file, allKtFiles)
-            } catch (e: Exception) {
-                LogUtil.e(TAG, "Error compiling ${file.name}", e)
-                throw e
-            }
-        }
-        LogUtil.d(TAG, "Sequential compilation completed successfully")
-    }
-
-    /**
-     * Compile a single Kotlin file
+     * Compile the whole Kotlin module in a single kotlinc invocation.
+     *
+     * kotlinc-for-sketchware is a patched, ART-compatible build of the
+     * Kotlin compiler. Its compiler plugin(s) work around platform gaps
+     * (e.g. missing java.awt/javax.swing on Android) - these MUST be
+     * loaded via pluginClasspaths, exactly like the non-incremental
+     * KotlinCompiler.kt does, or compilation fails at runtime with
+     * NoClassDefFoundError deep inside the compiler's own container setup.
      */
     @Synchronized
-    private fun compileSingleFile(sourceFile: File, allKtFiles: List<File>) {
-        // kotlinc-for-sketchware is a patched, ART-compatible build of the
-        // Kotlin compiler. Its compiler plugin(s) work around platform gaps
-        // (e.g. missing java.awt/javax.swing on Android) - these MUST be
-        // loaded via pluginClasspaths, exactly like the non-incremental
-        // KotlinCompiler.kt does, or compilation fails at runtime with
-        // NoClassDefFoundError deep inside the compiler's own container setup.
+    private fun compileAll(allKtFiles: List<File>) {
         val mKotlinHome = File(KotlinCompilerBridge.getKotlinHome(workspace)).apply { mkdirs() }
         val plugins = getCompilerPlugins(workspace).map(File::getAbsolutePath).toTypedArray()
 
@@ -177,8 +117,10 @@ class KotlinCompilerEnhanced(
             apiVersion = "1.9"
             languageVersion = "1.9"
             // K2JVMCompilerArguments has no `sourceRoots` setter - source files
-            // are passed through the inherited `freeArgs` list instead.
-            freeArgs = listOf(sourceFile.absolutePath)
+            // are passed through the inherited `freeArgs` list instead. ALL .kt
+            // files are passed together: Kotlin resolves top-level declarations
+            // across the whole module, so per-file compilation is invalid.
+            freeArgs = allKtFiles.map(File::getAbsolutePath)
             allowNoSourceFiles = true
         }
 
@@ -191,20 +133,15 @@ class KotlinCompilerEnhanced(
 
         if (collector.hasErrors()) {
             throw RuntimeException(
-                "Kotlin compilation failed for ${sourceFile.name}:\n${collector.getDiagnostics(areWarningsEnabled())}"
+                "Kotlin compilation failed:\n${collector.getDiagnostics(areWarningsEnabled())}"
             )
         }
 
-        // Cache the compiled class after successful compilation
-        val compiledClass = File(
-            workspace.compiledClassesPath,
-            sourceFile.nameWithoutExtension + ".class"
-        )
-        if (compiledClass.exists()) {
-            incrementalCache.cacheCompiledClass(sourceFile, compiledClass)
-        }
+        // Mark every source file as compiled so the next build can skip
+        // kotlinc entirely if nothing changed.
+        allKtFiles.forEach(incrementalCache::updateFileHash)
 
-        LogUtil.d(TAG, "Successfully compiled: ${sourceFile.name}")
+        LogUtil.d(TAG, "Successfully compiled ${allKtFiles.size} Kotlin files")
     }
 
     /**
