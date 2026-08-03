@@ -314,6 +314,7 @@ public class SketchwarePaths {
             case 46 -> "otpview";
             case 47 -> "codeview";
             case 48 -> "recyclerview";
+            case 49 -> "constraintlayout";
             default -> "widget";
         };
     }

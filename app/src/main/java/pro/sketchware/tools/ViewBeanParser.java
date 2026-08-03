@@ -36,7 +36,7 @@ import pro.sketchware.util.InvokeUtil;
 
 public class ViewBeanParser {
 
-    private static final int[] viewsCount = new int[49];
+    private static final int[] viewsCount = new int[50];
     private final XmlPullParser parser;
     private boolean skipRoot;
     private Pair<String, Map<String, String>> rootAttributes;
