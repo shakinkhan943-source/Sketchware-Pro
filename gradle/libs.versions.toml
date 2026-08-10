@@ -89,6 +89,14 @@ gson = { module = "com.google.code.gson:gson", version.ref = "gson" }
 kotlin-compiler = { module = "org.jetbrains.kotlin:kotlin-compiler", version.ref = "kotlinCompiler" }
 kotlinc-for1-sketchware = { module = "com.github.waelchateur:kotlinc-for-sketchware", version.ref = "kotlincForSketchware" }
 
+# Kotlin Compose compiler plugin, bundled as an APK asset and auto-provisioned
+# into each project's kt_plugins folder so kotlinc compiles @Composable code.
+# Must stay in lockstep with the bundled kotlinc version (kotlinCompiler).
+# NOTE: the non-embeddable variant is required - the bundled kotlinc-for-sketchware
+# fork is built against the unshaded com.intellij.* compiler classes, so the
+# -embeddable plugin (which references org.jetbrains.kotlin.com.intellij.*) fails.
+compose-compiler-plugin = { module = "org.jetbrains.kotlin:kotlin-compose-compiler-plugin", version.ref = "kotlinCompiler" }
+
 nb-javac-android = { module = "io.github.itsaky:nb-javac-android", version.ref = "nbJavacAndroid" }
 
 okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }

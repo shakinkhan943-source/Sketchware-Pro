@@ -125,3 +125,35 @@ dependencies {
 
     coreLibraryDesugaring libs.desugar.jdk.libs.nio
 }
+
+/*
+ * The Kotlin Compose compiler plugin is shipped as a plain .jar inside the APK
+ * assets (app/src/main/assets/libs/kt_plugins/) and gets copied into every
+ * project's kt_plugins folder at build time by KotlinCompilerBridge. It must
+ * NOT be an implementation dependency, otherwise it would be dexed into the
+ * APK instead of staying a loadable plugin jar for kotlinc.
+ *
+ * After bumping the Kotlin version in gradle/libs.versions.toml, refresh the
+ * committed plugin jar with:  ./gradlew :app:refreshComposeCompilerPlugin
+ */
+configurations {
+    composeCompilerPlugin {
+        // Only the plugin jar itself must be copied into kt_plugins/. Its sole
+        // dependency (kotlin-stdlib) is already bundled with kotlinc-for-sketchware,
+        // and every jar in kt_plugins is passed to kotlinc via pluginClasspaths.
+        transitive = false
+    }
+}
+
+dependencies {
+    composeCompilerPlugin libs.compose.compiler.plugin
+}
+
+tasks.register("refreshComposeCompilerPlugin", Copy) {
+    group = "build setup"
+    description = "Refreshes the bundled Kotlin Compose compiler plugin jar from Maven Central"
+    from(configurations.composeCompilerPlugin) {
+        include "*.jar"
+    }
+    into rootProject.file("app/src/main/assets/libs/kt_plugins")
+}
