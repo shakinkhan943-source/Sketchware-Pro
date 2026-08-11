@@ -859,6 +859,16 @@
     <string name="material3_light">浅色</string>
     <string name="material3_theme_pref">Material3 主题偏好:</string>
 
+    <!-- ========== Jetpack Compose ========== -->
+    <string name="design_library_title_compose">Jetpack Compose</string>
+    <string name="design_library_description_compose">使用 Kotlin 构建原生 UI</string>
+    <string name="compose_enable">启用 Jetpack Compose</string>
+    <string name="compose_description">使用 Kotlin 以声明式方式构建原生 Android 界面的 UI 工具包</string>
+    <string name="compose_dependencies">Compose 依赖项</string>
+    <string name="compose_dependencies_hint">点击某个依赖项即可通过依赖系统下载。下载后的库将可用于您的项目。</string>
+    <string name="compose_dependency_status_downloaded">已下载</string>
+    <string name="compose_dependency_status_download">下载</string>
+
     <!-- ========== 文本菜单标题 ========== -->
     <string name="text_subtitle_menu_assets">导入资产文件</string>
     <string name="text_subtitle_menu_broadcast">导入后台服务文件</string>

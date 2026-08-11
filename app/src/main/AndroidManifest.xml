@@ -301,6 +301,10 @@
             android:configChanges="orientation|screenSize" />
 
         <activity
+            android:name="pro.sketchware.activities.editor.manage.library.compose.ComposeLibraryActivity"
+            android:configChanges="orientation|screenSize" />
+
+        <activity
             android:name=".activities.appcompat.ManageAppCompatActivity"
             android:configChanges="orientation|screenSize" />
 

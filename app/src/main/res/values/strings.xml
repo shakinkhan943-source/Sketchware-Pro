@@ -3794,6 +3794,16 @@ Please try again later"</string>
     <string name="material3_light">Light</string>
     <string name="material3_theme_pref">Material3 Theme Preference :</string>
 
+    <!-- ========== Jetpack Compose ========== -->
+    <string name="design_library_title_compose">"Jetpack Compose"</string>
+    <string name="design_library_description_compose">Build native UI with Kotlin</string>
+    <string name="compose_enable">Enable Jetpack Compose</string>
+    <string name="compose_description">Declarative UI toolkit for building native Android interfaces with Kotlin</string>
+    <string name="compose_dependencies">Compose Dependencies</string>
+    <string name="compose_dependencies_hint">Tap a dependency to download it through the dependency system. Downloaded libraries become available to your project.</string>
+    <string name="compose_dependency_status_downloaded">Downloaded</string>
+    <string name="compose_dependency_status_download">Download</string>
+
     <!-- ========== 构建错误 (Build Errors) ========== -->
 
     <!-- ========== 块管理 (Block Manager) ========== -->

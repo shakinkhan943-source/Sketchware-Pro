@@ -25,6 +25,8 @@ public class LibraryManager {
   public ProjectLibraryBean admob;
   
   public ProjectLibraryBean googleMap;
+
+  public ProjectLibraryBean compose;
   
   public Gson gson;
   
@@ -68,6 +70,7 @@ public class LibraryManager {
     private ProjectLibraryBean compat = new ProjectLibraryBean(1);
     private ProjectLibraryBean admob = new ProjectLibraryBean(2);
     private ProjectLibraryBean googleMap = new ProjectLibraryBean(3);
+    private ProjectLibraryBean compose = new ProjectLibraryBean(ProjectLibraryBean.PROJECT_LIB_TYPE_COMPOSE);
   }
   
   public void setAdmob(ProjectLibraryBean libraryBean) {
@@ -103,6 +106,7 @@ public class LibraryManager {
       compat = parsedState.compat;
       admob = parsedState.admob;
       googleMap = parsedState.googleMap;
+      compose = parsedState.compose;
       return;
     } 
   }
@@ -127,11 +131,13 @@ public class LibraryManager {
     currentState.compat = compat;
     currentState.admob = admob;
     currentState.googleMap = googleMap;
+    currentState.compose = compose;
     parseLibrarySection(sectionName, sectionContent, currentState);
     firebaseDB = currentState.firebaseDB;
     compat = currentState.compat;
     admob = currentState.admob;
     googleMap = currentState.googleMap;
+    compose = currentState.compose;
   }
 
   private void parseLibrarySection(String sectionName, String sectionContent, LibraryState targetState) {
@@ -151,6 +157,9 @@ public class LibraryManager {
       } else if (sectionName.equals("googleMap")) {
         parsedLibrary.libType = ProjectLibraryBean.PROJECT_LIB_TYPE_GOOGLE_MAP;
         targetState.googleMap = parsedLibrary;
+      } else if (sectionName.equals("compose")) {
+        parsedLibrary.libType = ProjectLibraryBean.PROJECT_LIB_TYPE_COMPOSE;
+        targetState.compose = parsedLibrary;
       }
     } catch (RuntimeException e) {
       Log.w("LibraryManager", "Failed to parse library section: " + sectionName, e);
@@ -177,7 +186,12 @@ public class LibraryManager {
       buffer.append("@googleMap\n");
       buffer.append(gson.toJson(googleMap, ProjectLibraryBean.class));
       buffer.append("\n");
-    } 
+    }
+    if (compose != null) {
+      buffer.append("@compose\n");
+      buffer.append(gson.toJson(compose, ProjectLibraryBean.class));
+      buffer.append("\n");
+    }
   }
   
   public ProjectLibraryBean getAdmob() {
@@ -208,11 +222,20 @@ public class LibraryManager {
     return googleMap;
   }
   
+  public ProjectLibraryBean getCompose() {
+    return compose;
+  }
+
+  public void setCompose(ProjectLibraryBean libraryBean) {
+    compose = libraryBean;
+  }
+  
   public final void initializeDefaults() {
     firebaseDB = new ProjectLibraryBean(0);
     compat = new ProjectLibraryBean(1);
     admob = new ProjectLibraryBean(2);
     googleMap = new ProjectLibraryBean(3);
+    compose = new ProjectLibraryBean(ProjectLibraryBean.PROJECT_LIB_TYPE_COMPOSE);
   }
   
   public boolean hasBackup() {

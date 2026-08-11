@@ -107,6 +107,11 @@ public class LibraryDownloaderDialogFragment extends BottomSheetDialogFragment {
             return;
         }
 
+        String prefillDependency = args.getString("prefillDependency");
+        if (prefillDependency != null && !prefillDependency.isEmpty()) {
+            binding.dependencyInput.setText(prefillDependency);
+        }
+
         binding.btnDownload.setOnClickListener(v -> initDownloadFlow());
 
         connectivityManager = (ConnectivityManager) requireContext().getSystemService(Context.CONNECTIVITY_SERVICE);

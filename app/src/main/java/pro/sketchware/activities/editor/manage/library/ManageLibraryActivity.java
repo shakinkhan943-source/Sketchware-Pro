@@ -22,6 +22,8 @@ import pro.sketchware.beans.ProjectLibraryBean;
 import pro.sketchware.activities.editor.manage.library.admob.AdmobActivity;
 import pro.sketchware.activities.editor.manage.library.admob.ManageAdmobActivity;
 import pro.sketchware.activities.editor.manage.library.compat.ManageCompatActivity;
+import pro.sketchware.activities.editor.manage.library.compose.ComposeLibraryActivity;
+import pro.sketchware.activities.editor.manage.library.compose.ComposeLibraryItemView;
 import pro.sketchware.activities.editor.manage.library.firebase.ManageFirebaseActivity;
 import pro.sketchware.activities.editor.manage.library.googlemap.ManageGoogleMapActivity;
 import pro.sketchware.activities.editor.manage.library.material3.Material3LibraryActivity;
@@ -53,6 +55,7 @@ public class ManageLibraryActivity extends BaseAppCompatActivity implements View
     private ActivityResultLauncher<Intent> googleMapLauncher;
     private ActivityResultLauncher<Intent> material3Launcher;
     private ActivityResultLauncher<Intent> customLibLauncher;
+    private ActivityResultLauncher<Intent> composeLauncher;
 
     private String sc_id;
     private LinearLayout libraryItemLayout;
@@ -61,11 +64,13 @@ public class ManageLibraryActivity extends BaseAppCompatActivity implements View
     private ProjectLibraryBean compatLibraryBean;
     private ProjectLibraryBean admobLibraryBean;
     private ProjectLibraryBean googleMapLibraryBean;
+    private ProjectLibraryBean composeLibraryBean;
 
     private String originalFirebaseUseYn = "N";
     private String originalCompatUseYn = "N";
     private String originalAdmobUseYn = "N";
     private String originalGoogleMapUseYn = "N";
+    private String originalComposeUseYn = "N";
 
     private final List<LibraryItemView> libraryItems = new ArrayList<>();
 
@@ -104,6 +109,9 @@ public class ManageLibraryActivity extends BaseAppCompatActivity implements View
         if (type == ProjectLibraryBean.PROJECT_LIB_TYPE_EXCLUDE_BUILTIN_LIBRARIES) {
             libraryItemView = new ExcludeBuiltInLibrariesLibraryItemView(this, sc_id);
             libraryItemView.setData(null);
+        } else if (type == ProjectLibraryBean.PROJECT_LIB_TYPE_COMPOSE) {
+            libraryItemView = new ComposeLibraryItemView(this);
+            libraryItemView.setData(composeLibraryBean);
         } else {
             libraryItemView = new Material3LibraryItemView(this);
             libraryItemView.setData(compatLibraryBean);
@@ -133,6 +141,7 @@ public class ManageLibraryActivity extends BaseAppCompatActivity implements View
                 case ProjectLibraryBean.PROJECT_LIB_TYPE_ADMOB -> admobLibraryBean = libraryBean;
                 case ProjectLibraryBean.PROJECT_LIB_TYPE_GOOGLE_MAP ->
                         googleMapLibraryBean = libraryBean;
+                case ProjectLibraryBean.PROJECT_LIB_TYPE_COMPOSE -> composeLibraryBean = libraryBean;
             }
         }
 
@@ -142,6 +151,8 @@ public class ManageLibraryActivity extends BaseAppCompatActivity implements View
                 itemView.setData(null);
             } else if (itemView instanceof Material3LibraryItemView) {
                 itemView.setData(compatLibraryBean);
+            } else if (itemView instanceof ComposeLibraryItemView) {
+                itemView.setData(composeLibraryBean);
             } else if (tag instanceof Integer && libraryBean != null && ((Integer) tag) == libraryBean.libType) {
                 itemView.setData(libraryBean);
             }
@@ -193,6 +204,14 @@ public class ManageLibraryActivity extends BaseAppCompatActivity implements View
         material3Launcher.launch(intent);
     }
 
+    private void toComposeActivity() {
+        Intent intent = new Intent(getApplicationContext(), ComposeLibraryActivity.class);
+        intent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        intent.putExtra("sc_id", sc_id);
+        intent.putExtra("compose", composeLibraryBean);
+        composeLauncher.launch(intent);
+    }
+
     private void launchActivity(Class<? extends Activity> toLaunch) {
         Intent intent = new Intent(getApplicationContext(), toLaunch);
         intent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
@@ -205,6 +224,7 @@ public class ManageLibraryActivity extends BaseAppCompatActivity implements View
         ProjectDataManager.getLibraryManager(sc_id).setFirebaseDB(firebaseLibraryBean);
         ProjectDataManager.getLibraryManager(sc_id).setAdmob(admobLibraryBean);
         ProjectDataManager.getLibraryManager(sc_id).setGoogleMap(googleMapLibraryBean);
+        ProjectDataManager.getLibraryManager(sc_id).setCompose(composeLibraryBean);
         ProjectDataManager.getLibraryManager(sc_id).saveToBackup();
         ProjectDataManager.getFileManager(sc_id).syncWithLibrary(ProjectDataManager.getLibraryManager(sc_id));
         ProjectDataManager.getProjectDataManager(sc_id).syncWithFileManager(ProjectDataManager.getFileManager(sc_id));
@@ -251,6 +271,10 @@ public class ManageLibraryActivity extends BaseAppCompatActivity implements View
 
                     case ProjectLibraryBean.PROJECT_LIB_TYPE_MATERIAL3:
                         toMaterial3Activity();
+                        break;
+
+                    case ProjectLibraryBean.PROJECT_LIB_TYPE_COMPOSE:
+                        toComposeActivity();
                 }
             }
         }
@@ -314,6 +338,13 @@ public class ManageLibraryActivity extends BaseAppCompatActivity implements View
                         if (compat != null) initializeLibrary(compat);
                     }
                 });
+        composeLauncher = registerForActivityResult(
+                new ActivityResultContracts.StartActivityForResult(), result -> {
+                    if (result.getResultCode() == RESULT_OK && result.getData() != null) {
+                        ProjectLibraryBean compose = result.getData().getParcelableExtra("compose");
+                        if (compose != null) initializeLibrary(compose);
+                    }
+                });
         customLibLauncher = registerForActivityResult(
                 new ActivityResultContracts.StartActivityForResult(), result -> {
                     if (result.getResultCode() == RESULT_OK) {
@@ -370,6 +401,12 @@ public class ManageLibraryActivity extends BaseAppCompatActivity implements View
                 googleMapLibraryBean = new ProjectLibraryBean(ProjectLibraryBean.PROJECT_LIB_TYPE_GOOGLE_MAP);
             }
             originalGoogleMapUseYn = googleMapLibraryBean.useYn;
+
+            composeLibraryBean = ProjectDataManager.getLibraryManager(sc_id).getCompose();
+            if (composeLibraryBean == null) {
+                composeLibraryBean = new ProjectLibraryBean(ProjectLibraryBean.PROJECT_LIB_TYPE_COMPOSE);
+            }
+            originalComposeUseYn = composeLibraryBean.useYn;
         } else {
             firebaseLibraryBean = savedInstanceState.getParcelable("firebase");
             originalFirebaseUseYn = savedInstanceState.getString("originalFirebaseUseYn");
@@ -379,11 +416,14 @@ public class ManageLibraryActivity extends BaseAppCompatActivity implements View
             originalAdmobUseYn = savedInstanceState.getString("originalAdmobUseYn");
             googleMapLibraryBean = savedInstanceState.getParcelable("google_map");
             originalGoogleMapUseYn = savedInstanceState.getString("originalGoogleMapUseYn");
+            composeLibraryBean = savedInstanceState.getParcelable("compose");
+            originalComposeUseYn = savedInstanceState.getString("originalComposeUseYn");
         }
 
         LibraryCategoryView basicCategory = addCategoryItem(null);
         addLibraryItem(compatLibraryBean, basicCategory);
         addCustomLibraryItem(ProjectLibraryBean.PROJECT_LIB_TYPE_MATERIAL3, basicCategory);
+        addCustomLibraryItem(ProjectLibraryBean.PROJECT_LIB_TYPE_COMPOSE, basicCategory);
         addLibraryItem(firebaseLibraryBean, basicCategory);
         addLibraryItem(admobLibraryBean, basicCategory);
         addLibraryItem(googleMapLibraryBean, basicCategory, false);
@@ -411,10 +451,12 @@ public class ManageLibraryActivity extends BaseAppCompatActivity implements View
         outState.putParcelable("compat", compatLibraryBean);
         outState.putParcelable("admob", admobLibraryBean);
         outState.putParcelable("google_map", googleMapLibraryBean);
+        outState.putParcelable("compose", composeLibraryBean);
         outState.putString("originalFirebaseUseYn", originalFirebaseUseYn);
         outState.putString("originalCompatUseYn", originalCompatUseYn);
         outState.putString("originalAdmobUseYn", originalAdmobUseYn);
         outState.putString("originalGoogleMapUseYn", originalGoogleMapUseYn);
+        outState.putString("originalComposeUseYn", originalComposeUseYn);
         super.onSaveInstanceState(outState);
     }
 
@@ -452,6 +494,7 @@ public class ManageLibraryActivity extends BaseAppCompatActivity implements View
             intent.putExtra("compat", act.compatLibraryBean);
             intent.putExtra("admob", act.admobLibraryBean);
             intent.putExtra("google_map", act.googleMapLibraryBean);
+            intent.putExtra("compose", act.composeLibraryBean);
             act.setResult(RESULT_OK, intent);
             act.finish();
         }
