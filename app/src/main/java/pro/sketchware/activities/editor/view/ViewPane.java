@@ -1146,13 +1146,13 @@ public class ViewPane extends RelativeLayout {
             }
             case "app:layout_constraintWidth_percent" -> {
                 try {
-                    constraintSet.setWidthPercent(childId, Float.parseFloat(value) * 100f);
+                    constraintSet.constrainPercentWidth(childId, Float.parseFloat(value));
                 } catch (NumberFormatException ignored) {
                 }
             }
             case "app:layout_constraintHeight_percent" -> {
                 try {
-                    constraintSet.setHeightPercent(childId, Float.parseFloat(value) * 100f);
+                    constraintSet.constrainPercentHeight(childId, Float.parseFloat(value));
                 } catch (NumberFormatException ignored) {
                 }
             }

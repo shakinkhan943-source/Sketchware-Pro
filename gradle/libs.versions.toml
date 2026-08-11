@@ -6,6 +6,7 @@ firebaseBom = "34.3.0"
 sora-editor = "0.24.4"
 bundletool = "1.18.2"
 cardview = "1.0.0"
+constraintlayout = "2.2.1"
 circleimageview = "3.1.0"
 coil = "2.0.0"
 coilSvg = "2.0.0"
@@ -24,7 +25,7 @@ javaparserSymbolSolver = "3.25.3"
 kotlincForSketchware = "2.1.21_rc3"
 kotlinCompiler = "2.1.21"
 lottie = "6.6.7"
-material = "1.14.0-alpha05"
+material = "1.14.0"
 nbJavacAndroid = "17.0.0.3"
 okhttp = "4.12.0"
 okio = "3.16.0"
@@ -45,6 +46,7 @@ zipalignJava = "1.2.2"
 androidx-activity = { module = "androidx.activity:activity", version.ref = "activity" }
 androidx-appcompat = { module = "androidx.appcompat:appcompat", version.ref = "appcompat" }
 androidx-cardview = { module = "androidx.cardview:cardview", version.ref = "cardview" }
+androidx-constraintlayout = { module = "androidx.constraintlayout:constraintlayout", version.ref = "constraintlayout" }
 androidx-exifinterface = { module = "androidx.exifinterface:exifinterface", version.ref = "exifinterface" }
 androidx-preference = { module = "androidx.preference:preference", version.ref = "preference" }
 androidx-recyclerview = { module = "androidx.recyclerview:recyclerview", version.ref = "recyclerview" }
@@ -119,7 +121,7 @@ zipalign-java = { module = "com.github.Iyxan23:zipalign-java", version.ref = "zi
 
 [bundles]
 ui = ["androidx-activity", "androidx-appcompat", "androidx-splashscreen", "androidx-recyclerview",
-    "androidx-cardview", "androidx-viewpager", "androidx-swiperefreshlayout", "material", "lottie",
+    "androidx-cardview", "androidx-constraintlayout", "androidx-viewpager", "androidx-swiperefreshlayout", "material", "lottie",
     "flexbox", "androidx-exifinterface", "androidx-preference"]
 image = ["glide", "circleimageview"]
 coil = ["coil", "coil-kt-coil-svg"]

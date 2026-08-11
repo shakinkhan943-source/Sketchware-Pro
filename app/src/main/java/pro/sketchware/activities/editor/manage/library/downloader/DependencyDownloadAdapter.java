@@ -120,7 +120,7 @@ public class DependencyDownloadAdapter extends RecyclerView.Adapter<DependencyDo
                     setStatusIcon(R.drawable.ic_mtrl_bt_error, MaterialColors.getColor(binding.getRoot(),
                                     com.google.android.material.R.attr.colorOnError),
                             MaterialColors.getColor(binding.getRoot(),
-                                    com.google.android.material.R.attr.colorError));
+                                    androidx.appcompat.R.attr.colorError));
                     binding.progressIndicator.setVisibility(View.GONE);
                     break;
 
