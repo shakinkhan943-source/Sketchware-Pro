@@ -15,6 +15,7 @@ import pro.sketchware.util.Helper;
 import pro.sketchware.R;
 import pro.sketchware.databinding.ActivityLayoutPreviewBinding;
 import pro.sketchware.tools.ViewBeanParser;
+import pro.sketchware.tools.ViewBeanFactory;
 import pro.sketchware.util.SketchwareUtil;
 import pro.sketchware.util.UI;
 
@@ -57,7 +58,17 @@ public class LayoutPreviewActivity extends BaseAppCompatActivity {
         if (content != null) {
             try {
                 var parser = new ViewBeanParser(content);
-                loadViews(parser.parse());
+                var views = parser.parse();
+                var rootAttributes = parser.getRootAttributes();
+                if (rootAttributes != null) {
+                    var rootBean = new ViewBean("root", ViewBeanParser.getViewTypeByClassName(rootAttributes.first));
+                    rootBean.convert = rootAttributes.first;
+                    new ViewBeanFactory(rootBean).applyAttributes(rootAttributes.second);
+                    pane.updateRootLayout(rootBean);
+                } else {
+                    pane.updateRootLayout(getIntent().getStringExtra("sc_id"), getIntent().getStringExtra("title"));
+                }
+                loadViews(views);
             } catch (Exception e) {
                 SketchwareUtil.toastError(e.toString());
             }
@@ -81,7 +92,6 @@ public class LayoutPreviewActivity extends BaseAppCompatActivity {
         for (ViewBean view : views) {
             if (views.indexOf(view) == 0) {
                 view.parent = "root";
-                view.parentType = 0;
                 view.preParent = null;
                 view.preParentType = -1;
                 itemView = loadView(view);

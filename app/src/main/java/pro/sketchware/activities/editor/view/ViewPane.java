@@ -15,6 +15,7 @@ import android.graphics.drawable.NinePatchDrawable;
 import android.text.TextUtils;
 import android.util.AttributeSet;
 import android.util.Log;
+import android.util.Pair;
 import android.view.ContextThemeWrapper;
 import android.view.Gravity;
 import android.view.View;
@@ -33,6 +34,8 @@ import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.content.res.AppCompatResources;
+import androidx.constraintlayout.widget.ConstraintLayout;
+import androidx.constraintlayout.widget.ConstraintSet;
 import androidx.core.content.ContextCompat;
 import androidx.appcompat.widget.AppCompatImageView;
 
@@ -86,6 +89,7 @@ import pro.sketchware.graphics.NinePatchDecoder;
 import pro.sketchware.activities.editor.view.item.ItemBadgeView;
 import pro.sketchware.activities.editor.view.item.ItemCircleImageView;
 import pro.sketchware.activities.editor.view.item.ItemCodeView;
+import pro.sketchware.activities.editor.view.item.ItemConstraintLayout;
 import pro.sketchware.activities.editor.view.item.ItemLottieAnimation;
 import pro.sketchware.activities.editor.view.item.ItemMaterialButton;
 import pro.sketchware.activities.editor.view.item.ItemOTPView;
@@ -289,6 +293,7 @@ public class ViewPane extends RelativeLayout {
                  ViewBeans.VIEW_TYPE_LAYOUT_SWIPEREFRESHLAYOUT,
                  ViewBeans.VIEW_TYPE_LAYOUT_RADIOGROUP -> new ItemLinearLayout(context);
             case ViewBean.VIEW_TYPE_LAYOUT_RELATIVE -> new ItemRelativeLayout(context);
+            case ViewBeans.VIEW_TYPE_LAYOUT_CONSTRAINTLAYOUT -> new ItemConstraintLayout(context);
             case ViewBeans.VIEW_TYPE_LAYOUT_CARDVIEW -> new ItemCardView(context);
             case ViewBean.VIEW_TYPE_LAYOUT_HSCROLLVIEW -> new ItemHorizontalScrollView(context);
             case ViewBean.VIEW_TYPE_WIDGET_BUTTON -> new ItemButton(context);
@@ -351,6 +356,10 @@ public class ViewPane extends RelativeLayout {
     public void updateRootLayout(String sc_id, String fileName) {
         InjectRootLayoutManager manager = new InjectRootLayoutManager(sc_id);
         var currentBean = manager.toBean(fileName);
+        updateRootLayout(currentBean);
+    }
+
+    public void updateRootLayout(ViewBean currentBean) {
         View rootView = createItemView(currentBean);
         if (rootView instanceof ItemView sy) {
             sy.setFixed(true);
@@ -1040,10 +1049,192 @@ public class ViewPane extends RelativeLayout {
             viewGroup.addView(view, bean.index);
             if (bean.parentType == ViewBean.VIEW_TYPE_LAYOUT_RELATIVE) {
                 updateRelativeParentViews(view, new InjectAttributeHandler(bean));
+            } else if (viewGroup instanceof ItemConstraintLayout) {
+                applyConstraintLayoutConstraints((ItemConstraintLayout) viewGroup);
             }
             if (viewGroup instanceof ScrollContainer scrollContainer) {
                 scrollContainer.reindexChildren();
             }
+        }
+    }
+
+    private void applyConstraintLayoutConstraints(ItemConstraintLayout constraintLayout) {
+        if (constraintLayout.getChildCount() == 0) {
+            return;
+        }
+        ConstraintSet constraintSet = new ConstraintSet();
+        constraintSet.clone(constraintLayout);
+        for (int i = 0; i < constraintLayout.getChildCount(); i++) {
+            View child = constraintLayout.getChildAt(i);
+            if (child.getTag() == null || !(child instanceof ItemView itemView)) {
+                continue;
+            }
+            ViewBean bean = itemView.getBean();
+            int childId = child.getId();
+            if (childId == View.NO_ID) {
+                continue;
+            }
+            InjectAttributeHandler handler = new InjectAttributeHandler(bean);
+            for (Pair<String, String> attribute : handler.getAttributes()) {
+                applyConstraintAttribute(constraintSet, constraintLayout, childId, bean, attribute.first, attribute.second);
+            }
+        }
+        constraintSet.applyTo(constraintLayout);
+    }
+
+    private void applyConstraintAttribute(ConstraintSet constraintSet, ViewGroup container, int childId, ViewBean bean, String attribute, String value) {
+        if (value == null || value.isEmpty()) {
+            return;
+        }
+        switch (attribute) {
+            case "app:layout_constraintLeft_toLeftOf" -> {
+                connectConstraint(constraintSet, container, childId, ConstraintSet.LEFT, ConstraintSet.LEFT, value, bean.layout.marginLeft);
+            }
+            case "app:layout_constraintLeft_toRightOf" -> {
+                connectConstraint(constraintSet, container, childId, ConstraintSet.LEFT, ConstraintSet.RIGHT, value, bean.layout.marginLeft);
+            }
+            case "app:layout_constraintRight_toLeftOf" -> {
+                connectConstraint(constraintSet, container, childId, ConstraintSet.RIGHT, ConstraintSet.LEFT, value, bean.layout.marginRight);
+            }
+            case "app:layout_constraintRight_toRightOf" -> {
+                connectConstraint(constraintSet, container, childId, ConstraintSet.RIGHT, ConstraintSet.RIGHT, value, bean.layout.marginRight);
+            }
+            case "app:layout_constraintTop_toTopOf" -> {
+                connectConstraint(constraintSet, container, childId, ConstraintSet.TOP, ConstraintSet.TOP, value, bean.layout.marginTop);
+            }
+            case "app:layout_constraintTop_toBottomOf" -> {
+                connectConstraint(constraintSet, container, childId, ConstraintSet.TOP, ConstraintSet.BOTTOM, value, bean.layout.marginTop);
+            }
+            case "app:layout_constraintBottom_toTopOf" -> {
+                connectConstraint(constraintSet, container, childId, ConstraintSet.BOTTOM, ConstraintSet.TOP, value, bean.layout.marginBottom);
+            }
+            case "app:layout_constraintBottom_toBottomOf" -> {
+                connectConstraint(constraintSet, container, childId, ConstraintSet.BOTTOM, ConstraintSet.BOTTOM, value, bean.layout.marginBottom);
+            }
+            case "app:layout_constraintStart_toStartOf" -> {
+                connectConstraint(constraintSet, container, childId, ConstraintSet.START, ConstraintSet.START, value, bean.layout.marginLeft);
+            }
+            case "app:layout_constraintStart_toEndOf" -> {
+                connectConstraint(constraintSet, container, childId, ConstraintSet.START, ConstraintSet.END, value, bean.layout.marginLeft);
+            }
+            case "app:layout_constraintEnd_toStartOf" -> {
+                connectConstraint(constraintSet, container, childId, ConstraintSet.END, ConstraintSet.START, value, bean.layout.marginRight);
+            }
+            case "app:layout_constraintEnd_toEndOf" -> {
+                connectConstraint(constraintSet, container, childId, ConstraintSet.END, ConstraintSet.END, value, bean.layout.marginRight);
+            }
+            case "app:layout_constraintBaseline_toBaselineOf" -> {
+                connectConstraint(constraintSet, container, childId, ConstraintSet.BASELINE, ConstraintSet.BASELINE, value, 0);
+            }
+            case "app:layout_constraintBaseline_toTopOf" -> {
+                connectConstraint(constraintSet, container, childId, ConstraintSet.BASELINE, ConstraintSet.TOP, value, 0);
+            }
+            case "app:layout_constraintBaseline_toBottomOf" -> {
+                connectConstraint(constraintSet, container, childId, ConstraintSet.BASELINE, ConstraintSet.BOTTOM, value, 0);
+            }
+            case "app:layout_constraintHorizontal_bias" -> {
+                try {
+                    constraintSet.setHorizontalBias(childId, Float.parseFloat(value));
+                } catch (NumberFormatException ignored) {
+                }
+            }
+            case "app:layout_constraintVertical_bias" -> {
+                try {
+                    constraintSet.setVerticalBias(childId, Float.parseFloat(value));
+                } catch (NumberFormatException ignored) {
+                }
+            }
+            case "app:layout_constraintWidth_percent" -> {
+                try {
+                    constraintSet.setWidthPercent(childId, Float.parseFloat(value) * 100f);
+                } catch (NumberFormatException ignored) {
+                }
+            }
+            case "app:layout_constraintHeight_percent" -> {
+                try {
+                    constraintSet.setHeightPercent(childId, Float.parseFloat(value) * 100f);
+                } catch (NumberFormatException ignored) {
+                }
+            }
+            case "app:layout_constraintDimensionRatio" -> constraintSet.setDimensionRatio(childId, value);
+            case "app:layout_constraintVertical_weight" -> {
+                try {
+                    constraintSet.setVerticalWeight(childId, Float.parseFloat(value));
+                } catch (NumberFormatException ignored) {
+                }
+            }
+            case "app:layout_constraintHorizontal_weight" -> {
+                try {
+                    constraintSet.setHorizontalWeight(childId, Float.parseFloat(value));
+                } catch (NumberFormatException ignored) {
+                }
+            }
+            case "app:layout_constraintCircle" -> {
+                int targetId = resolveConstraintTarget(container, value);
+                if (targetId != 0) {
+                    constraintSet.constrainCircle(childId, targetId, resolveCircleRadius(bean), resolveCircleAngle(bean));
+                }
+            }
+            case "app:layout_goneMarginLeft" -> setGoneMargin(constraintSet, childId, ConstraintSet.LEFT, value);
+            case "app:layout_goneMarginTop" -> setGoneMargin(constraintSet, childId, ConstraintSet.TOP, value);
+            case "app:layout_goneMarginRight" -> setGoneMargin(constraintSet, childId, ConstraintSet.RIGHT, value);
+            case "app:layout_goneMarginBottom" -> setGoneMargin(constraintSet, childId, ConstraintSet.BOTTOM, value);
+            case "app:layout_goneMarginStart" -> setGoneMargin(constraintSet, childId, ConstraintSet.START, value);
+            case "app:layout_goneMarginEnd" -> setGoneMargin(constraintSet, childId, ConstraintSet.END, value);
+            default -> {
+            }
+        }
+    }
+
+    private void connectConstraint(ConstraintSet constraintSet, ViewGroup container, int childId, int sourceSide, int targetSide, String value, int marginDp) {
+        int targetId = resolveConstraintTarget(container, value);
+        if (targetId != 0) {
+            int marginPx = (int) ViewUtil.dpToPx(getContext(), (float) marginDp);
+            constraintSet.connect(childId, sourceSide, targetId, targetSide, marginPx);
+        }
+    }
+
+    private int resolveConstraintTarget(ViewGroup container, String value) {
+        if (value == null) {
+            return 0;
+        }
+        String reference = value.trim();
+        if (reference.equals("parent")) {
+            return ConstraintSet.PARENT_ID;
+        }
+        if (reference.startsWith("@")) {
+            reference = PropertiesUtil.parseReferName(reference, "/");
+        }
+        for (int i = 0; i < container.getChildCount(); i++) {
+            View child = container.getChildAt(i);
+            Object tag = child.getTag();
+            if (tag != null && tag.toString().equals(reference)) {
+                return child.getId();
+            }
+        }
+        return 0;
+    }
+
+    private void setGoneMargin(ConstraintSet constraintSet, int childId, int side, String value) {
+        int size = PropertiesUtil.resolveSize(value, 0);
+        if (size > 0) {
+            constraintSet.setGoneMargin(childId, side, (int) ViewUtil.dpToPx(getContext(), (float) size));
+        }
+    }
+
+    private int resolveCircleRadius(ViewBean bean) {
+        InjectAttributeHandler handler = new InjectAttributeHandler(bean);
+        String radius = handler.getAttributeValueOf("app:layout_constraintCircleRadius");
+        return (int) ViewUtil.dpToPx(getContext(), (float) PropertiesUtil.resolveSize(radius, 0));
+    }
+
+    private int resolveCircleAngle(ViewBean bean) {
+        InjectAttributeHandler handler = new InjectAttributeHandler(bean);
+        String angle = handler.getAttributeValueOf("app:layout_constraintCircleAngle");
+        try {
+            return (int) Float.parseFloat(angle);
+        } catch (NumberFormatException e) {
+            return 0;
         }
     }
 
@@ -1054,6 +1245,8 @@ public class ViewPane extends RelativeLayout {
                 return ViewBean.VIEW_TYPE_LAYOUT_LINEAR;
             } else if (parent instanceof ItemRelativeLayout) {
                 return ViewBean.VIEW_TYPE_LAYOUT_RELATIVE;
+            } else if (parent instanceof ItemConstraintLayout) {
+                return ViewBeans.VIEW_TYPE_LAYOUT_CONSTRAINTLAYOUT;
             } else if (parent instanceof ItemCardView) {
                 return ViewBeans.VIEW_TYPE_LAYOUT_CARDVIEW;
             } else if (parent instanceof ItemHorizontalScrollView) {
@@ -1185,6 +1378,20 @@ public class ViewPane extends RelativeLayout {
             view.setLayoutParams(layoutParams2);
         } else if (viewBean.parentType == ViewBean.VIEW_TYPE_LAYOUT_RELATIVE) {
             RelativeLayout.LayoutParams layoutParams2 = new RelativeLayout.LayoutParams(width, height);
+            layoutParams2.setMargins(leftMargin, topMargin, rightMargin, bottomMargin);
+            LayoutBean layoutBean3 = viewBean.layout;
+            view.setPadding(layoutBean3.paddingLeft, layoutBean3.paddingTop, layoutBean3.paddingRight, layoutBean3.paddingBottom);
+            view.setLayoutParams(layoutParams2);
+        } else if (viewBean.parentType == ViewBeans.VIEW_TYPE_LAYOUT_CONSTRAINTLAYOUT) {
+            int constraintWidth = width;
+            int constraintHeight = height;
+            if (constraintWidth == ViewGroup.LayoutParams.MATCH_PARENT) {
+                constraintWidth = 0;
+            }
+            if (constraintHeight == ViewGroup.LayoutParams.MATCH_PARENT) {
+                constraintHeight = 0;
+            }
+            ConstraintLayout.LayoutParams layoutParams2 = new ConstraintLayout.LayoutParams(constraintWidth, constraintHeight);
             layoutParams2.setMargins(leftMargin, topMargin, rightMargin, bottomMargin);
             LayoutBean layoutBean3 = viewBean.layout;
             view.setPadding(layoutBean3.paddingLeft, layoutBean3.paddingTop, layoutBean3.paddingRight, layoutBean3.paddingBottom);

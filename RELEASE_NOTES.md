@@ -1,5 +1,9 @@
 ﻿# Unreleased
 
+## ✨ New Features
+
+- **XML layout preview: ConstraintLayout support** — The layout previewer (`LayoutPreviewActivity` + `ViewPane`) now renders XML files whose root is a `ConstraintLayout` and honors `app:layout_constraint*` attributes (`layout_constraintTop_toTopOf`, `layout_constraintBottom_toBottomOf`, `layout_constraintStart_toStartOf`, `layout_constraintEnd_toEndOf`, `layout_constraintBaseline_toBaselineOf`, horizontal/vertical bias, dimension ratio, `layout_widthPercent`/`layout_heightPercent`, `layout_constraintVertical_weight`/`layout_constraintHorizontal_weight`, `layout_constraintCircleRadius`/`layout_constraintCircleAngle`, and `layout_goneMargin*`). Targets can reference `parent` or sibling views by `@id` reference. Adds a new `ConstraintLayout` item type (49) to the view-bean maps and a dedicated `ItemConstraintLayout` container (selection ring, hover, re-indexed children) for the designer. Preview now derives the root bean from the parsed XML root tag instead of assuming a `LinearLayout`, keeping the legacy stored-root path as a fallback.
+
 ## 📚 Documentation
 
 - **Package migration policy** — Add `docs/package-migration-policy.md` codifying where new `.java` files must live (`pro.sketchware.*` only), naming conventions, sub-package depth budget, migration tracker, PR review checklist, and rejected anti-patterns. Implements P2b from `docs/package-target-architecture.md`. Linked from top-level `README.md` Contributing section and `docs/README.md` index.

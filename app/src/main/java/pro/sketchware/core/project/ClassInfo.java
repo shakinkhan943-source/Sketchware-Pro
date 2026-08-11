@@ -147,6 +147,10 @@ public class ClassInfo {
                 classInfos = "View.Clickable.ViewGroup.RelativeLayout";
                 break;
 
+            case "ConstraintLayout":
+                classInfos = "View.Clickable.ViewGroup.ConstraintLayout";
+                break;
+
             case "ScrollView":
                 classInfos = "View.ViewGroup.FrameLayout.ScrollView";
                 break;
