@@ -131,7 +131,7 @@ class KotlinCompilerEnhanced(
             noReflect = true
             noStdlib = true
 
-            kotlinHome = kotlinHome
+            this.kotlinHome = kotlinHome.absolutePath
             destination = outputDir.absolutePath
             pluginClasspaths = plugins
         }
