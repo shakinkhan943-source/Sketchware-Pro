@@ -65,11 +65,19 @@ class KotlinCompilerEnhanced(
 
         // If output disappeared, hashes cannot be trusted because bytecode must
         // be recreated even when the source files themselves are unchanged.
+        // Kotlin compilation is dependency-aware: compiling an individual changed
+        // .kt file is not generally equivalent to compiling the Kotlin source set.
+        // Keep the incremental optimization safe by skipping the compiler only when
+        // the complete source set is unchanged. When anything changes, compile all
+        // Kotlin sources together in one K2JVMCompiler invocation.
         val filesToCompile = if (!hasCompiledOutput) {
             LogUtil.d(TAG, "Compiled Kotlin output missing; performing full rebuild")
             allKtFiles
+        } else if (changedFiles.isNotEmpty()) {
+            LogUtil.d(TAG, "Kotlin sources changed; compiling complete Kotlin source set")
+            allKtFiles
         } else {
-            changedFiles
+            emptyList()
         }
 
         if (filesToCompile.isEmpty()) {
@@ -168,10 +176,20 @@ class KotlinCompilerEnhanced(
         File(outputDir, "META-INF").deleteRecursively()
     }
 
-    @Throws(Throwable::class)
+    /**
+     * Clears only the incremental metadata/cache.
+     *
+     * Do not expose @Throws(Throwable) here: KotlinCompilerBridge calls this
+     * method from Java, and Java would otherwise require a checked Throwable
+     * catch/throws declaration. Cache clearing is deliberately exception-safe.
+     */
     fun clearCache() {
-        incrementalCache.clearCache()
-        LogUtil.d(TAG, "Kotlin incremental cache cleared")
+        try {
+            incrementalCache.clearCache()
+            LogUtil.d(TAG, "Kotlin incremental cache cleared")
+        } catch (e: Exception) {
+            LogUtil.e(TAG, "Failed to clear Kotlin incremental cache", e)
+        }
     }
 
     fun getCacheStats(): String = incrementalCache.getCacheStats()
