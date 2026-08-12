@@ -12,16 +12,20 @@ import java.io.File
 /**
  * Android-safe incremental Kotlin compiler for Sketchware.
  *
- * Important design rules:
- * - Uses ONE K2JVMCompiler invocation per build.
- * - Never runs multiple Kotlin compiler instances in parallel.
- * - Keeps the same Android/JDK-safe compiler flags as the original compiler.
- * - Uses the incremental cache only for deciding which source files changed.
- * - Uses the complete project classpath from ProjectBuilder.
+ * This keeps the same compiler invocation model as the original KotlinCompiler:
+ * one K2JVMCompiler invocation for a compilation batch, using the complete
+ * project classpath and the Android-safe noJdk/noStdlib/noReflect settings.
+ *
+ * Incremental behavior is deliberately conservative:
+ * - If nothing changed and compiled output exists, Kotlin compilation is skipped.
+ * - If sources changed, only the changed source files are passed to kotlinc.
+ * - If compiled output is missing, all Kotlin sources are compiled.
+ * - Cache hashes are updated only after successful compilation.
  */
 class KotlinCompilerEnhanced(
     private val builder: ProjectBuilder
 ) {
+
     private val workspace = builder.projectFilePaths
 
     private val incrementalCache: IncrementalKotlinCompilationCache by lazy {
@@ -30,9 +34,13 @@ class KotlinCompilerEnhanced(
         IncrementalKotlinCompilationCache(cacheDir)
     }
 
+    companion object {
+        private const val TAG = "KotlinCompilerEnhanced"
+    }
+
     @Throws(Throwable::class)
     fun compile() {
-        val start = System.currentTimeMillis()
+        val startTime = System.currentTimeMillis()
 
         val allKtFiles = getFilesToCompile(workspace)
             .filter { it.isFile && it.extension.equals("kt", ignoreCase = true) }
@@ -42,33 +50,23 @@ class KotlinCompilerEnhanced(
             return
         }
 
-        val outputDir = File(workspace.compiledClassesPath)
-        outputDir.mkdirs()
-
-        /*
-         * If the output directory has disappeared/been emptied, the source
-         * manifest alone is not enough to safely skip compilation.
-         */
-        val hasCompiledOutput = outputDir.walkTopDown().any {
-            it.isFile && it.extension.equals("class", ignoreCase = true)
-        }
-
+        val outputDir = File(workspace.compiledClassesPath).apply { mkdirs() }
+        val hasCompiledOutput = hasCompiledKotlinOutput(outputDir)
         val changedFiles = incrementalCache.getChangedFiles(allKtFiles)
 
+        // Fast path: nothing changed and previous compiler output is present.
         if (changedFiles.isEmpty() && hasCompiledOutput) {
             LogUtil.d(
                 TAG,
-                "Skipping Kotlin compilation - no source changes (${elapsed(start)}ms)"
+                "Skipping Kotlin compilation - no source changes (${elapsed(startTime)}ms)"
             )
             return
         }
 
-        /*
-         * If output is missing, compile all sources. This is necessary because
-         * unchanged Kotlin files may need their bytecode recreated.
-         */
+        // If output disappeared, hashes cannot be trusted because bytecode must
+        // be recreated even when the source files themselves are unchanged.
         val filesToCompile = if (!hasCompiledOutput) {
-            LogUtil.d(TAG, "Compiled output missing; performing full Kotlin rebuild")
+            LogUtil.d(TAG, "Compiled Kotlin output missing; performing full rebuild")
             allKtFiles
         } else {
             changedFiles
@@ -87,83 +85,90 @@ class KotlinCompilerEnhanced(
 
         compileKotlin(filesToCompile, outputDir)
 
-        /*
-         * Only mark files as compiled after the compiler succeeds.
-         * Never update the manifest after a failed compilation.
-         */
+        // Only update the cache after kotlinc completed successfully.
         filesToCompile.forEach { incrementalCache.updateFileHash(it) }
         incrementalCache.saveCacheManifest()
 
-        LogUtil.d(TAG, "Kotlin compilation completed in ${elapsed(start)}ms")
+        LogUtil.d(
+            TAG,
+            "Kotlin compilation completed in ${elapsed(startTime)}ms"
+        )
+    }
+
+    private fun hasCompiledKotlinOutput(outputDir: File): Boolean {
+        if (!outputDir.exists()) return false
+
+        return outputDir.walkTopDown().any {
+            it.isFile && it.extension.equals("class", ignoreCase = true)
+        }
     }
 
     @Throws(Throwable::class)
-    private fun compileKotlin(filesToCompile: List<File>, outputDir: File) {
+    private fun compileKotlin(
+        filesToCompile: List<File>,
+        outputDir: File
+    ) {
         val kotlinHome = File(
             KotlinCompilerBridge.getKotlinHome(workspace)
         ).apply { mkdirs() }
 
         val compiler = K2JVMCompiler()
         val collector = DiagnosticCollector()
-
         val plugins = getCompilerPlugins(workspace)
             .filter { it.exists() }
             .map(File::getAbsolutePath)
             .toTypedArray()
 
         /*
-         * Keep these flags aligned with the original Sketchware Android
-         * compiler. In particular, noJdk=true prevents the compiler from
-         * assuming a desktop JDK/Swing environment.
+         * These settings intentionally match the original working
+         * Sketchware KotlinCompiler. Android does not provide a desktop JDK
+         * or Swing classes such as javax.swing.Icon.
          */
         val args = K2JVMCompilerArguments().apply {
             compileJava = false
-
-            classpath = builder.getClasspath()
-            sourceRoots = filesToCompile.map { it.absolutePath }.toTypedArray()
-
-            kotlinHome = kotlinHome.absolutePath
-            destination = outputDir.absolutePath
-
             includeRuntime = false
             noJdk = true
             noReflect = true
             noStdlib = true
 
+            kotlinHome = kotlinHome.absolutePath
+            destination = outputDir.absolutePath
             pluginClasspaths = plugins
         }
 
-        val argumentList = mutableListOf<String>()
-
-        argumentList.add("-cp")
-        argumentList.add(builder.getClasspath())
-        argumentList.addAll(filesToCompile.map { it.absolutePath })
+        // IMPORTANT: pass classpath and source files through the compiler's
+        // argument parser, exactly like the original KotlinCompiler. Do not
+        // assign sourceRoots/classpath properties because their types differ
+        // between Kotlin compiler versions used by Sketchware.
+        val argumentList = mutableListOf<String>().apply {
+            add("-cp")
+            add(builder.getClasspath())
+            addAll(filesToCompile.map { it.absolutePath })
+        }
 
         LogUtil.d(
             TAG,
-            "Running Android-safe kotlinc for ${filesToCompile.size} source files"
+            "Running kotlinc with ${filesToCompile.size} source files"
         )
 
         compiler.parseArguments(argumentList.toTypedArray(), args)
         compiler.exec(collector, Services.EMPTY, args)
 
-        LogUtil.d(TAG, "kotlinc diagnostics: $collector")
+        LogUtil.d(TAG, "kotlinc MessageCollector: $collector")
 
         if (collector.hasErrors()) {
-            LogUtil.e(TAG, "Kotlin compilation failed")
+            LogUtil.e(TAG, "Failed to compile Kotlin files")
             throw RuntimeException(
-                "Kotlin compilation failed:\n${collector.getDiagnostics(areWarningsEnabled())}"
+                "Kotlin compilation failed:\n" +
+                    collector.getDiagnostics(areWarningsEnabled())
             )
         }
 
-        /*
-         * Kotlin generates META-INF/*.kotlin_module files. The original
-         * Sketchware compiler removes META-INF because the downstream D8
-         * pipeline does not expect these files.
-         */
+        // Match the original Sketchware compiler behavior.
         File(outputDir, "META-INF").deleteRecursively()
     }
 
+    @Throws(Throwable::class)
     fun clearCache() {
         incrementalCache.clearCache()
         LogUtil.d(TAG, "Kotlin incremental cache cleared")
@@ -178,10 +183,7 @@ class KotlinCompilerEnhanced(
         ) != BuildSettings.SETTING_GENERIC_VALUE_TRUE
     }
 
-    private fun elapsed(start: Long): Long =
-        System.currentTimeMillis() - start
-
-    companion object {
-        private const val TAG = "KotlinCompilerEnhanced"
+    private fun elapsed(startTime: Long): Long {
+        return System.currentTimeMillis() - startTime
     }
 }
