@@ -1,232 +1,161 @@
 package pro.sketchware.core.build.compiler
 
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import pro.sketchware.util.LogUtil
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.zip.CRC32
-import kotlin.math.abs
 
 /**
- * Manages incremental Kotlin compilation by tracking source file changes
- * and caching compiled bytecode. Supports parallel compilation.
+ * Persistent source-change tracker for incremental Kotlin compilation.
  *
- * Key features:
- * - CRC32-based file hashing for fast change detection
- * - Persistent cache across builds
- * - Compiled .class file reuse for unchanged sources
- * - Parallel compilation of multiple files
- *
- * Usage:
- * ```kotlin
- * val cache = IncrementalKotlinCompilationCache(cacheDir)
- * val changedFiles = cache.getChangedFiles(allKtFiles)
- * // Compile only changed files, reuse .class from cache for others
- * ```
+ * This class deliberately does NOT pretend that one .kt file always produces
+ * one .class file. Kotlin can generate multiple class files and module
+ * metadata from one source file, so bytecode ownership is handled by the
+ * compiler output directory instead.
  */
 class IncrementalKotlinCompilationCache(
-    private val cacheDir: File,
-    private val parallelThreadCount: Int = Runtime.getRuntime().availableProcessors()
+    private val cacheDir: File
 ) {
     companion object {
         private const val TAG = "IncrementalKotlinCache"
         private const val CACHE_MANIFEST = "kotlin_build_hashes.json"
-        private const val CLASS_CACHE_DIR = "kotlin_classes_cache"
+        private const val CACHE_VERSION = 2
     }
 
     private val sourceHashes = ConcurrentHashMap<String, String>()
-    private val compiledClassCache = ConcurrentHashMap<String, File>()
     private val cacheManifestFile = File(cacheDir, CACHE_MANIFEST)
-    private val classCacheDir = File(cacheDir, CLASS_CACHE_DIR)
 
     init {
-        classCacheDir.mkdirs()
+        cacheDir.mkdirs()
         loadCacheManifest()
     }
 
-    /**
-     * Calculate CRC32 hash of a file for change detection
-     * Fast and reliable for detecting file modifications
-     */
     private fun calculateFileHash(file: File): String {
         return try {
             val crc = CRC32()
             file.inputStream().use { input ->
-                val buffer = ByteArray(8192)
-                var bytesRead: Int
-                while (input.read(buffer).also { bytesRead = it } != -1) {
-                    crc.update(buffer, 0, bytesRead)
+                val buffer = ByteArray(16 * 1024)
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read <= 0) break
+                    crc.update(buffer, 0, read)
                 }
             }
-            // Use absolute value to ensure positive hash
-            abs(crc.value).toString(16)
+            crc.value.toString(16)
         } catch (e: Exception) {
-            LogUtil.e(TAG, "Error calculating file hash for ${file.absolutePath}", e)
-            "0" // Return dummy hash on error, treat as changed
+            LogUtil.e(TAG, "Unable to hash ${file.absolutePath}", e)
+            "ERROR"
         }
     }
 
-    /**
-     * Check if a source file has changed since last compilation
-     */
     private fun hasSourceChanged(file: File): Boolean {
-        if (!file.exists()) return false
-        
+        if (!file.exists()) return true
+
         val currentHash = calculateFileHash(file)
         val previousHash = sourceHashes[file.absolutePath]
-        val changed = currentHash != previousHash
-        
-        if (changed) {
-            LogUtil.d(TAG, "File changed: ${file.name} (hash: $previousHash → $currentHash)")
-        }
-        
-        return changed
+
+        return currentHash != previousHash
     }
 
-    /**
-     * Filter files that have changed since last build
-     * @return Only .kt files that were modified or are new
-     */
     fun getChangedFiles(allKtFiles: List<File>): List<File> {
+        val currentPaths = allKtFiles
+            .map { it.absolutePath }
+            .toSet()
+
+        /*
+         * A deleted source can leave stale .class files in the output
+         * directory. We cannot safely perform a partial build in that case.
+         * The caller should clear the cache/full rebuild when it detects this.
+         */
+        val deletedSourceExists = sourceHashes.keys.any { it !in currentPaths }
+
+        if (deletedSourceExists) {
+            LogUtil.w(
+                TAG,
+                "Deleted Kotlin source detected; forcing full rebuild"
+            )
+            return allKtFiles
+        }
+
         return allKtFiles.filter { hasSourceChanged(it) }
     }
 
-    /**
-     * Get reusable compiled .class files from cache for unchanged sources
-     * @return Map of source file path to cached .class file
-     */
-    fun getCachedCompiledClasses(allKtFiles: List<File>): Map<String, File> {
-        val cachedClasses = mutableMapOf<String, File>()
-        
-        allKtFiles.forEach { file ->
-            if (!hasSourceChanged(file)) {
-                // Source hasn't changed, try to get cached .class
-                val cachedClassFile = getCachedClassFile(file)
-                if (cachedClassFile.exists()) {
-                    cachedClasses[file.absolutePath] = cachedClassFile
-                    LogUtil.d(TAG, "Reusing cached class: ${file.name}")
-                }
-            }
-        }
-        
-        return cachedClasses
-    }
-
-    /**
-     * Get the cache file path for a compiled .class file
-     */
-    private fun getCachedClassFile(sourceFile: File): File {
-        val classFileName = sourceFile.nameWithoutExtension + ".class"
-        return File(classCacheDir, classFileName)
-    }
-
-    /**
-     * Cache a compiled .class file after successful compilation
-     */
-    fun cacheCompiledClass(sourceFile: File, classFile: File) {
-        try {
-            if (!classFile.exists()) return
-            
-            val cachedFile = getCachedClassFile(sourceFile)
-            classFile.copyTo(cachedFile, overwrite = true)
-            compiledClassCache[sourceFile.absolutePath] = cachedFile
-            
-            // Update source hash after successful compilation
-            sourceHashes[sourceFile.absolutePath] = calculateFileHash(sourceFile)
-            LogUtil.d(TAG, "Cached compiled class: ${sourceFile.name}")
-        } catch (e: Exception) {
-            LogUtil.e(TAG, "Error caching compiled class", e)
-        }
-    }
-
-    /**
-     * Update file hash after compilation (marks file as compiled)
-     */
     fun updateFileHash(file: File) {
-        sourceHashes[file.absolutePath] = calculateFileHash(file)
+        if (file.exists()) {
+            sourceHashes[file.absolutePath] = calculateFileHash(file)
+        }
     }
 
-    /**
-     * Prepare files for parallel compilation
-     * Groups files into chunks for efficient parallel processing
-     */
-    fun prepareParallelBatches(files: List<File>): List<List<File>> {
-        if (files.isEmpty()) return emptyList()
-        
-        val batchSize = (files.size + parallelThreadCount - 1) / parallelThreadCount
-        return files.chunked(batchSize)
-    }
-
-    /**
-     * Get recommended parallel thread count
-     */
-    fun getParallelThreadCount(): Int = parallelThreadCount
-
-    /**
-     * Clear the entire cache (full rebuild)
-     */
     fun clearCache() {
         try {
             sourceHashes.clear()
-            compiledClassCache.clear()
-            classCacheDir.deleteRecursively()
-            classCacheDir.mkdirs()
             cacheManifestFile.delete()
-            LogUtil.d(TAG, "Cache cleared - full rebuild will be performed")
+            LogUtil.d(TAG, "Kotlin incremental cache cleared")
         } catch (e: Exception) {
-            LogUtil.e(TAG, "Error clearing cache", e)
+            LogUtil.e(TAG, "Error clearing Kotlin cache", e)
         }
     }
 
-    /**
-     * Save cache manifest for persistence across builds
-     */
     fun saveCacheManifest() {
         try {
-            val manifest = mutableMapOf<String, String>()
-            sourceHashes.forEach { (path, hash) ->
-                manifest[path] = hash
-            }
-            
-            val json = com.google.gson.Gson().toJson(manifest)
-            cacheManifestFile.writeText(json)
-            LogUtil.d(TAG, "Cache manifest saved (${sourceHashes.size} entries)")
+            cacheDir.mkdirs()
+
+            val data = Manifest(
+                version = CACHE_VERSION,
+                hashes = sourceHashes.toMap()
+            )
+
+            cacheManifestFile.writeText(
+                Gson().toJson(data)
+            )
+
+            LogUtil.d(
+                TAG,
+                "Cache manifest saved (${sourceHashes.size} files)"
+            )
         } catch (e: Exception) {
-            LogUtil.e(TAG, "Error saving cache manifest", e)
+            LogUtil.e(TAG, "Error saving Kotlin cache manifest", e)
         }
     }
 
-    /**
-     * Load cache manifest from previous builds
-     */
     private fun loadCacheManifest() {
         try {
             if (!cacheManifestFile.exists()) return
-            
+
             val json = cacheManifestFile.readText()
-            val manifest = com.google.gson.Gson()
-                .fromJson(json, Map::class.java) as? Map<String, String> ?: return
-            
-            sourceHashes.putAll(manifest)
-            LogUtil.d(TAG, "Cache manifest loaded (${sourceHashes.size} entries)")
+            val type = object : TypeToken<Manifest>() {}.type
+            val manifest = Gson().fromJson<Manifest>(json, type)
+
+            if (manifest == null || manifest.version != CACHE_VERSION) {
+                LogUtil.d(TAG, "Old Kotlin cache format; starting fresh")
+                sourceHashes.clear()
+                return
+            }
+
+            sourceHashes.putAll(manifest.hashes)
+
+            LogUtil.d(
+                TAG,
+                "Cache manifest loaded (${sourceHashes.size} files)"
+            )
         } catch (e: Exception) {
-            LogUtil.e(TAG, "Error loading cache manifest", e)
-            sourceHashes.clear() // Start fresh on error
+            LogUtil.e(TAG, "Error loading Kotlin cache manifest", e)
+            sourceHashes.clear()
         }
     }
 
-    /**
-     * Get cache statistics for debugging
-     */
     fun getCacheStats(): String {
-        val cachedCount = compiledClassCache.size
-        val totalTracked = sourceHashes.size
-        val cacheSize = classCacheDir.walk().map { it.length() }.sum() / 1024 // KB
-        
-        return """Cache Stats:
-            |  Total tracked files: $totalTracked
-            |  Cached classes: $cachedCount
-            |  Cache directory size: ${cacheSize}KB
-            |  Parallel threads: $parallelThreadCount
-        """.trimMargin()
+        return buildString {
+            appendLine("Cache Stats:")
+            appendLine("  Tracked Kotlin files: ${sourceHashes.size}")
+            appendLine("  Manifest size: ${if (cacheManifestFile.exists()) cacheManifestFile.length() else 0} bytes")
+        }
     }
+
+    private data class Manifest(
+        val version: Int,
+        val hashes: Map<String, String>
+    )
 }
