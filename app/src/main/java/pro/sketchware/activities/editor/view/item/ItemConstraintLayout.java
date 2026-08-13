@@ -12,10 +12,15 @@ import androidx.annotation.NonNull;
 import androidx.constraintlayout.widget.ConstraintLayout;
 import androidx.constraintlayout.widget.ConstraintSet;
 
-import pro.sketchware.beans.LayoutBean;
-import pro.sketchware.beans.ViewBean;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+
 import pro.sketchware.activities.editor.view.ItemView;
 import pro.sketchware.activities.editor.view.ScrollContainer;
+import pro.sketchware.beans.LayoutBean;
+import pro.sketchware.beans.ViewBean;
 import pro.sketchware.util.InjectAttributeHandler;
 import pro.sketchware.util.PropertiesUtil;
 import pro.sketchware.util.ViewUtil;
@@ -23,34 +28,23 @@ import pro.sketchware.util.ViewUtil;
 /**
  * ConstraintLayout used by the XML previewer.
  *
- * Sketchware's ViewBean/LayoutBean predates ConstraintLayout and therefore cannot
- * represent all ConstraintLayout dimensions/constraints.  The preview must read
- * the original injected XML attributes and translate them to the real
- * ConstraintLayout engine instead of trying to emulate its measurement rules.
+ * ConstraintLayout has rules which cannot be represented by Sketchware's
+ * legacy LayoutBean. Preview therefore reads the injected XML attributes and
+ * delegates the actual measurement/positioning to AndroidX ConstraintLayout.
  */
 public class ItemConstraintLayout extends ConstraintLayout implements ItemView, ScrollContainer {
 
-    private ViewBean viewBean = null;
-    private boolean isSelected = false;
-    private boolean isFixed = false;
+    private ViewBean viewBean;
+    private boolean isSelected;
+    private boolean isFixed;
     private Paint paint;
     private Rect rect;
     private boolean applyingPreviewConstraints;
+    private final Map<String, Integer> previewIds = new HashMap<>();
 
     public ItemConstraintLayout(Context context) {
         super(context);
         initialize(context);
-    }
-
-    @Override
-    public void reindexChildren() {
-        int childIdx = 0;
-        for (int i = 0; i < getChildCount(); i++) {
-            View child = getChildAt(i);
-            if (child instanceof ItemView editorItem) {
-                editorItem.getBean().index = childIdx++;
-            }
-        }
     }
 
     private void initialize(Context context) {
@@ -59,8 +53,22 @@ public class ItemConstraintLayout extends ConstraintLayout implements ItemView, 
         setMinimumWidth((int) ViewUtil.dpToPx(context, 32.0F));
         setMinimumHeight((int) ViewUtil.dpToPx(context, 32.0F));
         paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        paint.setStrokeWidth(ViewUtil.dpToPx(getContext(), 2.0F));
+        paint.setStrokeWidth(ViewUtil.dpToPx(context, 2.0F));
         rect = new Rect();
+    }
+
+    @Override
+    public void reindexChildren() {
+        int childIdx = 0;
+        for (int i = 0; i < getChildCount(); i++) {
+            View child = getChildAt(i);
+            if (child instanceof ItemView itemView) {
+                ViewBean bean = itemView.getBean();
+                if (bean != null) {
+                    bean.index = childIdx++;
+                }
+            }
+        }
     }
 
     @Override
@@ -72,42 +80,55 @@ public class ItemConstraintLayout extends ConstraintLayout implements ItemView, 
     }
 
     /**
-     * Translate every ConstraintLayout attribute that matters to preview into
-     * real LayoutParams/ConstraintSet state. This is intentionally independent
-     * from Sketchware's old LinearLayout-oriented LayoutBean representation.
+     * Applies the complete set of ConstraintLayout attributes understood by
+     * the preview. The first step is deliberately ID-safe: ConstraintSet.clone
+     * requires every child in the container to have a valid unique ID. The
+     * editor temporarily inserts a highlight TextView during drag-and-drop;
+     * that view is not an ItemView and historically had no ID, causing the
+     * crash reported by ConstraintSet.clone().
      */
     public void applyPreviewConstraints() {
         if (applyingPreviewConstraints || getChildCount() == 0) {
             return;
         }
+
         applyingPreviewConstraints = true;
         try {
+            ensureChildIds();
+
             ConstraintSet set = new ConstraintSet();
             set.clone(this);
 
             for (int i = 0; i < getChildCount(); i++) {
                 View child = getChildAt(i);
-                if (!(child instanceof ItemView itemView) || child.getId() == View.NO_ID) {
+                if (!(child instanceof ItemView itemView)) {
+                    continue;
+                }
+                ViewBean bean = itemView.getBean();
+                if (bean == null || child.getId() == View.NO_ID) {
                     continue;
                 }
 
-                ViewBean bean = itemView.getBean();
                 InjectAttributeHandler attrs = new InjectAttributeHandler(bean);
                 applyDimensions(set, child, attrs, bean);
                 applyMargins(set, child.getId(), attrs, bean);
                 applyConnections(set, child, attrs);
-                applyAdvanced(set, child.getId(), attrs);
+                applyAdvanced(set, child, attrs);
             }
 
-            // Legacy Sketchware widgets have no ConstraintLayout editor state.
-            // Give unconstrained newly-added widgets a deterministic position,
-            // while never overriding an explicit XML constraint.
+            // A widget newly dropped into a ConstraintLayout may not have any
+            // positional constraint yet. Keep it visible and deterministic
+            // without affecting widgets which already have explicit constraints.
             for (int i = 0; i < getChildCount(); i++) {
                 View child = getChildAt(i);
                 if (!(child instanceof ItemView itemView) || child.getId() == View.NO_ID) {
                     continue;
                 }
-                InjectAttributeHandler attrs = new InjectAttributeHandler(itemView.getBean());
+                ViewBean bean = itemView.getBean();
+                if (bean == null) {
+                    continue;
+                }
+                InjectAttributeHandler attrs = new InjectAttributeHandler(bean);
                 if (!hasPositionConstraint(attrs)) {
                     applyAutomaticPlacement(set, child, i);
                 }
@@ -119,6 +140,41 @@ public class ItemConstraintLayout extends ConstraintLayout implements ItemView, 
         }
     }
 
+    /**
+     * Guarantees that ConstraintSet.clone() can safely inspect every child.
+     * Existing IDs are preserved; only missing/duplicate IDs are replaced.
+     * The XML/editor id remains in the view tag and is never modified.
+     */
+    private void ensureChildIds() {
+        previewIds.clear();
+        Set<Integer> usedIds = new HashSet<>();
+
+        for (int i = 0; i < getChildCount(); i++) {
+            View child = getChildAt(i);
+            int id = child.getId();
+            if (id == View.NO_ID || usedIds.contains(id)) {
+                id = View.generateViewId();
+                while (usedIds.contains(id)) {
+                    id = View.generateViewId();
+                }
+                child.setId(id);
+            }
+            usedIds.add(id);
+
+            Object tag = child.getTag();
+            if (tag != null) {
+                previewIds.put(normalizeReference(tag.toString()), id);
+            }
+
+            if (child instanceof ItemView itemView && itemView.getBean() != null) {
+                String beanId = itemView.getBean().id;
+                if (!TextUtils.isEmpty(beanId)) {
+                    previewIds.put(normalizeReference(beanId), id);
+                }
+            }
+        }
+    }
+
     private void applyDimensions(ConstraintSet set, View child, InjectAttributeHandler attrs, ViewBean bean) {
         int width = resolveDimension(attrs.getAttributeValueOf("layout_width"), bean.layout.width);
         int height = resolveDimension(attrs.getAttributeValueOf("layout_height"), bean.layout.height);
@@ -126,21 +182,60 @@ public class ItemConstraintLayout extends ConstraintLayout implements ItemView, 
         set.constrainHeight(child.getId(), height);
 
         String widthPercent = attrs.getAttributeValueOf("layout_constraintWidth_percent");
-        if (!TextUtils.isEmpty(widthPercent)) {
-            Float percent = parseFloat(widthPercent);
-            if (percent != null) {
-                set.constrainWidth(child.getId(), ConstraintSet.MATCH_CONSTRAINT);
-                set.constrainPercentWidth(child.getId(), percent);
-            }
+        Float widthRatio = parsePercent(widthPercent);
+        if (widthRatio != null) {
+            set.constrainWidth(child.getId(), ConstraintSet.MATCH_CONSTRAINT);
+            set.constrainPercentWidth(child.getId(), widthRatio);
         }
 
         String heightPercent = attrs.getAttributeValueOf("layout_constraintHeight_percent");
-        if (!TextUtils.isEmpty(heightPercent)) {
-            Float percent = parseFloat(heightPercent);
-            if (percent != null) {
-                set.constrainHeight(child.getId(), ConstraintSet.MATCH_CONSTRAINT);
-                set.constrainPercentHeight(child.getId(), percent);
-            }
+        Float heightRatio = parsePercent(heightPercent);
+        if (heightRatio != null) {
+            set.constrainHeight(child.getId(), ConstraintSet.MATCH_CONSTRAINT);
+            set.constrainPercentHeight(child.getId(), heightRatio);
+        }
+
+        String widthDefault = attrs.getAttributeValueOf("layout_constraintWidth_default");
+        if (!TextUtils.isEmpty(widthDefault)) {
+            applyMatchConstraintDefault(set, child.getId(), widthDefault, true);
+        }
+
+        String heightDefault = attrs.getAttributeValueOf("layout_constraintHeight_default");
+        if (!TextUtils.isEmpty(heightDefault)) {
+            applyMatchConstraintDefault(set, child.getId(), heightDefault, false);
+        }
+
+        int minWidth = resolveDimensionOptional(attrs.getAttributeValueOf("layout_constraintWidth_min"));
+        int maxWidth = resolveDimensionOptional(attrs.getAttributeValueOf("layout_constraintWidth_max"));
+        int minHeight = resolveDimensionOptional(attrs.getAttributeValueOf("layout_constraintHeight_min"));
+        int maxHeight = resolveDimensionOptional(attrs.getAttributeValueOf("layout_constraintHeight_max"));
+        if (minWidth >= 0) set.constrainMinWidth(child.getId(), minWidth);
+        if (maxWidth >= 0) set.constrainMaxWidth(child.getId(), maxWidth);
+        if (minHeight >= 0) set.constrainMinHeight(child.getId(), minHeight);
+        if (maxHeight >= 0) set.constrainMaxHeight(child.getId(), maxHeight);
+
+        String constrainedWidth = attrs.getAttributeValueOf("layout_constrainedWidth");
+        if (!TextUtils.isEmpty(constrainedWidth)) {
+            set.constrainedWidth(child.getId(), Boolean.parseBoolean(constrainedWidth));
+        }
+        String constrainedHeight = attrs.getAttributeValueOf("layout_constrainedHeight");
+        if (!TextUtils.isEmpty(constrainedHeight)) {
+            set.constrainedHeight(child.getId(), Boolean.parseBoolean(constrainedHeight));
+        }
+    }
+
+    private void applyMatchConstraintDefault(ConstraintSet set, int childId, String value, boolean horizontal) {
+        String normalized = value.trim().toLowerCase();
+        int mode;
+        if ("wrap".equals(normalized)) {
+            mode = ConstraintSet.MATCH_CONSTRAINT_WRAP;
+        } else {
+            mode = ConstraintSet.MATCH_CONSTRAINT_SPREAD;
+        }
+        if (horizontal) {
+            set.constrainDefaultWidth(childId, mode);
+        } else {
+            set.constrainDefaultHeight(childId, mode);
         }
     }
 
@@ -149,10 +244,7 @@ public class ItemConstraintLayout extends ConstraintLayout implements ItemView, 
             if (beanValue == LayoutBean.LAYOUT_MATCH_PARENT) {
                 return ConstraintSet.MATCH_CONSTRAINT;
             }
-            if (beanValue == LayoutBean.LAYOUT_WRAP_CONTENT) {
-                return ConstraintSet.WRAP_CONTENT;
-            }
-            if (beanValue == LayoutBean.LAYOUT_NOTUSED) {
+            if (beanValue == LayoutBean.LAYOUT_WRAP_CONTENT || beanValue == LayoutBean.LAYOUT_NOTUSED) {
                 return ConstraintSet.WRAP_CONTENT;
             }
             return beanValue > 0
@@ -160,24 +252,29 @@ public class ItemConstraintLayout extends ConstraintLayout implements ItemView, 
                     : ConstraintSet.WRAP_CONTENT;
         }
 
-        String value = xmlValue.trim();
+        String value = xmlValue.trim().toLowerCase();
         if ("match_parent".equals(value) || "fill_parent".equals(value)) {
             return ConstraintSet.MATCH_CONSTRAINT;
         }
         if ("wrap_content".equals(value)) {
             return ConstraintSet.WRAP_CONTENT;
         }
-        if (value.endsWith("dp") || value.endsWith("px")) {
+        if (value.endsWith("dp")) {
             try {
                 float number = Float.parseFloat(value.substring(0, value.length() - 2).trim());
-                if (number == 0f) {
-                    return ConstraintSet.MATCH_CONSTRAINT;
-                }
-                if (value.endsWith("px")) {
-                    return Math.round(number);
-                }
-                return Math.round(ViewUtil.dpToPx(getContext(), number));
+                return number == 0f
+                        ? ConstraintSet.MATCH_CONSTRAINT
+                        : Math.round(ViewUtil.dpToPx(getContext(), number));
             } catch (NumberFormatException ignored) {
+                return ConstraintSet.WRAP_CONTENT;
+            }
+        }
+        if (value.endsWith("px")) {
+            try {
+                float number = Float.parseFloat(value.substring(0, value.length() - 2).trim());
+                return number == 0f ? ConstraintSet.MATCH_CONSTRAINT : Math.round(number);
+            } catch (NumberFormatException ignored) {
+                return ConstraintSet.WRAP_CONTENT;
             }
         }
         try {
@@ -186,6 +283,13 @@ public class ItemConstraintLayout extends ConstraintLayout implements ItemView, 
         } catch (NumberFormatException ignored) {
             return ConstraintSet.WRAP_CONTENT;
         }
+    }
+
+    private int resolveDimensionOptional(String value) {
+        if (TextUtils.isEmpty(value) || "wrap".equalsIgnoreCase(value) || "spread".equalsIgnoreCase(value)) {
+            return -1;
+        }
+        return resolveDimension(value, -999);
     }
 
     private void applyMargins(ConstraintSet set, int childId, InjectAttributeHandler attrs, ViewBean bean) {
@@ -197,21 +301,46 @@ public class ItemConstraintLayout extends ConstraintLayout implements ItemView, 
         int start = resolveMargin(attrs.getAttributeValueOf("layout_marginStart"), left);
         int end = resolveMargin(attrs.getAttributeValueOf("layout_marginEnd"), right);
 
-        set.setMargin(childId, ConstraintSet.LEFT, dp(start));
-        set.setMargin(childId, ConstraintSet.RIGHT, dp(right));
-        set.setMargin(childId, ConstraintSet.TOP, dp(top));
-        set.setMargin(childId, ConstraintSet.BOTTOM, dp(bottom));
-        set.setMargin(childId, ConstraintSet.START, dp(start));
-        set.setMargin(childId, ConstraintSet.END, dp(end));
+        setSafeMargin(set, childId, ConstraintSet.LEFT, start);
+        setSafeMargin(set, childId, ConstraintSet.RIGHT, right);
+        setSafeMargin(set, childId, ConstraintSet.TOP, top);
+        setSafeMargin(set, childId, ConstraintSet.BOTTOM, bottom);
+        setSafeMargin(set, childId, ConstraintSet.START, start);
+        setSafeMargin(set, childId, ConstraintSet.END, end);
+
+        setGoneMargin(set, childId, ConstraintSet.LEFT, attrs.getAttributeValueOf("layout_goneMarginLeft"));
+        setGoneMargin(set, childId, ConstraintSet.RIGHT, attrs.getAttributeValueOf("layout_goneMarginRight"));
+        setGoneMargin(set, childId, ConstraintSet.TOP, attrs.getAttributeValueOf("layout_goneMarginTop"));
+        setGoneMargin(set, childId, ConstraintSet.BOTTOM, attrs.getAttributeValueOf("layout_goneMarginBottom"));
+        setGoneMargin(set, childId, ConstraintSet.START, attrs.getAttributeValueOf("layout_goneMarginStart"));
+        setGoneMargin(set, childId, ConstraintSet.END, attrs.getAttributeValueOf("layout_goneMarginEnd"));
+    }
+
+    private void setSafeMargin(ConstraintSet set, int childId, int side, int valueDp) {
+        if (valueDp >= 0) {
+            set.setMargin(childId, side, dp(valueDp));
+        }
+    }
+
+    private void setGoneMargin(ConstraintSet set, int childId, int side, String value) {
+        if (TextUtils.isEmpty(value)) {
+            return;
+        }
+        int margin = resolveMargin(value, -1);
+        if (margin >= 0) {
+            set.setGoneMargin(childId, side, dp(margin));
+        }
     }
 
     private int resolveMargin(String value, int fallback) {
-        if (TextUtils.isEmpty(value)) return fallback;
+        if (TextUtils.isEmpty(value)) {
+            return fallback;
+        }
         return PropertiesUtil.resolveSize(value, fallback);
     }
 
     private int dp(int value) {
-        return (int) ViewUtil.dpToPx(getContext(), value);
+        return Math.max(0, (int) ViewUtil.dpToPx(getContext(), value));
     }
 
     private void applyConnections(ConstraintSet set, View child, InjectAttributeHandler attrs) {
@@ -231,69 +360,123 @@ public class ItemConstraintLayout extends ConstraintLayout implements ItemView, 
         connect(set, id, ConstraintSet.BASELINE, ConstraintSet.BASELINE, attrs.getAttributeValueOf("layout_constraintBaseline_toBaselineOf"));
         connect(set, id, ConstraintSet.BASELINE, ConstraintSet.TOP, attrs.getAttributeValueOf("layout_constraintBaseline_toTopOf"));
         connect(set, id, ConstraintSet.BASELINE, ConstraintSet.BOTTOM, attrs.getAttributeValueOf("layout_constraintBaseline_toBottomOf"));
+
+        String circleTarget = attrs.getAttributeValueOf("layout_constraintCircle");
+        if (!TextUtils.isEmpty(circleTarget)) {
+            int targetId = resolveTarget(circleTarget);
+            if (targetId != 0) {
+                int radius = resolveMargin(attrs.getAttributeValueOf("layout_constraintCircleRadius"), 0);
+                Float angle = parseFloat(attrs.getAttributeValueOf("layout_constraintCircleAngle"));
+                set.constrainCircle(child.getId(), targetId, dp(Math.max(0, radius)), angle != null ? angle : 0f);
+            }
+        }
     }
 
-    private void connect(ConstraintSet set, int childId, int source, int targetSide, String target) {
+    private void connect(ConstraintSet set, int childId, int sourceSide, int targetSide, String target) {
         int targetId = resolveTarget(target);
         if (targetId != 0) {
-            set.connect(childId, source, targetId, targetSide);
+            set.connect(childId, sourceSide, targetId, targetSide);
         }
     }
 
     private int resolveTarget(String value) {
-        if (TextUtils.isEmpty(value)) return 0;
+        if (TextUtils.isEmpty(value)) {
+            return 0;
+        }
+        return previewIds.getOrDefault(normalizeReference(value), 0);
+    }
+
+    private String normalizeReference(String value) {
+        if (value == null) {
+            return "";
+        }
         String reference = value.trim();
-        if ("parent".equals(reference)) return ConstraintSet.PARENT_ID;
+        if ("parent".equals(reference)) {
+            return "parent";
+        }
         int slash = reference.lastIndexOf('/');
         if (slash >= 0 && slash + 1 < reference.length()) {
             reference = reference.substring(slash + 1);
         }
-        for (int i = 0; i < getChildCount(); i++) {
-            View child = getChildAt(i);
-            Object tag = child.getTag();
-            if (tag != null && reference.equals(tag.toString())) {
-                return child.getId();
-            }
+        if (reference.startsWith("@+id/")) {
+            reference = reference.substring(5);
+        } else if (reference.startsWith("@id/")) {
+            reference = reference.substring(4);
+        } else if (reference.startsWith("@+")) {
+            int separator = reference.indexOf('/');
+            if (separator >= 0) reference = reference.substring(separator + 1);
         }
-        return 0;
+        return reference;
     }
 
-    private void applyAdvanced(ConstraintSet set, int childId, InjectAttributeHandler attrs) {
+    private void applyAdvanced(ConstraintSet set, View child, InjectAttributeHandler attrs) {
+        int id = child.getId();
+
         Float horizontalBias = parseFloat(attrs.getAttributeValueOf("layout_constraintHorizontal_bias"));
-        if (horizontalBias != null) set.setHorizontalBias(childId, horizontalBias);
+        if (horizontalBias != null) set.setHorizontalBias(id, clamp01(horizontalBias));
         Float verticalBias = parseFloat(attrs.getAttributeValueOf("layout_constraintVertical_bias"));
-        if (verticalBias != null) set.setVerticalBias(childId, verticalBias);
+        if (verticalBias != null) set.setVerticalBias(id, clamp01(verticalBias));
 
         String ratio = attrs.getAttributeValueOf("layout_constraintDimensionRatio");
-        if (!TextUtils.isEmpty(ratio)) set.setDimensionRatio(childId, ratio);
+        if (!TextUtils.isEmpty(ratio)) set.setDimensionRatio(id, ratio.trim());
 
         Float horizontalWeight = parseFloat(attrs.getAttributeValueOf("layout_constraintHorizontal_weight"));
-        if (horizontalWeight != null) set.setHorizontalWeight(childId, horizontalWeight);
+        if (horizontalWeight != null) set.setHorizontalWeight(id, Math.max(0f, horizontalWeight));
         Float verticalWeight = parseFloat(attrs.getAttributeValueOf("layout_constraintVertical_weight"));
-        if (verticalWeight != null) set.setVerticalWeight(childId, verticalWeight);
+        if (verticalWeight != null) set.setVerticalWeight(id, Math.max(0f, verticalWeight));
 
-        int minWidth = resolveDimensionOptional(attrs.getAttributeValueOf("layout_constraintWidth_min"));
-        if (minWidth >= 0) set.constrainMinWidth(childId, minWidth);
-        int maxWidth = resolveDimensionOptional(attrs.getAttributeValueOf("layout_constraintWidth_max"));
-        if (maxWidth >= 0) set.constrainMaxWidth(childId, maxWidth);
-        int minHeight = resolveDimensionOptional(attrs.getAttributeValueOf("layout_constraintHeight_min"));
-        if (minHeight >= 0) set.constrainMinHeight(childId, minHeight);
-        int maxHeight = resolveDimensionOptional(attrs.getAttributeValueOf("layout_constraintHeight_max"));
-        if (maxHeight >= 0) set.constrainMaxHeight(childId, maxHeight);
+        applyChainStyle(set, id, attrs.getAttributeValueOf("layout_constraintHorizontal_chainStyle"), true);
+        applyChainStyle(set, id, attrs.getAttributeValueOf("layout_constraintVertical_chainStyle"), false);
     }
 
-    private int resolveDimensionOptional(String value) {
-        if (TextUtils.isEmpty(value) || "wrap".equals(value) || "spread".equals(value)) return -1;
-        return resolveDimension(value, -999);
+    private void applyChainStyle(ConstraintSet set, int id, String value, boolean horizontal) {
+        if (TextUtils.isEmpty(value)) {
+            return;
+        }
+        String normalized = value.trim().toLowerCase();
+        int style;
+        if ("packed".equals(normalized)) {
+            style = ConstraintSet.CHAIN_PACKED;
+        } else if ("spread_inside".equals(normalized) || "spreadinside".equals(normalized)) {
+            style = ConstraintSet.CHAIN_SPREAD_INSIDE;
+        } else {
+            style = ConstraintSet.CHAIN_SPREAD;
+        }
+        if (horizontal) {
+            set.setHorizontalChainStyle(id, style);
+        } else {
+            set.setVerticalChainStyle(id, style);
+        }
     }
 
     private Float parseFloat(String value) {
-        if (TextUtils.isEmpty(value)) return null;
+        if (TextUtils.isEmpty(value)) {
+            return null;
+        }
         try {
             return Float.parseFloat(value.trim());
         } catch (NumberFormatException ignored) {
             return null;
         }
+    }
+
+    private Float parsePercent(String value) {
+        if (TextUtils.isEmpty(value)) {
+            return null;
+        }
+        String normalized = value.trim();
+        try {
+            if (normalized.endsWith("%")) {
+                return clamp01(Float.parseFloat(normalized.substring(0, normalized.length() - 1).trim()) / 100f);
+            }
+            return clamp01(Float.parseFloat(normalized));
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
+    private float clamp01(float value) {
+        return Math.max(0f, Math.min(1f, value));
     }
 
     private boolean hasPositionConstraint(InjectAttributeHandler attrs) {
@@ -308,7 +491,9 @@ public class ItemConstraintLayout extends ConstraintLayout implements ItemView, 
                 "layout_constraintBaseline_toBottomOf", "layout_constraintCircle"
         };
         for (String name : names) {
-            if (!TextUtils.isEmpty(attrs.getAttributeValueOf(name))) return true;
+            if (!TextUtils.isEmpty(attrs.getAttributeValueOf(name))) {
+                return true;
+            }
         }
         return false;
     }
@@ -336,9 +521,9 @@ public class ItemConstraintLayout extends ConstraintLayout implements ItemView, 
         int childCount = getChildCount();
         if (index > childCount) {
             super.addView(child);
-            return;
+        } else {
+            super.addView(child, index);
         }
-        super.addView(child, index);
         post(this::applyPreviewConstraints);
     }
 
@@ -358,8 +543,8 @@ public class ItemConstraintLayout extends ConstraintLayout implements ItemView, 
     }
 
     @Override
-    public void setFixed(boolean isFixed) {
-        this.isFixed = isFixed;
+    public void setFixed(boolean fixed) {
+        isFixed = fixed;
     }
 
     public boolean getSelection() {
@@ -367,13 +552,13 @@ public class ItemConstraintLayout extends ConstraintLayout implements ItemView, 
     }
 
     @Override
-    public void setSelection(boolean selected) {
-        isSelected = selected;
+    public void setSelection(boolean selection) {
+        isSelected = selection;
         invalidate();
     }
 
     @Override
-    public void onDraw(@NonNull Canvas canvas) {
+    protected void onDraw(@NonNull Canvas canvas) {
         if (!isFixed) {
             if (isSelected) {
                 paint.setColor(0x9599d5d0);
@@ -381,38 +566,29 @@ public class ItemConstraintLayout extends ConstraintLayout implements ItemView, 
                 canvas.drawRect(rect, paint);
             }
             paint.setColor(0x60000000);
-            int measuredWidth = getMeasuredWidth();
-            int measuredHeight = getMeasuredHeight();
-            canvas.drawLine(0.0F, 0.0F, measuredWidth, 0.0F, paint);
-            canvas.drawLine(0.0F, 0.0F, 0.0F, measuredHeight, paint);
-            canvas.drawLine(measuredWidth, 0.0F, measuredWidth, measuredHeight, paint);
-            canvas.drawLine(0.0F, measuredHeight, measuredWidth, measuredHeight, paint);
+            int width = getMeasuredWidth();
+            int height = getMeasuredHeight();
+            canvas.drawLine(0, 0, width, 0, paint);
+            canvas.drawLine(0, 0, 0, height, paint);
+            canvas.drawLine(width, 0, width, height, paint);
+            canvas.drawLine(0, height, width, height, paint);
         }
         super.onDraw(canvas);
     }
 
     @Override
     public void setChildScrollEnabled(boolean scrollEnabled) {
-        for (int i = 0; i < getChildCount(); ++i) {
+        for (int i = 0; i < getChildCount(); i++) {
             View child = getChildAt(i);
-            if (child instanceof ScrollContainer) {
-                ((ScrollContainer) child).setChildScrollEnabled(scrollEnabled);
+            if (child instanceof ScrollContainer scrollContainer) {
+                scrollContainer.setChildScrollEnabled(scrollEnabled);
             }
-            if (child instanceof ItemHorizontalScrollView) {
-                ((ItemHorizontalScrollView) child).setScrollEnabled(scrollEnabled);
+            if (child instanceof ItemHorizontalScrollView horizontalScrollView) {
+                horizontalScrollView.setScrollEnabled(scrollEnabled);
             }
-            if (child instanceof ItemVerticalScrollView) {
-                ((ItemVerticalScrollView) child).setScrollEnabled(scrollEnabled);
+            if (child instanceof ItemVerticalScrollView verticalScrollView) {
+                verticalScrollView.setScrollEnabled(scrollEnabled);
             }
         }
-    }
-
-    @Override
-    public void setPadding(int left, int top, int right, int bottom) {
-        super.setPadding(
-                (int) ViewUtil.dpToPx(getContext(), left),
-                (int) ViewUtil.dpToPx(getContext(), top),
-                (int) ViewUtil.dpToPx(getContext(), right),
-                (int) ViewUtil.dpToPx(getContext(), bottom));
     }
 }
