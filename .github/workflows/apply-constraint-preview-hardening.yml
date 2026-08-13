@@ -22,28 +22,17 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-
           pane = Path('app/src/main/java/pro/sketchware/activities/editor/view/ViewPane.java')
           s = pane.read_text()
-
-          # XmlPullParser returns namespace-free attribute names (for example
-          # layout_constraintStart_toEndOf, not app:layout_constraintStart_toEndOf).
-          # The existing ConstraintSet switch used prefixed names, so none of
-          # the real ConstraintLayout XML attributes were ever applied.
           old = '''    private void applyConstraintAttribute(ConstraintSet constraintSet, ViewGroup container, int childId, ViewBean bean, String attribute, String value) {\n        if (value == null || value.isEmpty()) {\n            return;\n        }\n        switch (attribute) {'''
-          new = '''    private void applyConstraintAttribute(ConstraintSet constraintSet, ViewGroup container, int childId, ViewBean bean, String attribute, String value) {\n        if (value == null || value.isEmpty()) {\n            return;\n        }\n        // InjectAttributeHandler uses XmlPullParser, whose getAttributeName()\n        // removes the XML namespace prefix. Normalize constraint attributes so\n        // both parser output and any prefixed callers use the same switch.\n        String normalizedAttribute = attribute;\n        if (normalizedAttribute != null && normalizedAttribute.startsWith("layout_constraint")) {\n            normalizedAttribute = "app:" + normalizedAttribute;\n        } else if (normalizedAttribute != null && normalizedAttribute.startsWith("layout_goneMargin")) {\n            normalizedAttribute = "app:" + normalizedAttribute;\n        }\n        switch (normalizedAttribute) {'''
-          if old not in s:
-              raise SystemExit('Constraint attribute method anchor not found')
+          new = '''    private void applyConstraintAttribute(ConstraintSet constraintSet, ViewGroup container, int childId, ViewBean bean, String attribute, String value) {\n        if (value == null || value.isEmpty()) {\n            return;\n        }\n        String normalizedAttribute = attribute;\n        if (normalizedAttribute != null && normalizedAttribute.startsWith("layout_constraint")) normalizedAttribute = "app:" + normalizedAttribute;\n        else if (normalizedAttribute != null && normalizedAttribute.startsWith("layout_goneMargin")) normalizedAttribute = "app:" + normalizedAttribute;\n        switch (normalizedAttribute) {'''
+          if old not in s: raise SystemExit('Constraint attribute method anchor not found')
           s = s.replace(old, new, 1)
 
-          # Re-apply constraints whenever an existing ConstraintLayout child is
-          # refreshed, not only when a drag/drop operation inserts it.
           old = '''        if (viewBean.parentType == ViewBean.VIEW_TYPE_LAYOUT_RELATIVE) {\n            updateRelative(view, injectHandler);\n        }\n        if (classInfo.matchesType("TextView")) {'''
-          new = '''        if (viewBean.parentType == ViewBean.VIEW_TYPE_LAYOUT_RELATIVE) {\n            updateRelative(view, injectHandler);\n        }\n        if (viewBean.parentType == ViewBeans.VIEW_TYPE_LAYOUT_CONSTRAINTLAYOUT\n                && rootLayout != null) {\n            View parentView = rootLayout.findViewWithTag(viewBean.parent);\n            if (parentView instanceof ItemConstraintLayout constraintLayout) {\n                // The child may already be attached during normal refresh.\n                // Applying the complete container constraint set keeps the\n                // preview synchronized with the XML after edits.\n                applyConstraintLayoutConstraints(constraintLayout);\n            }\n        }\n        if (classInfo.matchesType("TextView")) {'''
-          if old not in s:
-              raise SystemExit('updateItemView anchor not found')
+          new = '''        if (viewBean.parentType == ViewBean.VIEW_TYPE_LAYOUT_RELATIVE) {\n            updateRelative(view, injectHandler);\n        }\n        if (viewBean.parentType == ViewBeans.VIEW_TYPE_LAYOUT_CONSTRAINTLAYOUT && rootLayout != null) {\n            View parentView = rootLayout.findViewWithTag(viewBean.parent);\n            if (parentView instanceof ItemConstraintLayout constraintLayout) applyConstraintLayoutConstraints(constraintLayout);\n        }\n        if (classInfo.matchesType("TextView")) {'''
+          if old not in s: raise SystemExit('updateItemView anchor not found')
           s = s.replace(old, new, 1)
-
           pane.write_text(s)
           PY
 
@@ -51,41 +40,123 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          pane = Path('app/src/main/java/pro/sketchware/activities/editor/view/ViewPane.java')
+          s = pane.read_text()
+          old = '''            ViewGroup viewGroup = rootLayout.findViewWithTag(viewBean.preParent);\n            viewGroup.removeView(findViewWithTag);\n            if (viewGroup instanceof ScrollContainer scrollContainer) {'''
+          new = '''            ViewGroup viewGroup = rootLayout.findViewWithTag(viewBean.preParent);\n            if (viewGroup == null || findViewWithTag == null) {\n                LogUtil.w("ViewPane", "Unable to move preview view '" + viewBean.id + "': previous parent not found");\n                return (ItemView) findViewWithTag;\n            }\n            viewGroup.removeView(findViewWithTag);\n            if (viewGroup instanceof ScrollContainer scrollContainer) {'''
+          if old in s: s = s.replace(old, new, 1)
+          old = '''        } else if (viewBean.index != viewBean.preIndex) {\n            ((ViewGroup) rootLayout.findViewWithTag(viewBean.parent)).removeView(findViewWithTag);\n            addViewAndUpdateIndex(findViewWithTag);'''
+          new = '''        } else if (viewBean.index != viewBean.preIndex) {\n            ViewGroup currentParent = rootLayout.findViewWithTag(viewBean.parent);\n            if (currentParent == null || findViewWithTag == null) {\n                LogUtil.w("ViewPane", "Unable to reorder preview view '" + viewBean.id + "': parent not found");\n                return (ItemView) findViewWithTag;\n            }\n            currentParent.removeView(findViewWithTag);\n            addViewAndUpdateIndex(findViewWithTag);'''
+          if old in s: s = s.replace(old, new, 1)
+          old = '''        constraintSet.applyTo(constraintLayout);\n    }'''
+          new = '''        constraintSet.applyTo(constraintLayout);\n        constraintLayout.requestLayout();\n        constraintLayout.invalidate();\n    }'''
+          if old in s and 'constraintLayout.requestLayout();' not in s: s = s.replace(old, new, 1)
+          pane.write_text(s)
+          PY
 
+      - name: Add real ConstraintLayout dimensions and smart drop placement
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
           pane = Path('app/src/main/java/pro/sketchware/activities/editor/view/ViewPane.java')
           s = pane.read_text()
 
-          old = '''            ViewGroup viewGroup = rootLayout.findViewWithTag(viewBean.preParent);\n            viewGroup.removeView(findViewWithTag);\n            if (viewGroup instanceof ScrollContainer scrollContainer) {'''
-          new = '''            ViewGroup viewGroup = rootLayout.findViewWithTag(viewBean.preParent);\n            if (viewGroup == null || findViewWithTag == null) {\n                LogUtil.w("ViewPane", "Unable to move preview view '" + viewBean.id + "': previous parent not found");\n                return (ItemView) findViewWithTag;\n            }\n            viewGroup.removeView(findViewWithTag);\n            if (viewGroup instanceof ScrollContainer scrollContainer) {'''
-          if old in s:
-              s = s.replace(old, new, 1)
+          old = '''            } else if (viewGroup instanceof ItemConstraintLayout constraintLayout) {\n                applyConstraintLayoutConstraints(constraintLayout);\n            }'''
+          new = '''            } else if (viewGroup instanceof ItemConstraintLayout constraintLayout) {\n                applyConstraintLayoutConstraints(constraintLayout);\n                applyAutomaticConstraintPlacement(constraintLayout, view, bean);\n                applyConstraintLayoutConstraints(constraintLayout);\n            }'''
+          if old in s: s = s.replace(old, new, 1)
 
-          old = '''        } else if (viewBean.index != viewBean.preIndex) {\n            ((ViewGroup) rootLayout.findViewWithTag(viewBean.parent)).removeView(findViewWithTag);\n            addViewAndUpdateIndex(findViewWithTag);'''
-          new = '''        } else if (viewBean.index != viewBean.preIndex) {\n            ViewGroup currentParent = rootLayout.findViewWithTag(viewBean.parent);\n            if (currentParent == null || findViewWithTag == null) {\n                LogUtil.w("ViewPane", "Unable to reorder preview view '" + viewBean.id + "': parent not found");\n                return (ItemView) findViewWithTag;\n            }\n            currentParent.removeView(findViewWithTag);\n            addViewAndUpdateIndex(findViewWithTag);'''
-          if old in s:
-              s = s.replace(old, new, 1)
+          start = s.index('    private void applyConstraintLayoutConstraints(ItemConstraintLayout constraintLayout) {')
+          end = s.index('    private void applyConstraintAttribute(', start)
+          method = r'''    private void applyConstraintLayoutConstraints(ItemConstraintLayout constraintLayout) {
+        if (constraintLayout.getChildCount() == 0) return;
+        ConstraintSet set = new ConstraintSet();
+        set.clone(constraintLayout);
+        for (int i = 0; i < constraintLayout.getChildCount(); i++) {
+            View child = constraintLayout.getChildAt(i);
+            if (!(child instanceof ItemView itemView) || child.getId() == View.NO_ID) continue;
+            ViewBean bean = itemView.getBean();
+            applyConstraintDimension(set, child.getId(), bean);
+            for (Pair<String, String> attr : new InjectAttributeHandler(bean).getAttributes()) {
+                applyConstraintAttribute(set, constraintLayout, child.getId(), bean, attr.first, attr.second);
+            }
+        }
+        set.applyTo(constraintLayout);
+        constraintLayout.requestLayout();
+        constraintLayout.invalidate();
+    }
 
-          old = '''        constraintSet.applyTo(constraintLayout);\n    }'''
-          new = '''        constraintSet.applyTo(constraintLayout);\n        constraintLayout.requestLayout();\n        constraintLayout.invalidate();\n    }'''
-          if old in s and 'constraintLayout.requestLayout();' not in s:
-              s = s.replace(old, new, 1)
+    private void applyConstraintDimension(ConstraintSet set, int id, ViewBean bean) {
+        int w = bean.layout.width;
+        int h = bean.layout.height;
+        if (w == LayoutBean.LAYOUT_NOTUSED || w == LayoutBean.LAYOUT_MATCH_PARENT) set.constrainWidth(id, 0);
+        else if (w == LayoutBean.LAYOUT_WRAP_CONTENT) set.constrainWidth(id, ViewGroup.LayoutParams.WRAP_CONTENT);
+        else if (w > 0) set.constrainWidth(id, (int) ViewUtil.dpToPx(getContext(), (float) w));
+        if (h == LayoutBean.LAYOUT_NOTUSED || h == LayoutBean.LAYOUT_MATCH_PARENT) set.constrainHeight(id, 0);
+        else if (h == LayoutBean.LAYOUT_WRAP_CONTENT) set.constrainHeight(id, ViewGroup.LayoutParams.WRAP_CONTENT);
+        else if (h > 0) set.constrainHeight(id, (int) ViewUtil.dpToPx(getContext(), (float) h));
+    }
 
+    private void applyAutomaticConstraintPlacement(ItemConstraintLayout parent, View child, ViewBean bean) {
+        if (child == null || child.getId() == View.NO_ID || bean == null) return;
+        InjectAttributeHandler h = new InjectAttributeHandler(bean);
+        boolean vertical = h.contains("layout_constraintTop_toTopOf") || h.contains("layout_constraintTop_toBottomOf")
+                || h.contains("layout_constraintBottom_toTopOf") || h.contains("layout_constraintBottom_toBottomOf")
+                || h.contains("layout_constraintBaseline_toBaselineOf") || h.contains("layout_constraintBaseline_toTopOf")
+                || h.contains("layout_constraintBaseline_toBottomOf");
+        boolean horizontal = h.contains("layout_constraintStart_toStartOf") || h.contains("layout_constraintStart_toEndOf")
+                || h.contains("layout_constraintEnd_toStartOf") || h.contains("layout_constraintEnd_toEndOf")
+                || h.contains("layout_constraintLeft_toLeftOf") || h.contains("layout_constraintLeft_toRightOf")
+                || h.contains("layout_constraintRight_toLeftOf") || h.contains("layout_constraintRight_toRightOf")
+                || h.contains("layout_constraintCircle");
+        ConstraintSet set = new ConstraintSet();
+        set.clone(parent);
+        int id = child.getId();
+        if (!horizontal) {
+            set.connect(id, ConstraintSet.START, ConstraintSet.PARENT_ID, ConstraintSet.START, 0);
+            if (bean.layout.width == LayoutBean.LAYOUT_MATCH_PARENT) set.connect(id, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END, 0);
+        }
+        if (!vertical) {
+            View previous = null;
+            for (int i = parent.getChildCount() - 1; i >= 0; i--) {
+                View candidate = parent.getChildAt(i);
+                if (candidate != child && candidate.getVisibility() == View.VISIBLE && candidate.getId() != View.NO_ID) { previous = candidate; break; }
+            }
+            if (previous != null) set.connect(id, ConstraintSet.TOP, previous.getId(), ConstraintSet.BOTTOM, (int) ViewUtil.dpToPx(getContext(), (float) bean.layout.marginTop));
+            else set.connect(id, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP, (int) ViewUtil.dpToPx(getContext(), (float) bean.layout.marginTop));
+        }
+        set.applyTo(parent);
+        parent.requestLayout();
+    }
+
+'''
+          s = s[:start] + method + s[end:]
+
+          old = '''            case "app:layout_constraintWidth_percent" -> {\n                try {\n                    constraintSet.constrainPercentWidth(childId, Float.parseFloat(value));\n                } catch (NumberFormatException ignored) {\n                }\n            }\n            case "app:layout_constraintHeight_percent" -> {\n                try {\n                    constraintSet.constrainPercentHeight(childId, Float.parseFloat(value));\n                } catch (NumberFormatException ignored) {\n                }\n            }'''
+          new = '''            case "app:layout_constraintWidth_percent" -> {\n                try { constraintSet.constrainDefaultWidth(childId, ConstraintSet.MATCH_CONSTRAINT_PERCENT); constraintSet.constrainPercentWidth(childId, Float.parseFloat(value)); } catch (NumberFormatException ignored) { }\n            }\n            case "app:layout_constraintHeight_percent" -> {\n                try { constraintSet.constrainDefaultHeight(childId, ConstraintSet.MATCH_CONSTRAINT_PERCENT); constraintSet.constrainPercentHeight(childId, Float.parseFloat(value)); } catch (NumberFormatException ignored) { }\n            }\n            case "app:layout_constraintWidth_default" -> setConstraintDefaultWidth(constraintSet, childId, value);\n            case "app:layout_constraintHeight_default" -> setConstraintDefaultHeight(constraintSet, childId, value);\n            case "app:layout_constraintWidth_min" -> setConstraintSize(value, v -> constraintSet.constrainMinWidth(childId, v));\n            case "app:layout_constraintWidth_max" -> setConstraintSize(value, v -> constraintSet.constrainMaxWidth(childId, v));\n            case "app:layout_constraintHeight_min" -> setConstraintSize(value, v -> constraintSet.constrainMinHeight(childId, v));\n            case "app:layout_constraintHeight_max" -> setConstraintSize(value, v -> constraintSet.constrainMaxHeight(childId, v));'''
+          if old not in s: raise SystemExit('percent block not found')
+          s = s.replace(old, new, 1)
+
+          marker = '''    private void connectConstraint(ConstraintSet constraintSet, ViewGroup container, int childId, int sourceSide, int targetSide, String value, int marginDp) {'''
+          helpers = '''    @FunctionalInterface private interface FloatConstraintAction { void apply(float value); }\n    @FunctionalInterface private interface IntConstraintAction { void apply(int value); }\n    private void setConstraintSize(String value, IntConstraintAction action) { int size = PropertiesUtil.resolveSize(value, 0); if (size > 0) action.apply((int) ViewUtil.dpToPx(getContext(), (float) size)); }\n    private void setConstraintDefaultWidth(ConstraintSet set, int id, String value) {\n        if ("wrap".equalsIgnoreCase(value)) set.constrainDefaultWidth(id, ConstraintSet.MATCH_CONSTRAINT_WRAP);\n        else if ("percent".equalsIgnoreCase(value)) set.constrainDefaultWidth(id, ConstraintSet.MATCH_CONSTRAINT_PERCENT);\n        else set.constrainDefaultWidth(id, ConstraintSet.MATCH_CONSTRAINT_SPREAD);\n    }\n    private void setConstraintDefaultHeight(ConstraintSet set, int id, String value) {\n        if ("wrap".equalsIgnoreCase(value)) set.constrainDefaultHeight(id, ConstraintSet.MATCH_CONSTRAINT_WRAP);\n        else if ("percent".equalsIgnoreCase(value)) set.constrainDefaultHeight(id, ConstraintSet.MATCH_CONSTRAINT_PERCENT);\n        else set.constrainDefaultHeight(id, ConstraintSet.MATCH_CONSTRAINT_SPREAD);\n    }\n\n'''
+          if marker not in s: raise SystemExit('connect marker not found')
+          s = s.replace(marker, helpers + marker, 1)
           pane.write_text(s)
-
-          factory = Path('app/src/main/java/pro/sketchware/tools/ViewBeanFactory.java')
-          s = factory.read_text()
-          old = '''        var orientation = attributes.getOrDefault("android:orientation", null);\n        if (orientation != null) {'''
-          new = '''        var orientation = attributes.getOrDefault("android:orientation", null);\n        // ConstraintLayout has no orientation concept. Do not let a stray\n        // android:orientation attribute affect preview layout state.\n        if (bean.type == ViewBeans.VIEW_TYPE_LAYOUT_CONSTRAINTLAYOUT) {\n            orientation = null;\n        }\n        if (orientation != null) {'''
-          if old in s and 'ConstraintLayout has no orientation concept' not in s:
-              s = s.replace(old, new, 1)
-          factory.write_text(s)
           PY
 
-      - name: Verify ConstraintLayout preview fixes
+      - name: Ignore orientation for ConstraintLayout
         run: |
-          grep -n "XmlPullParser\|normalizedAttribute\|applyConstraintLayoutConstraints(constraintLayout)\|constraintLayout.requestLayout\|ConstraintLayout has no orientation" \
-            app/src/main/java/pro/sketchware/activities/editor/view/ViewPane.java \
-            app/src/main/java/pro/sketchware/tools/ViewBeanFactory.java
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/src/main/java/pro/sketchware/tools/ViewBeanFactory.java')
+          s = p.read_text()
+          old = '''        var orientation = attributes.getOrDefault("android:orientation", null);\n        if (orientation != null) {'''
+          new = '''        var orientation = attributes.getOrDefault("android:orientation", null);\n        if (bean.type == ViewBeans.VIEW_TYPE_LAYOUT_CONSTRAINTLAYOUT) orientation = null;\n        if (orientation != null) {'''
+          if old in s: s = s.replace(old, new, 1)
+          p.write_text(s)
+          PY
+
+      - name: Compile check
+        run: ./gradlew :app:compileDebugJavaWithJavac --no-daemon
 
       - name: Commit and push
         run: |
@@ -93,5 +164,5 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add app/src/main/java/pro/sketchware/activities/editor/view/ViewPane.java app/src/main/java/pro/sketchware/tools/ViewBeanFactory.java
           git diff --cached --quiet && exit 0
-          git commit -m "fix: apply ConstraintLayout XML constraints in preview"
+          git commit -m "fix: support ConstraintLayout dimensions and smart drop placement"
           git push origin fix/constraint-preview
