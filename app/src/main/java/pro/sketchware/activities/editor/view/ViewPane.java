@@ -535,6 +535,16 @@ public class ViewPane extends RelativeLayout {
         if (viewBean.parentType == ViewBean.VIEW_TYPE_LAYOUT_RELATIVE) {
             updateRelative(view, injectHandler);
         }
+        if (viewBean.parentType == ViewBeans.VIEW_TYPE_LAYOUT_CONSTRAINTLAYOUT
+                && rootLayout != null) {
+            View parentView = rootLayout.findViewWithTag(viewBean.parent);
+            if (parentView instanceof ItemConstraintLayout constraintLayout) {
+                // The child may already be attached during normal refresh.
+                // Applying the complete container constraint set keeps the
+                // preview synchronized with the XML after edits.
+                applyConstraintLayoutConstraints(constraintLayout);
+            }
+        }
         if (classInfo.matchesType("TextView")) {
             TextView textView = (TextView) view;
             updateTextView(textView, viewBean);
@@ -1119,7 +1129,16 @@ public class ViewPane extends RelativeLayout {
         if (value == null || value.isEmpty()) {
             return;
         }
-        switch (attribute) {
+        // InjectAttributeHandler uses XmlPullParser, whose getAttributeName()
+        // removes the XML namespace prefix. Normalize constraint attributes so
+        // both parser output and any prefixed callers use the same switch.
+        String normalizedAttribute = attribute;
+        if (normalizedAttribute != null && normalizedAttribute.startsWith("layout_constraint")) {
+            normalizedAttribute = "app:" + normalizedAttribute;
+        } else if (normalizedAttribute != null && normalizedAttribute.startsWith("layout_goneMargin")) {
+            normalizedAttribute = "app:" + normalizedAttribute;
+        }
+        switch (normalizedAttribute) {
             case "app:layout_constraintLeft_toLeftOf" -> {
                 connectConstraint(constraintSet, container, childId, ConstraintSet.LEFT, ConstraintSet.LEFT, value, bean.layout.marginLeft);
             }
