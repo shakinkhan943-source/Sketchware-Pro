@@ -227,7 +227,9 @@ public class ViewPane extends RelativeLayout {
         if (preParent != null && !preParent.isEmpty() && !viewBean.parent.equals(viewBean.preParent)) {
             ViewGroup viewGroup = rootLayout.findViewWithTag(viewBean.preParent);
             viewGroup.removeView(findViewWithTag);
-            ((ScrollContainer) viewGroup).reindexChildren();
+            if (viewGroup instanceof ScrollContainer scrollContainer) {
+                scrollContainer.reindexChildren();
+            }
             addViewAndUpdateIndex(findViewWithTag);
         } else if (viewBean.index != viewBean.preIndex) {
             ((ViewGroup) rootLayout.findViewWithTag(viewBean.parent)).removeView(findViewWithTag);
@@ -751,6 +753,13 @@ public class ViewPane extends RelativeLayout {
                 viewBean.parent = view.getTag() != null ? view.getTag().toString() : "";
                 viewBean.preParentType = viewBean.parentType;
                 viewBean.parentType = ViewBean.VIEW_TYPE_LAYOUT_RELATIVE;
+            } else if (view instanceof ItemConstraintLayout) {
+                viewBean.preIndex = viewBean.index;
+                viewBean.index = viewInfo.index();
+                viewBean.preParent = viewBean.parent;
+                viewBean.parent = view.getTag() != null ? view.getTag().toString() : "";
+                viewBean.preParentType = viewBean.parentType;
+                viewBean.parentType = ViewBeans.VIEW_TYPE_LAYOUT_CONSTRAINTLAYOUT;
             }
         } else {
             viewBean.preIndex = viewBean.index;
@@ -818,6 +827,8 @@ public class ViewPane extends RelativeLayout {
                 highlightedTextView.setLayoutParams(new LinearLayout.LayoutParams(width, height));
             } else if (viewGroup instanceof FrameLayout) {
                 highlightedTextView.setLayoutParams(new FrameLayout.LayoutParams(width, height));
+            } else if (viewGroup instanceof ConstraintLayout) {
+                highlightedTextView.setLayoutParams(new ConstraintLayout.LayoutParams(width, height));
             } else {
                 highlightedTextView.setLayoutParams(new LayoutParams(width, height));
             }
@@ -969,6 +980,8 @@ public class ViewPane extends RelativeLayout {
                     addDroppableForScrollableContainer(view, (ViewGroup) child);
                 } else if (child instanceof ItemRelativeLayout relativeLayout) {
                     addDroppableForViewGroup(view, relativeLayout);
+                } else if (child instanceof ItemConstraintLayout constraintLayout) {
+                    addDroppableForViewGroup(view, constraintLayout);
                 }
                 childIndex++;
             }
@@ -1000,6 +1013,8 @@ public class ViewPane extends RelativeLayout {
                     addDroppableForScrollableContainer(viewBean, (ViewGroup) childAt);
                 } else if (childAt instanceof ItemRelativeLayout relativeLayout) {
                     addDroppableForViewGroup(viewBean, relativeLayout);
+                } else if (childAt instanceof ItemConstraintLayout constraintLayout) {
+                    addDroppableForViewGroup(viewBean, constraintLayout);
                 }
             }
         }
@@ -1022,6 +1037,8 @@ public class ViewPane extends RelativeLayout {
                     addDroppableForScrollableContainer(viewBean, (ViewGroup) childAt);
                 } else if (childAt instanceof ItemRelativeLayout relativeLayout) {
                     addDroppableForViewGroup(viewBean, relativeLayout);
+                } else if (childAt instanceof ItemConstraintLayout constraintLayout) {
+                    addDroppableForViewGroup(viewBean, constraintLayout);
                 }
             }
         }
@@ -1046,11 +1063,16 @@ public class ViewPane extends RelativeLayout {
         ViewBean bean = ((ItemView) view).getBean();
         if (rootLayout != null) {
             ViewGroup viewGroup = rootLayout.findViewWithTag(bean.parent);
-            viewGroup.addView(view, bean.index);
+            if (viewGroup == null) {
+                LogUtil.w("ViewPane", "Unable to resolve preview parent '" + bean.parent + "' for view '" + bean.id + "'");
+                return;
+            }
+            int safeIndex = Math.max(0, Math.min(bean.index, viewGroup.getChildCount()));
+            viewGroup.addView(view, safeIndex);
             if (bean.parentType == ViewBean.VIEW_TYPE_LAYOUT_RELATIVE) {
                 updateRelativeParentViews(view, new InjectAttributeHandler(bean));
-            } else if (viewGroup instanceof ItemConstraintLayout) {
-                applyConstraintLayoutConstraints((ItemConstraintLayout) viewGroup);
+            } else if (viewGroup instanceof ItemConstraintLayout constraintLayout) {
+                applyConstraintLayoutConstraints(constraintLayout);
             }
             if (viewGroup instanceof ScrollContainer scrollContainer) {
                 scrollContainer.reindexChildren();
