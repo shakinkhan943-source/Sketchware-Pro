@@ -16,55 +16,92 @@ jobs:
         with:
           ref: fix/constraint-preview
           fetch-depth: 0
-      - name: Apply ConstraintLayout preview fixes
+
+      - name: Apply full ConstraintLayout preview engine
         shell: python
         run: |
           from pathlib import Path
           p = Path('app/src/main/java/pro/sketchware/activities/editor/view/ViewPane.java')
           s = p.read_text()
 
-          old = '''                viewGroup.removeView(findViewWithTag(viewBean.id));\n        if (viewGroup instanceof ScrollContainer) {\n            ((ScrollContainer) viewGroup).reindexChildren();\n        }'''
-          new = '''                viewGroup.removeView(findViewWithTag(viewBean.id));\n        if (viewGroup instanceof ScrollContainer scrollContainer) {\n            scrollContainer.reindexChildren();\n        }'''
-          s = s.replace(old, new)
-
-          old = '''            viewGroup.removeView(findViewWithTag);\n            ((ScrollContainer) viewGroup).reindexChildren();\n            addViewAndUpdateIndex(findViewWithTag);'''
-          new = '''            viewGroup.removeView(findViewWithTag);\n            if (viewGroup instanceof ScrollContainer scrollContainer) {\n                scrollContainer.reindexChildren();\n            }\n            addViewAndUpdateIndex(findViewWithTag);'''
-          s = s.replace(old, new)
+          # Existing parent/drop fixes.
+          s = s.replace('''            viewGroup.removeView(findViewWithTag);\n            ((ScrollContainer) viewGroup).reindexChildren();\n            addViewAndUpdateIndex(findViewWithTag);''', '''            viewGroup.removeView(findViewWithTag);\n            if (viewGroup instanceof ScrollContainer scrollContainer) {\n                scrollContainer.reindexChildren();\n            }\n            addViewAndUpdateIndex(findViewWithTag);''')
 
           old = '''            } else if (view instanceof ItemRelativeLayout) {\n                viewBean.preIndex = viewBean.index;\n                viewBean.index = viewInfo.index();\n                viewBean.preParent = viewBean.parent;\n                viewBean.parent = view.getTag() != null ? view.getTag().toString() : "";\n                viewBean.preParentType = viewBean.parentType;\n                viewBean.parentType = ViewBean.VIEW_TYPE_LAYOUT_RELATIVE;\n            }'''
           new = '''            } else if (view instanceof ItemRelativeLayout) {\n                viewBean.preIndex = viewBean.index;\n                viewBean.index = viewInfo.index();\n                viewBean.preParent = viewBean.parent;\n                viewBean.parent = view.getTag() != null ? view.getTag().toString() : "";\n                viewBean.preParentType = viewBean.parentType;\n                viewBean.parentType = ViewBean.VIEW_TYPE_LAYOUT_RELATIVE;\n            } else if (view instanceof ItemConstraintLayout) {\n                viewBean.preIndex = viewBean.index;\n                viewBean.index = viewInfo.index();\n                viewBean.preParent = viewBean.parent;\n                viewBean.parent = view.getTag() != null ? view.getTag().toString() : "";\n                viewBean.preParentType = viewBean.parentType;\n                viewBean.parentType = ViewBeans.VIEW_TYPE_LAYOUT_CONSTRAINTLAYOUT;\n            }'''
-          if old not in s:
-              raise SystemExit('updateViewBeanProperties target not found')
-          s = s.replace(old, new, 1)
+          if old in s: s = s.replace(old, new, 1)
 
-          old = '''                } else if (child instanceof ItemRelativeLayout relativeLayout) {\n                    addDroppableForViewGroup(view, relativeLayout);\n                }'''
-          new = '''                } else if (child instanceof ItemRelativeLayout relativeLayout) {\n                    addDroppableForViewGroup(view, relativeLayout);\n                } else if (child instanceof ItemConstraintLayout constraintLayout) {\n                    addDroppableForViewGroup(view, constraintLayout);\n                }'''
-          s = s.replace(old, new)
+          old = '''            ViewGroup viewGroup = rootLayout.findViewWithTag(bean.parent);\n            viewGroup.addView(view, bean.index);'''
+          new = '''            ViewGroup viewGroup = rootLayout.findViewWithTag(bean.parent);\n            if (viewGroup == null) {\n                LogUtil.w("ViewPane", "Unable to resolve preview parent '" + bean.parent + "' for view '" + bean.id + "'");\n                return;\n            }\n            int safeIndex = Math.max(0, Math.min(bean.index, viewGroup.getChildCount()));\n            viewGroup.addView(view, safeIndex);'''
+          if old in s: s = s.replace(old, new, 1)
 
-          old = '''                } else if (childAt instanceof ItemRelativeLayout relativeLayout) {\n                    addDroppableForViewGroup(viewBean, relativeLayout);\n                }'''
-          new = '''                } else if (childAt instanceof ItemRelativeLayout relativeLayout) {\n                    addDroppableForViewGroup(viewBean, relativeLayout);\n                } else if (childAt instanceof ItemConstraintLayout constraintLayout) {\n                    addDroppableForViewGroup(viewBean, constraintLayout);\n                }'''
-          s = s.replace(old, new)
+          old = '''            if (bean.parentType == ViewBean.VIEW_TYPE_LAYOUT_RELATIVE) {\n                updateRelativeParentViews(view, new InjectAttributeHandler(bean));\n            } else if (viewGroup instanceof ItemConstraintLayout constraintLayout) {\n                applyConstraintLayoutConstraints(constraintLayout);\n            }'''
+          new = '''            if (viewGroup instanceof ItemConstraintLayout constraintLayout) {\n                prepareConstraintChildLayout(constraintLayout, view, bean);\n                addAutomaticConstraintPosition(constraintLayout, view, bean);\n                applyConstraintLayoutConstraints(constraintLayout);\n            } else if (bean.parentType == ViewBean.VIEW_TYPE_LAYOUT_RELATIVE) {\n                updateRelativeParentViews(view, new InjectAttributeHandler(bean));\n            }'''
+          if old in s: s = s.replace(old, new, 1)
 
-          old = '''                } else if (childAt instanceof ItemRelativeLayout relativeLayout) {\n                    addDroppableForViewGroup(viewBean, relativeLayout);\n                }\n            }\n        }\n        if (index < 1) {'''
-          new = '''                } else if (childAt instanceof ItemRelativeLayout relativeLayout) {\n                    addDroppableForViewGroup(viewBean, relativeLayout);\n                } else if (childAt instanceof ItemConstraintLayout constraintLayout) {\n                    addDroppableForViewGroup(viewBean, constraintLayout);\n                }\n            }\n        }\n        if (index < 1) {'''
-          s = s.replace(old, new)
+          # Make ConstraintLayout a recursive drop target wherever the old preview enumerates containers.
+          s = s.replace('''                } else if (child instanceof ItemRelativeLayout relativeLayout) {\n                    addDroppableForViewGroup(view, relativeLayout);\n                }''', '''                } else if (child instanceof ItemRelativeLayout relativeLayout) {\n                    addDroppableForViewGroup(view, relativeLayout);\n                } else if (child instanceof ItemConstraintLayout constraintLayout) {\n                    addDroppableForViewGroup(view, constraintLayout);\n                }''')
+          s = s.replace('''                } else if (childAt instanceof ItemRelativeLayout relativeLayout) {\n                    addDroppableForViewGroup(viewBean, relativeLayout);\n                }''', '''                } else if (childAt instanceof ItemRelativeLayout relativeLayout) {\n                    addDroppableForViewGroup(viewBean, relativeLayout);\n                } else if (childAt instanceof ItemConstraintLayout constraintLayout) {\n                    addDroppableForViewGroup(viewBean, constraintLayout);\n                }''')
 
-          old = '''            ViewGroup viewGroup = rootLayout.findViewWithTag(bean.parent);\n            viewGroup.addView(view, bean.index);\n            if (bean.parentType == ViewBean.VIEW_TYPE_LAYOUT_RELATIVE) {'''
-          new = '''            ViewGroup viewGroup = rootLayout.findViewWithTag(bean.parent);\n            if (viewGroup == null) {\n                LogUtil.w("ViewPane", "Unable to resolve preview parent '" + bean.parent + "' for view '" + bean.id + "'");\n                return;\n            }\n            int safeIndex = Math.max(0, Math.min(bean.index, viewGroup.getChildCount()));\n            viewGroup.addView(view, safeIndex);\n            if (bean.parentType == ViewBean.VIEW_TYPE_LAYOUT_RELATIVE) {'''
-          if old not in s:
-              raise SystemExit('addViewAndUpdateIndex target not found')
-          s = s.replace(old, new, 1)
+          anchor = '    private void applyConstraintLayoutConstraints(ItemConstraintLayout constraintLayout) {\n'
+          if 'private void prepareConstraintChildLayout(' not in s:
+              if anchor not in s: raise SystemExit('constraint method anchor not found')
+              helpers = '''    /** Restores ConstraintLayout-specific dimensions lost by the legacy LayoutBean. */
+    private void prepareConstraintChildLayout(ItemConstraintLayout parent, View child, ViewBean bean) {
+        if (child.getId() == View.NO_ID) return;
+        InjectAttributeHandler handler = new InjectAttributeHandler(bean);
+        ViewGroup.LayoutParams current = child.getLayoutParams();
+        ConstraintLayout.LayoutParams lp;
+        if (current instanceof ConstraintLayout.LayoutParams existing) lp = existing;
+        else {
+            int w = bean.layout.width == LayoutBean.LAYOUT_MATCH_PARENT ? 0 : bean.layout.width == LayoutBean.LAYOUT_NOTUSED ? ViewGroup.LayoutParams.WRAP_CONTENT : (int) ViewUtil.dpToPx(getContext(), (float) bean.layout.width);
+            int h = bean.layout.height == LayoutBean.LAYOUT_MATCH_PARENT ? 0 : bean.layout.height == LayoutBean.LAYOUT_NOTUSED ? ViewGroup.LayoutParams.WRAP_CONTENT : (int) ViewUtil.dpToPx(getContext(), (float) bean.layout.height);
+            lp = new ConstraintLayout.LayoutParams(w, h);
+        }
+        String xmlWidth = firstAttribute(handler, "android:layout_width", "layout_width");
+        String xmlHeight = firstAttribute(handler, "android:layout_height", "layout_height");
+        if (isZeroDp(xmlWidth) || isMatchParent(xmlWidth)) lp.width = 0;
+        else if (isWrapContent(xmlWidth)) lp.width = ViewGroup.LayoutParams.WRAP_CONTENT;
+        else if (!xmlWidth.isEmpty()) lp.width = resolveDimensionPx(xmlWidth, lp.width);
+        if (isZeroDp(xmlHeight) || isMatchParent(xmlHeight)) lp.height = 0;
+        else if (isWrapContent(xmlHeight)) lp.height = ViewGroup.LayoutParams.WRAP_CONTENT;
+        else if (!xmlHeight.isEmpty()) lp.height = resolveDimensionPx(xmlHeight, lp.height);
+        lp.setMargins((int) ViewUtil.dpToPx(getContext(), (float) bean.layout.marginLeft), (int) ViewUtil.dpToPx(getContext(), (float) bean.layout.marginTop), (int) ViewUtil.dpToPx(getContext(), (float) bean.layout.marginRight), (int) ViewUtil.dpToPx(getContext(), (float) bean.layout.marginBottom));
+        child.setLayoutParams(lp);
+    }
+    private String firstAttribute(InjectAttributeHandler handler, String... names) {
+        for (String name : names) { String value = handler.getAttributeValueOf(name); if (value != null && !value.isEmpty()) return value.trim(); }
+        return "";
+    }
+    private boolean isZeroDp(String value) { return value != null && value.trim().equals("0dp"); }
+    private boolean isMatchParent(String value) { return value != null && (value.trim().equals("match_parent") || value.trim().equals("fill_parent")); }
+    private boolean isWrapContent(String value) { return value != null && value.trim().equals("wrap_content"); }
+    private int resolveDimensionPx(String value, int fallback) {
+        try { String v=value.trim().toLowerCase(); if(v.endsWith("dp")) return (int)ViewUtil.dpToPx(getContext(),Float.parseFloat(v.substring(0,v.length()-2))); if(v.endsWith("sp")) return (int)(Float.parseFloat(v.substring(0,v.length()-2))*getResources().getDisplayMetrics().scaledDensity); if(v.endsWith("px")) return Math.round(Float.parseFloat(v.substring(0,v.length()-2))); return (int)ViewUtil.dpToPx(getContext(),Float.parseFloat(v)); } catch(NumberFormatException e){ return fallback; }
+    }
+    private boolean hasExplicitConstraint(InjectAttributeHandler handler) {
+        for (Pair<String,String> attribute : handler.getAttributes()) { String n=attribute.first; if(n!=null && (n.startsWith("layout_constraint") || n.startsWith("app:layout_constraint"))) return true; }
+        return false;
+    }
+    private void addAutomaticConstraintPosition(ItemConstraintLayout parent, View child, ViewBean bean) {
+        InjectAttributeHandler handler=new InjectAttributeHandler(bean); if(hasExplicitConstraint(handler)||child.getId()==View.NO_ID)return;
+        ConstraintSet set=new ConstraintSet(); set.clone(parent); int childId=child.getId(); View previous=null;
+        for(int i=parent.indexOfChild(child)-1;i>=0;i--){ View candidate=parent.getChildAt(i); if(candidate!=null&&candidate.getVisibility()==View.VISIBLE&&candidate.getId()!=View.NO_ID){previous=candidate;break;} }
+        set.connect(childId,ConstraintSet.START,ConstraintSet.PARENT_ID,ConstraintSet.START,0);
+        if(previous==null)set.connect(childId,ConstraintSet.TOP,ConstraintSet.PARENT_ID,ConstraintSet.TOP,0); else set.connect(childId,ConstraintSet.TOP,previous.getId(),ConstraintSet.BOTTOM,0);
+        set.applyTo(parent);
+    }
 
-          old = '''            } else if (viewGroup instanceof ItemConstraintLayout) {\n                applyConstraintLayoutConstraints((ItemConstraintLayout) viewGroup);'''
-          new = '''            } else if (viewGroup instanceof ItemConstraintLayout constraintLayout) {\n                applyConstraintLayoutConstraints(constraintLayout);'''
-          s = s.replace(old, new, 1)
+'''
+              s=s.replace(anchor,helpers+anchor,1)
 
-          old = '''            } else if (viewGroup instanceof FrameLayout) {\n                highlightedTextView.setLayoutParams(new FrameLayout.LayoutParams(width, height));\n            } else {'''
-          new = '''            } else if (viewGroup instanceof FrameLayout) {\n                highlightedTextView.setLayoutParams(new FrameLayout.LayoutParams(width, height));\n            } else if (viewGroup instanceof ConstraintLayout) {\n                highlightedTextView.setLayoutParams(new ConstraintLayout.LayoutParams(width, height));\n            } else {'''
-          s = s.replace(old, new, 1)
-
+          old = '''            ViewBean bean = itemView.getBean();\n            int childId = child.getId();\n            if (childId == View.NO_ID) {\n                continue;\n            }\n            InjectAttributeHandler handler = new InjectAttributeHandler(bean);'''
+          new = '''            ViewBean bean = itemView.getBean();\n            int childId = child.getId();\n            if (childId == View.NO_ID) {\n                continue;\n            }\n            prepareConstraintChildLayout(constraintLayout, child, bean);\n            InjectAttributeHandler handler = new InjectAttributeHandler(bean);'''
+          if old not in s: raise SystemExit('constraint loop not found')
+          s=s.replace(old,new,1)
           p.write_text(s)
-
+      - name: Compile affected module
+        run: ./gradlew :app:compileDebugJavaWithJavac --no-daemon
       - name: Commit repair
         run: |
           git config user.name "github-actions[bot]"
@@ -72,5 +109,5 @@ jobs:
           git add app/src/main/java/pro/sketchware/activities/editor/view/ViewPane.java
           git diff --cached --check
           git diff --cached --quiet && exit 0
-          git commit -m "fix: integrate ConstraintLayout with preview drop engine"
+          git commit -m "fix: implement real ConstraintLayout preview engine"
           git push origin fix/constraint-preview
