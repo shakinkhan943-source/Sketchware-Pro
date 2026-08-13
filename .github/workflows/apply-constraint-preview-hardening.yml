@@ -18,7 +18,36 @@ jobs:
           ref: fix/constraint-preview
           fetch-depth: 0
 
-      - name: Harden ConstraintLayout preview
+      - name: Fix ConstraintLayout attribute application
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          pane = Path('app/src/main/java/pro/sketchware/activities/editor/view/ViewPane.java')
+          s = pane.read_text()
+
+          # XmlPullParser returns namespace-free attribute names (for example
+          # layout_constraintStart_toEndOf, not app:layout_constraintStart_toEndOf).
+          # The existing ConstraintSet switch used prefixed names, so none of
+          # the real ConstraintLayout XML attributes were ever applied.
+          old = '''    private void applyConstraintAttribute(ConstraintSet constraintSet, ViewGroup container, int childId, ViewBean bean, String attribute, String value) {\n        if (value == null || value.isEmpty()) {\n            return;\n        }\n        switch (attribute) {'''
+          new = '''    private void applyConstraintAttribute(ConstraintSet constraintSet, ViewGroup container, int childId, ViewBean bean, String attribute, String value) {\n        if (value == null || value.isEmpty()) {\n            return;\n        }\n        // InjectAttributeHandler uses XmlPullParser, whose getAttributeName()\n        // removes the XML namespace prefix. Normalize constraint attributes so\n        // both parser output and any prefixed callers use the same switch.\n        String normalizedAttribute = attribute;\n        if (normalizedAttribute != null && normalizedAttribute.startsWith("layout_constraint")) {\n            normalizedAttribute = "app:" + normalizedAttribute;\n        } else if (normalizedAttribute != null && normalizedAttribute.startsWith("layout_goneMargin")) {\n            normalizedAttribute = "app:" + normalizedAttribute;\n        }\n        switch (normalizedAttribute) {'''
+          if old not in s:
+              raise SystemExit('Constraint attribute method anchor not found')
+          s = s.replace(old, new, 1)
+
+          # Re-apply constraints whenever an existing ConstraintLayout child is
+          # refreshed, not only when a drag/drop operation inserts it.
+          old = '''        if (viewBean.parentType == ViewBean.VIEW_TYPE_LAYOUT_RELATIVE) {\n            updateRelative(view, injectHandler);\n        }\n        if (classInfo.matchesType("TextView")) {'''
+          new = '''        if (viewBean.parentType == ViewBean.VIEW_TYPE_LAYOUT_RELATIVE) {\n            updateRelative(view, injectHandler);\n        }\n        if (viewBean.parentType == ViewBeans.VIEW_TYPE_LAYOUT_CONSTRAINTLAYOUT\n                && rootLayout != null) {\n            View parentView = rootLayout.findViewWithTag(viewBean.parent);\n            if (parentView instanceof ItemConstraintLayout constraintLayout) {\n                // The child may already be attached during normal refresh.\n                // Applying the complete container constraint set keeps the\n                // preview synchronized with the XML after edits.\n                applyConstraintLayoutConstraints(constraintLayout);\n            }\n        }\n        if (classInfo.matchesType("TextView")) {'''
+          if old not in s:
+              raise SystemExit('updateItemView anchor not found')
+          s = s.replace(old, new, 1)
+
+          pane.write_text(s)
+          PY
+
+      - name: Harden ConstraintLayout preview lifecycle
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -36,10 +65,6 @@ jobs:
           if old in s:
               s = s.replace(old, new, 1)
 
-          old = '''        if (rootLayout != null) {\n            ViewGroup viewGroup = rootLayout.findViewWithTag(bean.parent);'''
-          new = '''        if (rootLayout != null) {\n            ViewGroup viewGroup = rootLayout.findViewWithTag(bean.parent);'''
-          # Keep the existing parent lookup; the actual null guard is already present.
-
           old = '''        constraintSet.applyTo(constraintLayout);\n    }'''
           new = '''        constraintSet.applyTo(constraintLayout);\n        constraintLayout.requestLayout();\n        constraintLayout.invalidate();\n    }'''
           if old in s and 'constraintLayout.requestLayout();' not in s:
@@ -56,9 +81,9 @@ jobs:
           factory.write_text(s)
           PY
 
-      - name: Verify changed snippets
+      - name: Verify ConstraintLayout preview fixes
         run: |
-          grep -n "previous parent not found\|Unable to reorder preview\|constraintLayout.requestLayout\|ConstraintLayout has no orientation" \
+          grep -n "XmlPullParser\|normalizedAttribute\|applyConstraintLayoutConstraints(constraintLayout)\|constraintLayout.requestLayout\|ConstraintLayout has no orientation" \
             app/src/main/java/pro/sketchware/activities/editor/view/ViewPane.java \
             app/src/main/java/pro/sketchware/tools/ViewBeanFactory.java
 
@@ -68,5 +93,5 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add app/src/main/java/pro/sketchware/activities/editor/view/ViewPane.java app/src/main/java/pro/sketchware/tools/ViewBeanFactory.java
           git diff --cached --quiet && exit 0
-          git commit -m "fix: harden ConstraintLayout preview lifecycle"
+          git commit -m "fix: apply ConstraintLayout XML constraints in preview"
           git push origin fix/constraint-preview
