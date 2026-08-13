@@ -226,13 +226,22 @@ public class ViewPane extends RelativeLayout {
         String preParent = viewBean.preParent;
         if (preParent != null && !preParent.isEmpty() && !viewBean.parent.equals(viewBean.preParent)) {
             ViewGroup viewGroup = rootLayout.findViewWithTag(viewBean.preParent);
+            if (viewGroup == null || findViewWithTag == null) {
+                LogUtil.w("ViewPane", "Unable to move preview view '" + viewBean.id + "': previous parent not found");
+                return (ItemView) findViewWithTag;
+            }
             viewGroup.removeView(findViewWithTag);
             if (viewGroup instanceof ScrollContainer scrollContainer) {
                 scrollContainer.reindexChildren();
             }
             addViewAndUpdateIndex(findViewWithTag);
         } else if (viewBean.index != viewBean.preIndex) {
-            ((ViewGroup) rootLayout.findViewWithTag(viewBean.parent)).removeView(findViewWithTag);
+            ViewGroup currentParent = rootLayout.findViewWithTag(viewBean.parent);
+            if (currentParent == null || findViewWithTag == null) {
+                LogUtil.w("ViewPane", "Unable to reorder preview view '" + viewBean.id + "': parent not found");
+                return (ItemView) findViewWithTag;
+            }
+            currentParent.removeView(findViewWithTag);
             addViewAndUpdateIndex(findViewWithTag);
         }
         viewBean.preId = "";
@@ -1102,6 +1111,8 @@ public class ViewPane extends RelativeLayout {
             }
         }
         constraintSet.applyTo(constraintLayout);
+        constraintLayout.requestLayout();
+        constraintLayout.invalidate();
     }
 
     private void applyConstraintAttribute(ConstraintSet constraintSet, ViewGroup container, int childId, ViewBean bean, String attribute, String value) {
