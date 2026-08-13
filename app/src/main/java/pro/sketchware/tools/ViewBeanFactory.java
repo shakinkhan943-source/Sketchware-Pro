@@ -111,6 +111,11 @@ public class ViewBeanFactory {
         }
 
         var orientation = attributes.getOrDefault("android:orientation", null);
+        // ConstraintLayout has no orientation concept. Do not let a stray
+        // android:orientation attribute affect preview layout state.
+        if (bean.type == ViewBeans.VIEW_TYPE_LAYOUT_CONSTRAINTLAYOUT) {
+            orientation = null;
+        }
         if (orientation != null) {
             var va = getEnum("orientation", orientation, null);
             if (va != null) {

@@ -226,11 +226,22 @@ public class ViewPane extends RelativeLayout {
         String preParent = viewBean.preParent;
         if (preParent != null && !preParent.isEmpty() && !viewBean.parent.equals(viewBean.preParent)) {
             ViewGroup viewGroup = rootLayout.findViewWithTag(viewBean.preParent);
+            if (viewGroup == null || findViewWithTag == null) {
+                LogUtil.w("ViewPane", "Unable to move preview view '" + viewBean.id + "': previous parent not found");
+                return (ItemView) findViewWithTag;
+            }
             viewGroup.removeView(findViewWithTag);
-            ((ScrollContainer) viewGroup).reindexChildren();
+            if (viewGroup instanceof ScrollContainer scrollContainer) {
+                scrollContainer.reindexChildren();
+            }
             addViewAndUpdateIndex(findViewWithTag);
         } else if (viewBean.index != viewBean.preIndex) {
-            ((ViewGroup) rootLayout.findViewWithTag(viewBean.parent)).removeView(findViewWithTag);
+            ViewGroup currentParent = rootLayout.findViewWithTag(viewBean.parent);
+            if (currentParent == null || findViewWithTag == null) {
+                LogUtil.w("ViewPane", "Unable to reorder preview view '" + viewBean.id + "': parent not found");
+                return (ItemView) findViewWithTag;
+            }
+            currentParent.removeView(findViewWithTag);
             addViewAndUpdateIndex(findViewWithTag);
         }
         viewBean.preId = "";
@@ -524,6 +535,16 @@ public class ViewPane extends RelativeLayout {
         if (viewBean.parentType == ViewBean.VIEW_TYPE_LAYOUT_RELATIVE) {
             updateRelative(view, injectHandler);
         }
+        if (viewBean.parentType == ViewBeans.VIEW_TYPE_LAYOUT_CONSTRAINTLAYOUT
+                && rootLayout != null) {
+            View parentView = rootLayout.findViewWithTag(viewBean.parent);
+            if (parentView instanceof ItemConstraintLayout constraintLayout) {
+                // The child may already be attached during normal refresh.
+                // Applying the complete container constraint set keeps the
+                // preview synchronized with the XML after edits.
+                applyConstraintLayoutConstraints(constraintLayout);
+            }
+        }
         if (classInfo.matchesType("TextView")) {
             TextView textView = (TextView) view;
             updateTextView(textView, viewBean);
@@ -751,6 +772,13 @@ public class ViewPane extends RelativeLayout {
                 viewBean.parent = view.getTag() != null ? view.getTag().toString() : "";
                 viewBean.preParentType = viewBean.parentType;
                 viewBean.parentType = ViewBean.VIEW_TYPE_LAYOUT_RELATIVE;
+            } else if (view instanceof ItemConstraintLayout) {
+                viewBean.preIndex = viewBean.index;
+                viewBean.index = viewInfo.index();
+                viewBean.preParent = viewBean.parent;
+                viewBean.parent = view.getTag() != null ? view.getTag().toString() : "";
+                viewBean.preParentType = viewBean.parentType;
+                viewBean.parentType = ViewBeans.VIEW_TYPE_LAYOUT_CONSTRAINTLAYOUT;
             }
         } else {
             viewBean.preIndex = viewBean.index;
@@ -818,6 +846,8 @@ public class ViewPane extends RelativeLayout {
                 highlightedTextView.setLayoutParams(new LinearLayout.LayoutParams(width, height));
             } else if (viewGroup instanceof FrameLayout) {
                 highlightedTextView.setLayoutParams(new FrameLayout.LayoutParams(width, height));
+            } else if (viewGroup instanceof ConstraintLayout) {
+                highlightedTextView.setLayoutParams(new ConstraintLayout.LayoutParams(width, height));
             } else {
                 highlightedTextView.setLayoutParams(new LayoutParams(width, height));
             }
@@ -969,6 +999,8 @@ public class ViewPane extends RelativeLayout {
                     addDroppableForScrollableContainer(view, (ViewGroup) child);
                 } else if (child instanceof ItemRelativeLayout relativeLayout) {
                     addDroppableForViewGroup(view, relativeLayout);
+                } else if (child instanceof ItemConstraintLayout constraintLayout) {
+                    addDroppableForViewGroup(view, constraintLayout);
                 }
                 childIndex++;
             }
@@ -1000,6 +1032,8 @@ public class ViewPane extends RelativeLayout {
                     addDroppableForScrollableContainer(viewBean, (ViewGroup) childAt);
                 } else if (childAt instanceof ItemRelativeLayout relativeLayout) {
                     addDroppableForViewGroup(viewBean, relativeLayout);
+                } else if (childAt instanceof ItemConstraintLayout constraintLayout) {
+                    addDroppableForViewGroup(viewBean, constraintLayout);
                 }
             }
         }
@@ -1022,6 +1056,8 @@ public class ViewPane extends RelativeLayout {
                     addDroppableForScrollableContainer(viewBean, (ViewGroup) childAt);
                 } else if (childAt instanceof ItemRelativeLayout relativeLayout) {
                     addDroppableForViewGroup(viewBean, relativeLayout);
+                } else if (childAt instanceof ItemConstraintLayout constraintLayout) {
+                    addDroppableForViewGroup(viewBean, constraintLayout);
                 }
             }
         }
@@ -1046,11 +1082,16 @@ public class ViewPane extends RelativeLayout {
         ViewBean bean = ((ItemView) view).getBean();
         if (rootLayout != null) {
             ViewGroup viewGroup = rootLayout.findViewWithTag(bean.parent);
-            viewGroup.addView(view, bean.index);
+            if (viewGroup == null) {
+                LogUtil.w("ViewPane", "Unable to resolve preview parent '" + bean.parent + "' for view '" + bean.id + "'");
+                return;
+            }
+            int safeIndex = Math.max(0, Math.min(bean.index, viewGroup.getChildCount()));
+            viewGroup.addView(view, safeIndex);
             if (bean.parentType == ViewBean.VIEW_TYPE_LAYOUT_RELATIVE) {
                 updateRelativeParentViews(view, new InjectAttributeHandler(bean));
-            } else if (viewGroup instanceof ItemConstraintLayout) {
-                applyConstraintLayoutConstraints((ItemConstraintLayout) viewGroup);
+            } else if (viewGroup instanceof ItemConstraintLayout constraintLayout) {
+                applyConstraintLayoutConstraints(constraintLayout);
             }
             if (viewGroup instanceof ScrollContainer scrollContainer) {
                 scrollContainer.reindexChildren();
@@ -1080,13 +1121,24 @@ public class ViewPane extends RelativeLayout {
             }
         }
         constraintSet.applyTo(constraintLayout);
+        constraintLayout.requestLayout();
+        constraintLayout.invalidate();
     }
 
     private void applyConstraintAttribute(ConstraintSet constraintSet, ViewGroup container, int childId, ViewBean bean, String attribute, String value) {
         if (value == null || value.isEmpty()) {
             return;
         }
-        switch (attribute) {
+        // InjectAttributeHandler uses XmlPullParser, whose getAttributeName()
+        // removes the XML namespace prefix. Normalize constraint attributes so
+        // both parser output and any prefixed callers use the same switch.
+        String normalizedAttribute = attribute;
+        if (normalizedAttribute != null && normalizedAttribute.startsWith("layout_constraint")) {
+            normalizedAttribute = "app:" + normalizedAttribute;
+        } else if (normalizedAttribute != null && normalizedAttribute.startsWith("layout_goneMargin")) {
+            normalizedAttribute = "app:" + normalizedAttribute;
+        }
+        switch (normalizedAttribute) {
             case "app:layout_constraintLeft_toLeftOf" -> {
                 connectConstraint(constraintSet, container, childId, ConstraintSet.LEFT, ConstraintSet.LEFT, value, bean.layout.marginLeft);
             }

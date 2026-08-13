@@ -40,7 +40,6 @@ jobs:
         run: ./gradlew assembleDebug
       - name: Build Release APK
         run: ./gradlew assembleRelease
-      
 
       - name: Set short SHA
         id: set_sha
@@ -56,4 +55,3 @@ jobs:
         with:
           name: app-release-${{ steps.set_sha.outputs.short_sha }}
           path: app/build/outputs/apk/release/app-release.apk
-          
