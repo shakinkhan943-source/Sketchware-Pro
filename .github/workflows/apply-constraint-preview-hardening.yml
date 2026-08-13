@@ -1,0 +1,72 @@
+name: Apply Constraint Preview Hardening
+
+on:
+  push:
+    branches:
+      - fix/constraint-preview
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/constraint-preview
+          fetch-depth: 0
+
+      - name: Harden ConstraintLayout preview
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          pane = Path('app/src/main/java/pro/sketchware/activities/editor/view/ViewPane.java')
+          s = pane.read_text()
+
+          old = '''            ViewGroup viewGroup = rootLayout.findViewWithTag(viewBean.preParent);\n            viewGroup.removeView(findViewWithTag);\n            if (viewGroup instanceof ScrollContainer scrollContainer) {'''
+          new = '''            ViewGroup viewGroup = rootLayout.findViewWithTag(viewBean.preParent);\n            if (viewGroup == null || findViewWithTag == null) {\n                LogUtil.w("ViewPane", "Unable to move preview view '" + viewBean.id + "': previous parent not found");\n                return (ItemView) findViewWithTag;\n            }\n            viewGroup.removeView(findViewWithTag);\n            if (viewGroup instanceof ScrollContainer scrollContainer) {'''
+          if old in s:
+              s = s.replace(old, new, 1)
+
+          old = '''        } else if (viewBean.index != viewBean.preIndex) {\n            ((ViewGroup) rootLayout.findViewWithTag(viewBean.parent)).removeView(findViewWithTag);\n            addViewAndUpdateIndex(findViewWithTag);'''
+          new = '''        } else if (viewBean.index != viewBean.preIndex) {\n            ViewGroup currentParent = rootLayout.findViewWithTag(viewBean.parent);\n            if (currentParent == null || findViewWithTag == null) {\n                LogUtil.w("ViewPane", "Unable to reorder preview view '" + viewBean.id + "': parent not found");\n                return (ItemView) findViewWithTag;\n            }\n            currentParent.removeView(findViewWithTag);\n            addViewAndUpdateIndex(findViewWithTag);'''
+          if old in s:
+              s = s.replace(old, new, 1)
+
+          old = '''        if (rootLayout != null) {\n            ViewGroup viewGroup = rootLayout.findViewWithTag(bean.parent);'''
+          new = '''        if (rootLayout != null) {\n            ViewGroup viewGroup = rootLayout.findViewWithTag(bean.parent);'''
+          # Keep the existing parent lookup; the actual null guard is already present.
+
+          old = '''        constraintSet.applyTo(constraintLayout);\n    }'''
+          new = '''        constraintSet.applyTo(constraintLayout);\n        constraintLayout.requestLayout();\n        constraintLayout.invalidate();\n    }'''
+          if old in s and 'constraintLayout.requestLayout();' not in s:
+              s = s.replace(old, new, 1)
+
+          pane.write_text(s)
+
+          factory = Path('app/src/main/java/pro/sketchware/tools/ViewBeanFactory.java')
+          s = factory.read_text()
+          old = '''        var orientation = attributes.getOrDefault("android:orientation", null);\n        if (orientation != null) {'''
+          new = '''        var orientation = attributes.getOrDefault("android:orientation", null);\n        // ConstraintLayout has no orientation concept. Do not let a stray\n        // android:orientation attribute affect preview layout state.\n        if (bean.type == ViewBeans.VIEW_TYPE_LAYOUT_CONSTRAINTLAYOUT) {\n            orientation = null;\n        }\n        if (orientation != null) {'''
+          if old in s and 'ConstraintLayout has no orientation concept' not in s:
+              s = s.replace(old, new, 1)
+          factory.write_text(s)
+          PY
+
+      - name: Verify changed snippets
+        run: |
+          grep -n "previous parent not found\|Unable to reorder preview\|constraintLayout.requestLayout\|ConstraintLayout has no orientation" \
+            app/src/main/java/pro/sketchware/activities/editor/view/ViewPane.java \
+            app/src/main/java/pro/sketchware/tools/ViewBeanFactory.java
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/pro/sketchware/activities/editor/view/ViewPane.java app/src/main/java/pro/sketchware/tools/ViewBeanFactory.java
+          git diff --cached --quiet && exit 0
+          git commit -m "fix: harden ConstraintLayout preview lifecycle"
+          git push origin fix/constraint-preview
