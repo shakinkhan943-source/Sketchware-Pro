@@ -1,12 +1,10 @@
 package pro.sketchware.core.build.compiler;
 
 import java.io.File;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-import java.util.zip.ZipFile;
 
 import pro.sketchware.core.build.ProjectBuilder;
 import pro.sketchware.core.build.ProjectFilePaths;
@@ -35,10 +33,10 @@ public class KotlinCompilerUtil {
     }
 
     /**
-     * Returns only JARs that actually advertise a Kotlin compiler plugin via
-     * Kotlin's ServiceLoader descriptors. Runtime dependency JARs (for example
-     * kotlin-stdlib shipped beside the Compose plugin) remain available in the
-     * project plugin directory but are not accidentally treated as plugins.
+     * Returns the Compose compiler plugin JARs and the runtime dependency JARs
+     * provisioned beside them. Kotlin's plugin classloader must see the plugin's
+     * runtime dependencies as part of the plugin classpath; the normal project
+     * classpath is not a reliable parent for compiler plugins.
      */
     public static List<File> getCompilerPlugins(ProjectFilePaths workspace) {
         String scId = workspace.sc_id;
@@ -52,23 +50,7 @@ public class KotlinCompilerUtil {
             return Collections.emptyList();
         }
 
-        List<File> plugins = new ArrayList<>();
-        for (File child : children) {
-            if (containsCompilerPluginService(child)) {
-                plugins.add(child);
-            }
-        }
-        return plugins;
-    }
-
-    private static boolean containsCompilerPluginService(File jar) {
-        try (ZipFile zip = new ZipFile(jar)) {
-            return zip.getEntry("META-INF/services/org.jetbrains.kotlin.compiler.plugin.CompilerPluginRegistrar") != null
-                    || zip.getEntry("META-INF/services/org.jetbrains.kotlin.compiler.plugin.CommandLineProcessor") != null
-                    || zip.getEntry("META-INF/services/org.jetbrains.kotlin.compiler.plugin.ComponentRegistrar") != null;
-        } catch (IOException ignored) {
-            return false;
-        }
+        return new ArrayList<>(Arrays.asList(children));
     }
 
     private static List<File> getSourceFiles(File dir) {
