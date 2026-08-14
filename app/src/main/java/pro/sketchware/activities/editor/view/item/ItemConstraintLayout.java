@@ -40,6 +40,7 @@ public class ItemConstraintLayout extends ConstraintLayout implements ItemView, 
     private Paint paint;
     private Rect rect;
     private boolean applyingPreviewConstraints;
+    private boolean previewConstraintsDirty = true;
     private final Map<String, Integer> previewIds = new HashMap<>();
 
     public ItemConstraintLayout(Context context) {
@@ -73,7 +74,7 @@ public class ItemConstraintLayout extends ConstraintLayout implements ItemView, 
 
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-        if (!applyingPreviewConstraints) {
+        if (previewConstraintsDirty && !applyingPreviewConstraints) {
             applyPreviewConstraints();
         }
         super.onMeasure(widthMeasureSpec, heightMeasureSpec);
@@ -134,6 +135,7 @@ public class ItemConstraintLayout extends ConstraintLayout implements ItemView, 
                 }
             }
 
+            previewConstraintsDirty = false;
             set.applyTo(this);
         } finally {
             applyingPreviewConstraints = false;
@@ -252,8 +254,11 @@ public class ItemConstraintLayout extends ConstraintLayout implements ItemView, 
             if (beanValue == LayoutBean.LAYOUT_MATCH_PARENT) {
                 return ConstraintSet.MATCH_CONSTRAINT;
             }
-            if (beanValue == LayoutBean.LAYOUT_WRAP_CONTENT || beanValue == LayoutBean.LAYOUT_NOTUSED) {
+            if (beanValue == LayoutBean.LAYOUT_WRAP_CONTENT) {
                 return ConstraintSet.WRAP_CONTENT;
+            }
+            if (beanValue == LayoutBean.LAYOUT_NOTUSED) {
+                return ConstraintSet.MATCH_CONSTRAINT;
             }
             return beanValue > 0
                     ? (int) ViewUtil.dpToPx(getContext(), beanValue)
@@ -535,6 +540,9 @@ public class ItemConstraintLayout extends ConstraintLayout implements ItemView, 
     private void applyAutomaticPlacement(ConstraintSet set, View child, int index) {
         int id = child.getId();
         int previousId = 0;
+        ViewGroup.LayoutParams childParams = child.getLayoutParams();
+        boolean matchConstraintWidth = childParams != null && childParams.width == 0;
+        boolean matchConstraintHeight = childParams != null && childParams.height == 0;
         for (int i = index - 1; i >= 0; i--) {
             View previous = getChildAt(i);
             if (previous instanceof ItemView && previous.getId() != View.NO_ID) {
@@ -543,10 +551,36 @@ public class ItemConstraintLayout extends ConstraintLayout implements ItemView, 
             }
         }
         set.connect(id, ConstraintSet.START, ConstraintSet.PARENT_ID, ConstraintSet.START);
+        if (matchConstraintWidth) {
+            set.connect(id, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END);
+        }
         if (previousId != 0) {
             set.connect(id, ConstraintSet.TOP, previousId, ConstraintSet.BOTTOM);
         } else {
             set.connect(id, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP);
+        }
+        if (matchConstraintHeight) {
+            set.connect(id, ConstraintSet.BOTTOM, ConstraintSet.PARENT_ID, ConstraintSet.BOTTOM);
+        }
+    }
+
+    public void markPreviewConstraintsDirty() {
+        previewConstraintsDirty = true;
+    }
+
+    @Override
+    protected void onViewAdded(View child) {
+        super.onViewAdded(child);
+        if (child instanceof ItemView) {
+            previewConstraintsDirty = true;
+        }
+    }
+
+    @Override
+    protected void onViewRemoved(View child) {
+        super.onViewRemoved(child);
+        if (child instanceof ItemView) {
+            previewConstraintsDirty = true;
         }
     }
 
@@ -558,7 +592,6 @@ public class ItemConstraintLayout extends ConstraintLayout implements ItemView, 
         } else {
             super.addView(child, index);
         }
-        post(this::applyPreviewConstraints);
     }
 
     @Override

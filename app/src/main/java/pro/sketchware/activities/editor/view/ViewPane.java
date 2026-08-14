@@ -790,6 +790,27 @@ public class ViewPane extends RelativeLayout {
             }
             viewBean.index = -1;
         }
+
+        boolean isNewPaletteWidget = viewBean.preParent == null
+                && viewBean.preId == null
+                && viewBean.preIndex == 0;
+        if (isNewPaletteWidget) {
+            if (viewBean.parentType == ViewBeans.VIEW_TYPE_LAYOUT_CONSTRAINTLAYOUT) {
+                if (viewBean.layout.width == LayoutBean.LAYOUT_WRAP_CONTENT) {
+                    viewBean.layout.width = LayoutBean.LAYOUT_NOTUSED;
+                }
+                if (viewBean.layout.height == LayoutBean.LAYOUT_WRAP_CONTENT) {
+                    viewBean.layout.height = LayoutBean.LAYOUT_NOTUSED;
+                }
+            } else {
+                if (viewBean.layout.width == LayoutBean.LAYOUT_WRAP_CONTENT) {
+                    viewBean.layout.width = LayoutBean.LAYOUT_MATCH_PARENT;
+                }
+                if (viewBean.layout.height == LayoutBean.LAYOUT_WRAP_CONTENT) {
+                    viewBean.layout.height = LayoutBean.LAYOUT_MATCH_PARENT;
+                }
+            }
+        }
     }
 
     public View addFab(ViewBean viewBean) {
