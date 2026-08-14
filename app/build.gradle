@@ -12,14 +12,11 @@ android {
     defaultConfig {
         applicationId = "pro.sketchware"
         namespace = "pro.sketchware"
-        //noinspection ExpiredTargetSdkVersion since we don't target getting Sketchware Pro on Google Play.
         targetSdk = 28
         minSdk = 26
         versionCode = 160
         versionName = "v7.0.0-beta9"
-
         buildConfigField("String", "GIT_HASH", "\"${gitCommitHash}\"")
-
         buildConfigField("String", "SKETCHUB_API_KEY", "\"${System.getenv("SKETCHUB_API_KEY")}\"")
     }
 
@@ -78,70 +75,47 @@ android {
 
 dependencies {
     implementation fileTree(dir: "libs", include: ["*.jar", "*.aar"])
-
     implementation libs.bundles.ui
-
     implementation libs.bundles.image
-
     implementation platform(libs.sora.editor)
     implementation libs.bundles.editor.and.lang
-
     implementation libs.bundles.coil
-
     implementation libs.bundles.bundletool
     implementation(libs.sdklib) {
         exclude group: "com.intellij", module: "annotations"
     }
-
     implementation libs.bundles.shrinker
     implementation libs.zipalign.java
-
     implementation libs.gson
     implementation libs.scpkix.jdk15on
-
     implementation libs.markwon
-
     implementation libs.bundles.networking
-
     implementation libs.ecj
     implementation libs.stax.api
-
     implementation libs.bundles.kotlin.compiler
     compileOnly libs.kotlin.compiler
-
     implementation project(':resolver')
     implementation project(':vendor-dx')
     implementation libs.filepicker
-
     implementation libs.libsu
     implementation libs.insetter
-
     implementation(libs.javaparser.symbol.solver) {
         exclude group: "com.google.guava", module: "guava"
     }
-
     implementation platform(libs.firebase.bom)
     implementation libs.bundles.firebase
-
     coreLibraryDesugaring libs.desugar.jdk.libs.nio
 }
 
 /*
- * The Kotlin Compose compiler plugin is shipped as a plain .jar inside the APK
- * assets (app/src/main/assets/libs/kt_plugins/) and gets copied into every
- * project's kt_plugins folder at build time by KotlinCompilerBridge. It must
- * NOT be an implementation dependency, otherwise it would be dexed into the
- * APK instead of staying a loadable plugin jar for kotlinc.
- *
- * After bumping the Kotlin version in gradle/libs.versions.toml, refresh the
- * committed plugin jar with:  ./gradlew :app:refreshComposeCompilerPlugin
+ * The Compose compiler plugin is shipped as plain JAR assets and provisioned
+ * into each project's kt_plugins directory at build time. The plugin has a
+ * runtime dependency on the matching Kotlin stdlib, so this configuration is
+ * intentionally transitive and the refresh task copies both artifacts.
  */
 configurations {
     composeCompilerPlugin {
-        // Only the plugin jar itself must be copied into kt_plugins/. Its sole
-        // dependency (kotlin-stdlib) is already bundled with kotlinc-for-sketchware,
-        // and every jar in kt_plugins is passed to kotlinc via pluginClasspaths.
-        transitive = false
+        transitive = true
     }
 }
 
@@ -151,9 +125,15 @@ dependencies {
 
 tasks.register("refreshComposeCompilerPlugin", Copy) {
     group = "build setup"
-    description = "Refreshes the bundled Kotlin Compose compiler plugin jar from Maven Central"
+    description = "Refreshes the bundled Kotlin Compose compiler plugin and its runtime dependencies"
     from(configurations.composeCompilerPlugin) {
         include "*.jar"
     }
     into rootProject.file("app/src/main/assets/libs/kt_plugins")
+}
+
+// Always refresh the tiny plugin dependency set before packaging the APK so the
+// asset directory cannot contain a plugin without its matching runtime JAR.
+tasks.named("preBuild") {
+    dependsOn(tasks.named("refreshComposeCompilerPlugin"))
 }
