@@ -8,30 +8,29 @@ import android.widget.LinearLayout;
 
 import androidx.activity.OnBackPressedCallback;
 
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Set;
+
+import pro.sketchware.R;
 import pro.sketchware.activities.base.BaseAppCompatActivity;
-import pro.sketchware.activities.editor.manage.library.downloader.LibraryDownloaderDialogFragment;
 import pro.sketchware.beans.ProjectLibraryBean;
-import pro.sketchware.core.build.BuildSettings;
 import pro.sketchware.databinding.ItemComposeDependencyBinding;
 import pro.sketchware.databinding.ManageLibraryComposeBinding;
-import pro.sketchware.util.Helper;
-import pro.sketchware.util.library.LocalLibrariesUtil;
-import pro.sketchware.R;
+import pro.sketchware.util.ComposeBuiltInLibraries;
+import pro.sketchware.util.library.ComposeBuiltInLibraryManager;
 
 /**
- * Settings screen for the Jetpack Compose component. It exposes a simple
- * enable toggle and, once enabled, a list of downloadable Compose dependencies.
- * Tapping a dependency opens the existing Sketchware dependency downloader
- * which downloads it and makes it available to the project (enable -> download
- * -> use).
+ * Settings screen for the built-in Jetpack Compose bundle.
+ * Required features are always enabled; optional feature groups can be selected
+ * without invoking the normal dependency downloader.
  */
 public class ComposeLibraryActivity extends BaseAppCompatActivity {
 
     private ManageLibraryComposeBinding binding;
     private ProjectLibraryBean composeLibraryBean;
-    private BuildSettings buildSettings;
     private String scId;
-    private boolean notAssociatedWithProject;
+    private final Set<String> selectedOptionalFeatures = new HashSet<>();
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -44,7 +43,7 @@ public class ComposeLibraryActivity extends BaseAppCompatActivity {
     }
 
     private void initialize() {
-        binding.toolbar.setNavigationOnClickListener(Helper.getBackPressedClickListener(this));
+        binding.toolbar.setNavigationOnClickListener(pro.sketchware.util.Helper.getBackPressedClickListener(this));
 
         scId = getIntent().getStringExtra("sc_id");
         composeLibraryBean = getIntent().getParcelableExtra("compose");
@@ -52,16 +51,15 @@ public class ComposeLibraryActivity extends BaseAppCompatActivity {
             composeLibraryBean = new ProjectLibraryBean(ProjectLibraryBean.PROJECT_LIB_TYPE_COMPOSE);
         }
 
-        if (scId != null) {
-            buildSettings = new BuildSettings(scId);
-            notAssociatedWithProject = scId.equals("system");
-        }
+        selectedOptionalFeatures.addAll(
+                new ComposeBuiltInLibraryManager(composeLibraryBean).getOptionalFeatureIds());
 
         binding.composeSwitch.setChecked(composeLibraryBean.isEnabled());
         updateDependenciesSection(binding.composeSwitch.isChecked());
-
-        binding.layoutSwitchCompose.setOnClickListener(v -> binding.composeSwitch.setChecked(!binding.composeSwitch.isChecked()));
-        binding.composeSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> updateDependenciesSection(isChecked));
+        binding.layoutSwitchCompose.setOnClickListener(v ->
+                binding.composeSwitch.setChecked(!binding.composeSwitch.isChecked()));
+        binding.composeSwitch.setOnCheckedChangeListener((buttonView, isChecked) ->
+                updateDependenciesSection(isChecked));
 
         populateDependencyList();
 
@@ -71,6 +69,8 @@ public class ComposeLibraryActivity extends BaseAppCompatActivity {
                 composeLibraryBean.useYn = binding.composeSwitch.isChecked()
                         ? ProjectLibraryBean.LIB_USE_Y
                         : ProjectLibraryBean.LIB_USE_N;
+                new ComposeBuiltInLibraryManager(composeLibraryBean)
+                        .setOptionalFeatureIds(new ArrayList<>(selectedOptionalFeatures));
 
                 Intent resultIntent = new Intent();
                 resultIntent.putExtra("compose", composeLibraryBean);
@@ -88,50 +88,29 @@ public class ComposeLibraryActivity extends BaseAppCompatActivity {
         LinearLayout container = binding.composeDependenciesContainer;
         container.removeAllViews();
 
-        for (ComposeDependency dependency : ComposeDependencies.getDefaults()) {
+        for (ComposeBuiltInLibraries.ComposeFeature feature : ComposeBuiltInLibraries.getFeatures()) {
             ItemComposeDependencyBinding itemBinding = ItemComposeDependencyBinding.inflate(
                     LayoutInflater.from(this), container, false);
 
-            itemBinding.dependencyName.setText(dependency.name);
-            itemBinding.dependencyCoordinate.setText(dependency.coordinate);
-            boolean downloaded = isDependencyDownloaded(dependency);
-            itemBinding.dependencyStatus.setText(Helper.getResString(downloaded
-                    ? R.string.compose_dependency_status_downloaded
-                    : R.string.compose_dependency_status_download));
+            itemBinding.dependencyName.setText(feature.name);
+            itemBinding.dependencyCoordinate.setText(feature.description);
+            itemBinding.dependencyTag.setText(feature.tag);
 
-            itemBinding.cardDependency.setOnClickListener(v -> {
-                if (isDependencyDownloaded(dependency)) {
-                    return;
-                }
-                showDependencyDownloader(dependency);
+            boolean enabled = feature.required || selectedOptionalFeatures.contains(feature.id);
+            itemBinding.dependencySwitch.setChecked(enabled);
+            itemBinding.dependencySwitch.setEnabled(!feature.required);
+            itemBinding.dependencySwitch.setOnCheckedChangeListener((buttonView, checked) -> {
+                if (feature.required) return;
+                if (checked) selectedOptionalFeatures.add(feature.id);
+                else selectedOptionalFeatures.remove(feature.id);
             });
 
+            itemBinding.cardDependency.setOnClickListener(v -> {
+                if (!feature.required) {
+                    itemBinding.dependencySwitch.setChecked(!itemBinding.dependencySwitch.isChecked());
+                }
+            });
             container.addView(itemBinding.getRoot());
         }
-    }
-
-    private boolean isDependencyDownloaded(ComposeDependency dependency) {
-        return !dependency.getLibraryName().isEmpty()
-                && LocalLibrariesUtil.getLocalLibraryDirectory(dependency.getLibraryName()).exists();
-    }
-
-    private void showDependencyDownloader(ComposeDependency dependency) {
-        if (scId == null
-                || getSupportFragmentManager().findFragmentByTag("compose_dependency_downloader") != null) {
-            return;
-        }
-
-        Bundle bundle = new Bundle();
-        bundle.putBoolean("notAssociatedWithProject", notAssociatedWithProject);
-        bundle.putSerializable("buildSettings", buildSettings);
-        if (!notAssociatedWithProject) {
-            bundle.putString("localLibFile", LocalLibrariesUtil.getLocalLibFile(scId).getAbsolutePath());
-        }
-        bundle.putString("prefillDependency", dependency.coordinate);
-
-        LibraryDownloaderDialogFragment fragment = new LibraryDownloaderDialogFragment();
-        fragment.setArguments(bundle);
-        fragment.setOnLibraryDownloadedTask(this::populateDependencyList);
-        fragment.show(getSupportFragmentManager(), "compose_dependency_downloader");
     }
 }
