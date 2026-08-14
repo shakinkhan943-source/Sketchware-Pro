@@ -1,0 +1,60 @@
+name: Apply Constraint Preview Fixes
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, 'Fix ConstraintLayout preview defaults and drag performance') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main
+      - name: Patch
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          p = Path('app/src/main/java/pro/sketchware/activities/editor/view/item/ItemConstraintLayout.java')
+          s = p.read_text()
+          s = s.replace('    private boolean applyingPreviewConstraints;\n    private final Map<String, Integer> previewIds = new HashMap<>();', '    private boolean applyingPreviewConstraints;\n    private boolean previewConstraintsDirty = true;\n    private final Map<String, Integer> previewIds = new HashMap<>();')
+          s = s.replace('        if (!applyingPreviewConstraints) {\n            applyPreviewConstraints();\n        }', '        if (previewConstraintsDirty && !applyingPreviewConstraints) {\n            applyPreviewConstraints();\n        }', 1)
+          s = s.replace('            set.applyTo(this);\n        } finally {', '            previewConstraintsDirty = false;\n            set.applyTo(this);\n        } finally {', 1)
+          s = s.replace('            if (beanValue == LayoutBean.LAYOUT_WRAP_CONTENT || beanValue == LayoutBean.LAYOUT_NOTUSED) {\n                return ConstraintSet.WRAP_CONTENT;\n            }', '            if (beanValue == LayoutBean.LAYOUT_WRAP_CONTENT) {\n                return ConstraintSet.WRAP_CONTENT;\n            }\n            if (beanValue == LayoutBean.LAYOUT_NOTUSED) {\n                return ConstraintSet.MATCH_CONSTRAINT;\n            }', 1)
+          s = s.replace('    private void applyAutomaticPlacement(ConstraintSet set, View child, int index) {\n        int id = child.getId();\n        int previousId = 0;', '    private void applyAutomaticPlacement(ConstraintSet set, View child, int index) {\n        int id = child.getId();\n        int previousId = 0;\n        ViewGroup.LayoutParams childParams = child.getLayoutParams();\n        boolean matchConstraintWidth = childParams != null && childParams.width == 0;\n        boolean matchConstraintHeight = childParams != null && childParams.height == 0;', 1)
+          s = s.replace('        set.connect(id, ConstraintSet.START, ConstraintSet.PARENT_ID, ConstraintSet.START);\n        if (previousId != 0) {\n            set.connect(id, ConstraintSet.TOP, previousId, ConstraintSet.BOTTOM);\n        } else {\n            set.connect(id, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP);\n        }\n    }', '        set.connect(id, ConstraintSet.START, ConstraintSet.PARENT_ID, ConstraintSet.START);\n        if (matchConstraintWidth) {\n            set.connect(id, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END);\n        }\n        if (previousId != 0) {\n            set.connect(id, ConstraintSet.TOP, previousId, ConstraintSet.BOTTOM);\n        } else {\n            set.connect(id, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP);\n        }\n        if (matchConstraintHeight) {\n            set.connect(id, ConstraintSet.BOTTOM, ConstraintSet.PARENT_ID, ConstraintSet.BOTTOM);\n        }\n    }', 1)
+          old = '''    @Override\n    public void addView(View child, int index) {\n        int childCount = getChildCount();\n        if (index > childCount) {\n            super.addView(child);\n        } else {\n            super.addView(child, index);\n        }\n        post(this::applyPreviewConstraints);\n    }'''
+          new = '''    public void markPreviewConstraintsDirty() {\n        previewConstraintsDirty = true;\n    }\n\n    @Override\n    protected void onViewAdded(View child) {\n        super.onViewAdded(child);\n        if (child instanceof ItemView) {\n            previewConstraintsDirty = true;\n        }\n    }\n\n    @Override\n    protected void onViewRemoved(View child) {\n        super.onViewRemoved(child);\n        if (child instanceof ItemView) {\n            previewConstraintsDirty = true;\n        }\n    }\n\n    @Override\n    public void addView(View child, int index) {\n        int childCount = getChildCount();\n        if (index > childCount) {\n            super.addView(child);\n        } else {\n            super.addView(child, index);\n        }\n    }'''
+          if old not in s: raise SystemExit('ItemConstraintLayout addView block not found')
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+
+          p = Path('app/src/main/java/pro/sketchware/activities/editor/view/ViewPane.java')
+          s = p.read_text()
+          old = '''            viewBean.index = -1;\n        }\n    }\n\n    public View addFab(ViewBean viewBean) {'''
+          new = '''            viewBean.index = -1;\n        }\n\n        boolean isNewPaletteWidget = viewBean.preParent == null\n                && viewBean.preId == null\n                && viewBean.preIndex == 0;\n        if (isNewPaletteWidget) {\n            if (viewBean.parentType == ViewBeans.VIEW_TYPE_LAYOUT_CONSTRAINTLAYOUT) {\n                if (viewBean.layout.width == LayoutBean.LAYOUT_WRAP_CONTENT) {\n                    viewBean.layout.width = LayoutBean.LAYOUT_NOTUSED;\n                }\n                if (viewBean.layout.height == LayoutBean.LAYOUT_WRAP_CONTENT) {\n                    viewBean.layout.height = LayoutBean.LAYOUT_NOTUSED;\n                }\n            } else {\n                if (viewBean.layout.width == LayoutBean.LAYOUT_WRAP_CONTENT) {\n                    viewBean.layout.width = LayoutBean.LAYOUT_MATCH_PARENT;\n                }\n                if (viewBean.layout.height == LayoutBean.LAYOUT_WRAP_CONTENT) {\n                    viewBean.layout.height = LayoutBean.LAYOUT_MATCH_PARENT;\n                }\n            }\n        }\n    }\n\n    public View addFab(ViewBean viewBean) {'''
+          if old not in s: raise SystemExit('ViewPane default block not found')
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+          PY
+      - name: Verify
+        run: |
+          grep -q 'previewConstraintsDirty' app/src/main/java/pro/sketchware/activities/editor/view/item/ItemConstraintLayout.java
+          grep -q 'isNewPaletteWidget' app/src/main/java/pro/sketchware/activities/editor/view/ViewPane.java
+      - name: Commit directly to main
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/src/main/java/pro/sketchware/activities/editor/view/item/ItemConstraintLayout.java app/src/main/java/pro/sketchware/activities/editor/view/ViewPane.java
+          git commit -m 'Fix ConstraintLayout preview defaults and drag performance'
+          git rm .github/workflows/apply-constraint-preview-fixes.yml
+          git commit -m 'Remove temporary constraint preview patch workflow'
+          git push origin main
