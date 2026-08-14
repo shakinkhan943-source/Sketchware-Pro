@@ -16,6 +16,7 @@ import pro.sketchware.util.library.BuiltInLibraries;
 import pro.sketchware.util.library.BuiltInLibraryManager;
 import pro.sketchware.util.FileUtil;
 import pro.sketchware.util.LogUtil;
+import pro.sketchware.SketchApplication;
 
 /**
  * Bridge class for Kotlin compilation in the build pipeline.
@@ -31,36 +32,25 @@ import pro.sketchware.util.LogUtil;
 public class KotlinCompilerBridge {
     private static final String TAG = "KotlinCompilerBridge";
 
-    /**
-     * Filename of the bundled Kotlin Compose compiler plugin. It must match the
-     * asset in app/src/main/assets/libs/kt_plugins/ and the module
-     * kotlin-compose-compiler-plugin in gradle/libs.versions.toml.
-     * Keep all three in lockstep when bumping the Kotlin version.
-     * <p>
-     * Use the NON-embeddable artifact: the bundled kotlinc-for-sketchware fork is
-     * built against the unshaded com.intellij.* compiler classes, so the
-     * -embeddable plugin (which references org.jetbrains.kotlin.com.intellij.*)
-     * throws NoClassDefFoundError mid-IR-lowering.
-     */
+    /** Filename of the bundled Kotlin Compose compiler plugin. */
     private static final String COMPOSE_COMPILER_PLUGIN_JAR = "kotlin-compose-compiler-plugin-2.1.21.jar";
 
-    /** Path of the plugin jar inside the APK assets, relative to assets/. */
-    private static final String COMPOSE_COMPILER_PLUGIN_ASSET_PATH = "libs/kt_plugins/" + COMPOSE_COMPILER_PLUGIN_JAR;
+    /** Directory containing the Compose compiler plugin and its runtime dependencies. */
+    private static final String COMPOSE_COMPILER_PLUGIN_ASSET_DIR = "libs/kt_plugins";
 
     /**
-     * Ensures the Jetpack Compose compiler plugin is available in the project's
-     * kt_plugins folder by extracting it from the bundled APK asset when missing
-     * or outdated. Once present, {@link KotlinCompilerUtil#getCompilerPlugins}
-     * passes it to kotlinc via pluginClasspaths.
-     * <p>
-     * The plugin is what turns {@code @Composable} into real Compose code;
-     * without it kotlinc treats the annotation as a no-op. It is only installed
-     * for projects that actually reference Compose so existing non-Compose
-     * projects keep building exactly as before.
+     * Ensures the Jetpack Compose compiler plugin and its runtime dependencies are
+     * available in the project's kt_plugins folder.
      *
-     * @return true when the plugin was just installed or upgraded, which means any
-     *         previously cached kotlinc output must be discarded so the Kotlin
-     *         incremental compiler recompiles the module with the active plugin.
+     * The non-embeddable Compose plugin has a runtime dependency on the matching
+     * Kotlin stdlib. Compiler plugin classloaders can be isolated from kotlinc's
+     * normal runtime classpath, so provisioning only the plugin JAR can make
+     * ServiceLoaderLite report the registrar itself as missing even though the
+     * registrar is present in the JAR. We therefore mirror every JAR shipped in
+     * the APK's kt_plugins asset directory and let KotlinCompilerUtil select only
+     * actual compiler plugins when constructing pluginClasspaths.
+     *
+     * @return true when any Compose plugin asset was installed/upgraded.
      */
     public static boolean maybeProvisionComposeCompilerPlugin(ProjectBuilder builder) {
         if (!projectUsesCompose(builder)) {
@@ -74,28 +64,34 @@ public class KotlinCompilerBridge {
                 return false;
             }
 
-            File target = new File(pluginDir, COMPOSE_COMPILER_PLUGIN_JAR);
-            // Copies the asset only when it is missing or the bundled version differs.
-            boolean pluginChanged = ProjectBuilder.hasFileChanged(COMPOSE_COMPILER_PLUGIN_ASSET_PATH, target.getAbsolutePath());
-            if (target.exists()) {
-                LogUtil.d(TAG, "Kotlin Compose compiler plugin is ready: " + target.getAbsolutePath());
+            boolean changed = false;
+            String[] assets = SketchApplication.getAppContext().getAssets().list(COMPOSE_COMPILER_PLUGIN_ASSET_DIR);
+            if (assets != null) {
+                for (String assetName : assets) {
+                    if (!assetName.endsWith(".jar")) {
+                        continue;
+                    }
+                    String assetPath = COMPOSE_COMPILER_PLUGIN_ASSET_DIR + "/" + assetName;
+                    File target = new File(pluginDir, assetName);
+                    if (ProjectBuilder.hasFileChanged(assetPath, target.getAbsolutePath())) {
+                        changed = true;
+                    }
+                }
+            }
+
+            File plugin = new File(pluginDir, COMPOSE_COMPILER_PLUGIN_JAR);
+            if (plugin.exists()) {
+                LogUtil.d(TAG, "Kotlin Compose compiler plugin is ready: " + plugin.getAbsolutePath());
             } else {
                 LogUtil.w(TAG, "Kotlin Compose compiler plugin could not be provisioned from assets");
             }
-            return pluginChanged;
+            return changed;
         } catch (Exception e) {
-            // Provisioning must never break the build; kotlinc just falls back to no Compose support.
             LogUtil.w(TAG, "Failed to provision Kotlin Compose compiler plugin", e);
             return false;
         }
     }
 
-    /**
-     * Cheap heuristic: returns true when any project source file references the
-     * Jetpack Compose runtime ({@code @Composable}/{@code @Stable}/{@code @Immutable}
-     * or {@code androidx.compose.*} imports). The compiler plugin is only needed
-     * in that case.
-     */
     private static boolean projectUsesCompose(ProjectBuilder builder) {
         try {
             for (File sourceFile : KotlinCompilerUtil.getFilesToCompile(builder.projectFilePaths)) {
@@ -129,31 +125,17 @@ public class KotlinCompilerBridge {
         return false;
     }
 
-    /**
-     * Compile Kotlin code if any .kt files are present in the project.
-     * Uses enhanced incremental compiler for faster builds.
-     *
-     * @param receiver Build progress callback
-     * @param builder  Project builder context
-     * @throws Throwable if compilation fails
-     */
     public static void compileKotlinCodeIfPossible(BuildProgressReceiver receiver,
                                                      ProjectBuilder builder) throws Throwable {
         if (KotlinCompilerUtil.areAnyKtFilesPresent(builder)) {
             boolean pluginChanged = maybeProvisionComposeCompilerPlugin(builder);
             receiver.onProgress("Kotlin is compiling...", 12);
             try {
-                // Use enhanced compiler with incremental compilation support
                 KotlinCompilerEnhanced compiler = new KotlinCompilerEnhanced(builder);
                 if (pluginChanged) {
-                    // Discard cached kotlinc output from before the Compose plugin
-                    // was active, otherwise the incremental cache would skip
-                    // recompilation and keep the old non-Compose bytecode.
                     compiler.clearCache();
                 }
                 compiler.compile();
-
-                // Log cache statistics for debugging
                 LogUtil.d(TAG, compiler.getCacheStats());
             } catch (Exception e) {
                 LogUtil.e(TAG, "Kotlin compilation failed", e);
@@ -162,12 +144,6 @@ public class KotlinCompilerBridge {
         }
     }
 
-    /**
-     * Add Kotlin standard library dependency if Kotlin files are present.
-     *
-     * @param builder               Project builder context
-     * @param builtInLibraryManager Library manager for adding dependencies
-     */
     public static void maybeAddKotlinBuiltInLibraryDependenciesIfPossible(
             ProjectBuilder builder,
             BuiltInLibraryManager builtInLibraryManager) {
@@ -176,12 +152,6 @@ public class KotlinCompilerBridge {
         }
     }
 
-    /**
-     * Add compiled Kotlin classes to the classpath for subsequent compilation steps.
-     *
-     * @param classpath String builder accumulating classpath entries
-     * @param workspace Project file paths
-     */
     public static void maybeAddKotlinFilesToClasspath(StringBuilder classpath,
                                                         ProjectFilePaths workspace) {
         if (FileUtil.isExistFile(workspace.compiledClassesPath)) {
@@ -190,29 +160,17 @@ public class KotlinCompilerBridge {
         }
     }
 
-    /**
-     * Get the Kotlin home directory for compiler runtime.
-     *
-     * @param workspace Project file paths
-     * @return Path to kotlin_home directory in bin
-     */
     public static String getKotlinHome(ProjectFilePaths workspace) {
         return workspace.binDirectoryPath + File.separator + "kotlin_home";
     }
 
-    /**
-     * Clear Kotlin compilation cache and force full rebuild on next build.
-     * Useful for troubleshooting or when cache becomes corrupted.
-     *
-     * @param builder Project builder context
-     */
     public static void clearKotlinCompilationCache(ProjectBuilder builder) {
         try {
             KotlinCompilerEnhanced compiler = new KotlinCompilerEnhanced(builder);
             compiler.clearCache();
             LogUtil.d(TAG, "Kotlin compilation cache cleared");
         } catch (Exception e) {
-            LogUtil.w(TAG, "Error clearing Kotlin compilation cache", e);
+            LogUtil.w(TAG, "Error clearing Kotlin incremental cache", e);
         }
     }
-      }
+}
