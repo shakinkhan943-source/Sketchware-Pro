@@ -569,7 +569,7 @@ public class ItemConstraintLayout extends ConstraintLayout implements ItemView, 
     }
 
     @Override
-    protected void onViewAdded(View child) {
+    public void onViewAdded(View child) {
         super.onViewAdded(child);
         if (child instanceof ItemView) {
             previewConstraintsDirty = true;
@@ -577,7 +577,7 @@ public class ItemConstraintLayout extends ConstraintLayout implements ItemView, 
     }
 
     @Override
-    protected void onViewRemoved(View child) {
+    public void onViewRemoved(View child) {
         super.onViewRemoved(child);
         if (child instanceof ItemView) {
             previewConstraintsDirty = true;
