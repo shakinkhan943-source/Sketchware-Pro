@@ -15,7 +15,6 @@ import android.graphics.drawable.NinePatchDrawable;
 import android.text.TextUtils;
 import android.util.AttributeSet;
 import android.util.Log;
-import android.util.Pair;
 import android.view.ContextThemeWrapper;
 import android.view.Gravity;
 import android.view.View;
@@ -35,7 +34,6 @@ import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.appcompat.content.res.AppCompatResources;
 import androidx.constraintlayout.widget.ConstraintLayout;
-import androidx.constraintlayout.widget.ConstraintSet;
 import androidx.core.content.ContextCompat;
 import androidx.appcompat.widget.AppCompatImageView;
 
@@ -1099,195 +1097,22 @@ public class ViewPane extends RelativeLayout {
         }
     }
 
+    /**
+     * ItemConstraintLayout.applyPreviewConstraints() is the single
+     * authoritative engine for translating XML constraint attributes into a
+     * ConstraintSet (see the javadoc on that class). ViewPane used to build
+     * and apply a second, independent ConstraintSet here, covering a
+     * different subset of attributes (and with its own, buggy, "parent"
+     * resolution). Having two engines apply constraints to the same
+     * ConstraintLayout back-to-back meant whichever ran last silently won,
+     * and neither one alone was complete. This method now just asks the
+     * container to re-run its own authoritative pass, e.g. after the editor
+     * mutates the child tree outside of a natural measure pass.
+     */
     private void applyConstraintLayoutConstraints(ItemConstraintLayout constraintLayout) {
-        if (constraintLayout.getChildCount() == 0) {
-            return;
-        }
-        ConstraintSet constraintSet = new ConstraintSet();
-        constraintSet.clone(constraintLayout);
-        for (int i = 0; i < constraintLayout.getChildCount(); i++) {
-            View child = constraintLayout.getChildAt(i);
-            if (child.getTag() == null || !(child instanceof ItemView itemView)) {
-                continue;
-            }
-            ViewBean bean = itemView.getBean();
-            int childId = child.getId();
-            if (childId == View.NO_ID) {
-                continue;
-            }
-            InjectAttributeHandler handler = new InjectAttributeHandler(bean);
-            for (Pair<String, String> attribute : handler.getAttributes()) {
-                applyConstraintAttribute(constraintSet, constraintLayout, childId, bean, attribute.first, attribute.second);
-            }
-        }
-        constraintSet.applyTo(constraintLayout);
+        constraintLayout.applyPreviewConstraints();
         constraintLayout.requestLayout();
         constraintLayout.invalidate();
-    }
-
-    private void applyConstraintAttribute(ConstraintSet constraintSet, ViewGroup container, int childId, ViewBean bean, String attribute, String value) {
-        if (value == null || value.isEmpty()) {
-            return;
-        }
-        // InjectAttributeHandler uses XmlPullParser, whose getAttributeName()
-        // removes the XML namespace prefix. Normalize constraint attributes so
-        // both parser output and any prefixed callers use the same switch.
-        String normalizedAttribute = attribute;
-        if (normalizedAttribute != null && normalizedAttribute.startsWith("layout_constraint")) {
-            normalizedAttribute = "app:" + normalizedAttribute;
-        } else if (normalizedAttribute != null && normalizedAttribute.startsWith("layout_goneMargin")) {
-            normalizedAttribute = "app:" + normalizedAttribute;
-        }
-        switch (normalizedAttribute) {
-            case "app:layout_constraintLeft_toLeftOf" -> {
-                connectConstraint(constraintSet, container, childId, ConstraintSet.LEFT, ConstraintSet.LEFT, value, bean.layout.marginLeft);
-            }
-            case "app:layout_constraintLeft_toRightOf" -> {
-                connectConstraint(constraintSet, container, childId, ConstraintSet.LEFT, ConstraintSet.RIGHT, value, bean.layout.marginLeft);
-            }
-            case "app:layout_constraintRight_toLeftOf" -> {
-                connectConstraint(constraintSet, container, childId, ConstraintSet.RIGHT, ConstraintSet.LEFT, value, bean.layout.marginRight);
-            }
-            case "app:layout_constraintRight_toRightOf" -> {
-                connectConstraint(constraintSet, container, childId, ConstraintSet.RIGHT, ConstraintSet.RIGHT, value, bean.layout.marginRight);
-            }
-            case "app:layout_constraintTop_toTopOf" -> {
-                connectConstraint(constraintSet, container, childId, ConstraintSet.TOP, ConstraintSet.TOP, value, bean.layout.marginTop);
-            }
-            case "app:layout_constraintTop_toBottomOf" -> {
-                connectConstraint(constraintSet, container, childId, ConstraintSet.TOP, ConstraintSet.BOTTOM, value, bean.layout.marginTop);
-            }
-            case "app:layout_constraintBottom_toTopOf" -> {
-                connectConstraint(constraintSet, container, childId, ConstraintSet.BOTTOM, ConstraintSet.TOP, value, bean.layout.marginBottom);
-            }
-            case "app:layout_constraintBottom_toBottomOf" -> {
-                connectConstraint(constraintSet, container, childId, ConstraintSet.BOTTOM, ConstraintSet.BOTTOM, value, bean.layout.marginBottom);
-            }
-            case "app:layout_constraintStart_toStartOf" -> {
-                connectConstraint(constraintSet, container, childId, ConstraintSet.START, ConstraintSet.START, value, bean.layout.marginLeft);
-            }
-            case "app:layout_constraintStart_toEndOf" -> {
-                connectConstraint(constraintSet, container, childId, ConstraintSet.START, ConstraintSet.END, value, bean.layout.marginLeft);
-            }
-            case "app:layout_constraintEnd_toStartOf" -> {
-                connectConstraint(constraintSet, container, childId, ConstraintSet.END, ConstraintSet.START, value, bean.layout.marginRight);
-            }
-            case "app:layout_constraintEnd_toEndOf" -> {
-                connectConstraint(constraintSet, container, childId, ConstraintSet.END, ConstraintSet.END, value, bean.layout.marginRight);
-            }
-            case "app:layout_constraintBaseline_toBaselineOf" -> {
-                connectConstraint(constraintSet, container, childId, ConstraintSet.BASELINE, ConstraintSet.BASELINE, value, 0);
-            }
-            case "app:layout_constraintBaseline_toTopOf" -> {
-                connectConstraint(constraintSet, container, childId, ConstraintSet.BASELINE, ConstraintSet.TOP, value, 0);
-            }
-            case "app:layout_constraintBaseline_toBottomOf" -> {
-                connectConstraint(constraintSet, container, childId, ConstraintSet.BASELINE, ConstraintSet.BOTTOM, value, 0);
-            }
-            case "app:layout_constraintHorizontal_bias" -> {
-                try {
-                    constraintSet.setHorizontalBias(childId, Float.parseFloat(value));
-                } catch (NumberFormatException ignored) {
-                }
-            }
-            case "app:layout_constraintVertical_bias" -> {
-                try {
-                    constraintSet.setVerticalBias(childId, Float.parseFloat(value));
-                } catch (NumberFormatException ignored) {
-                }
-            }
-            case "app:layout_constraintWidth_percent" -> {
-                try {
-                    constraintSet.constrainPercentWidth(childId, Float.parseFloat(value));
-                } catch (NumberFormatException ignored) {
-                }
-            }
-            case "app:layout_constraintHeight_percent" -> {
-                try {
-                    constraintSet.constrainPercentHeight(childId, Float.parseFloat(value));
-                } catch (NumberFormatException ignored) {
-                }
-            }
-            case "app:layout_constraintDimensionRatio" -> constraintSet.setDimensionRatio(childId, value);
-            case "app:layout_constraintVertical_weight" -> {
-                try {
-                    constraintSet.setVerticalWeight(childId, Float.parseFloat(value));
-                } catch (NumberFormatException ignored) {
-                }
-            }
-            case "app:layout_constraintHorizontal_weight" -> {
-                try {
-                    constraintSet.setHorizontalWeight(childId, Float.parseFloat(value));
-                } catch (NumberFormatException ignored) {
-                }
-            }
-            case "app:layout_constraintCircle" -> {
-                int targetId = resolveConstraintTarget(container, value);
-                if (targetId != 0) {
-                    constraintSet.constrainCircle(childId, targetId, resolveCircleRadius(bean), resolveCircleAngle(bean));
-                }
-            }
-            case "app:layout_goneMarginLeft" -> setGoneMargin(constraintSet, childId, ConstraintSet.LEFT, value);
-            case "app:layout_goneMarginTop" -> setGoneMargin(constraintSet, childId, ConstraintSet.TOP, value);
-            case "app:layout_goneMarginRight" -> setGoneMargin(constraintSet, childId, ConstraintSet.RIGHT, value);
-            case "app:layout_goneMarginBottom" -> setGoneMargin(constraintSet, childId, ConstraintSet.BOTTOM, value);
-            case "app:layout_goneMarginStart" -> setGoneMargin(constraintSet, childId, ConstraintSet.START, value);
-            case "app:layout_goneMarginEnd" -> setGoneMargin(constraintSet, childId, ConstraintSet.END, value);
-            default -> {
-            }
-        }
-    }
-
-    private void connectConstraint(ConstraintSet constraintSet, ViewGroup container, int childId, int sourceSide, int targetSide, String value, int marginDp) {
-        int targetId = resolveConstraintTarget(container, value);
-        if (targetId != 0) {
-            int marginPx = (int) ViewUtil.dpToPx(getContext(), (float) marginDp);
-            constraintSet.connect(childId, sourceSide, targetId, targetSide, marginPx);
-        }
-    }
-
-    private int resolveConstraintTarget(ViewGroup container, String value) {
-        if (value == null) {
-            return 0;
-        }
-        String reference = value.trim();
-        if (reference.equals("parent")) {
-            return ConstraintSet.PARENT_ID;
-        }
-        if (reference.startsWith("@")) {
-            reference = PropertiesUtil.parseReferName(reference, "/");
-        }
-        for (int i = 0; i < container.getChildCount(); i++) {
-            View child = container.getChildAt(i);
-            Object tag = child.getTag();
-            if (tag != null && tag.toString().equals(reference)) {
-                return child.getId();
-            }
-        }
-        return 0;
-    }
-
-    private void setGoneMargin(ConstraintSet constraintSet, int childId, int side, String value) {
-        int size = PropertiesUtil.resolveSize(value, 0);
-        if (size > 0) {
-            constraintSet.setGoneMargin(childId, side, (int) ViewUtil.dpToPx(getContext(), (float) size));
-        }
-    }
-
-    private int resolveCircleRadius(ViewBean bean) {
-        InjectAttributeHandler handler = new InjectAttributeHandler(bean);
-        String radius = handler.getAttributeValueOf("app:layout_constraintCircleRadius");
-        return (int) ViewUtil.dpToPx(getContext(), (float) PropertiesUtil.resolveSize(radius, 0));
-    }
-
-    private int resolveCircleAngle(ViewBean bean) {
-        InjectAttributeHandler handler = new InjectAttributeHandler(bean);
-        String angle = handler.getAttributeValueOf("app:layout_constraintCircleAngle");
-        try {
-            return (int) Float.parseFloat(angle);
-        } catch (NumberFormatException e) {
-            return 0;
-        }
     }
 
     private int getActualParentType(View view, int defaultValue) {
