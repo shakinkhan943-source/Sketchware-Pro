@@ -3,7 +3,6 @@ package pro.sketchware.activities.editor.manage.library.compose;
 import android.content.Intent;
 import android.os.Bundle;
 import android.view.LayoutInflater;
-import android.view.View;
 import android.widget.LinearLayout;
 
 import androidx.activity.OnBackPressedCallback;
@@ -17,7 +16,8 @@ import pro.sketchware.activities.base.BaseAppCompatActivity;
 import pro.sketchware.beans.ProjectLibraryBean;
 import pro.sketchware.databinding.ItemComposeDependencyBinding;
 import pro.sketchware.databinding.ManageLibraryComposeBinding;
-import pro.sketchware.util.ComposeBuiltInLibraries;
+import pro.sketchware.util.Helper;
+import pro.sketchware.util.library.ComposeBuiltInLibraries;
 import pro.sketchware.util.library.ComposeBuiltInLibraryManager;
 
 /**
@@ -29,7 +29,6 @@ public class ComposeLibraryActivity extends BaseAppCompatActivity {
 
     private ManageLibraryComposeBinding binding;
     private ProjectLibraryBean composeLibraryBean;
-    private String scId;
     private final Set<String> selectedOptionalFeatures = new HashSet<>();
 
     @Override
@@ -43,9 +42,8 @@ public class ComposeLibraryActivity extends BaseAppCompatActivity {
     }
 
     private void initialize() {
-        binding.toolbar.setNavigationOnClickListener(pro.sketchware.util.Helper.getBackPressedClickListener(this));
+        binding.toolbar.setNavigationOnClickListener(Helper.getBackPressedClickListener(this));
 
-        scId = getIntent().getStringExtra("sc_id");
         composeLibraryBean = getIntent().getParcelableExtra("compose");
         if (composeLibraryBean == null) {
             composeLibraryBean = new ProjectLibraryBean(ProjectLibraryBean.PROJECT_LIB_TYPE_COMPOSE);
@@ -81,7 +79,7 @@ public class ComposeLibraryActivity extends BaseAppCompatActivity {
     }
 
     private void updateDependenciesSection(boolean enabled) {
-        binding.composeDependenciesSection.setVisibility(enabled ? View.VISIBLE : View.GONE);
+        binding.composeDependenciesSection.setVisibility(enabled ? android.view.View.VISIBLE : android.view.View.GONE);
     }
 
     private void populateDependencyList() {
