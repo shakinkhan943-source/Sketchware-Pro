@@ -185,6 +185,11 @@ public class ItemConstraintLayout extends ConstraintLayout implements ItemView, 
         Float widthRatio = parsePercent(widthPercent);
         if (widthRatio != null) {
             set.constrainWidth(child.getId(), ConstraintSet.MATCH_CONSTRAINT);
+            // Explicitly select the percent match-constraint mode rather than
+            // relying on constrainPercentWidth() alone to imply it - some
+            // ConstraintLayout versions only switch to percent sizing when
+            // the default mode is set explicitly.
+            set.constrainDefaultWidth(child.getId(), ConstraintSet.MATCH_CONSTRAINT_PERCENT);
             set.constrainPercentWidth(child.getId(), widthRatio);
         }
 
@@ -192,6 +197,7 @@ public class ItemConstraintLayout extends ConstraintLayout implements ItemView, 
         Float heightRatio = parsePercent(heightPercent);
         if (heightRatio != null) {
             set.constrainHeight(child.getId(), ConstraintSet.MATCH_CONSTRAINT);
+            set.constrainDefaultHeight(child.getId(), ConstraintSet.MATCH_CONSTRAINT_PERCENT);
             set.constrainPercentHeight(child.getId(), heightRatio);
         }
 
@@ -229,6 +235,8 @@ public class ItemConstraintLayout extends ConstraintLayout implements ItemView, 
         int mode;
         if ("wrap".equals(normalized)) {
             mode = ConstraintSet.MATCH_CONSTRAINT_WRAP;
+        } else if ("percent".equals(normalized)) {
+            mode = ConstraintSet.MATCH_CONSTRAINT_PERCENT;
         } else {
             mode = ConstraintSet.MATCH_CONSTRAINT_SPREAD;
         }
@@ -343,6 +351,19 @@ public class ItemConstraintLayout extends ConstraintLayout implements ItemView, 
         return Math.max(0, (int) ViewUtil.dpToPx(getContext(), value));
     }
 
+    /**
+     * Sentinel meaning "no such target". This cannot be 0, because 0 is the
+     * real value of {@link ConstraintSet#PARENT_ID}. Using 0 as an
+     * "unresolved" marker (as an earlier version of this code did) silently
+     * dropped every constraint pointing at "parent", since {@code connect()}
+     * treated the valid parent id the same as "not found" and skipped the
+     * call to {@code set.connect(...)} entirely. That bug is the reason only
+     * coincidental top/start-to-parent cases looked correct while bias,
+     * percent sizing, MATCH_CONSTRAINT and bottom/end-to-parent constraints
+     * silently did nothing.
+     */
+    private static final int TARGET_UNRESOLVED = Integer.MIN_VALUE;
+
     private void applyConnections(ConstraintSet set, View child, InjectAttributeHandler attrs) {
         int id = child.getId();
         connect(set, id, ConstraintSet.LEFT, ConstraintSet.LEFT, attrs.getAttributeValueOf("layout_constraintLeft_toLeftOf"));
@@ -364,7 +385,7 @@ public class ItemConstraintLayout extends ConstraintLayout implements ItemView, 
         String circleTarget = attrs.getAttributeValueOf("layout_constraintCircle");
         if (!TextUtils.isEmpty(circleTarget)) {
             int targetId = resolveTarget(circleTarget);
-            if (targetId != 0) {
+            if (targetId != TARGET_UNRESOLVED) {
                 int radius = resolveMargin(attrs.getAttributeValueOf("layout_constraintCircleRadius"), 0);
                 Float angle = parseFloat(attrs.getAttributeValueOf("layout_constraintCircleAngle"));
                 set.constrainCircle(child.getId(), targetId, dp(Math.max(0, radius)), angle != null ? angle : 0f);
@@ -374,16 +395,29 @@ public class ItemConstraintLayout extends ConstraintLayout implements ItemView, 
 
     private void connect(ConstraintSet set, int childId, int sourceSide, int targetSide, String target) {
         int targetId = resolveTarget(target);
-        if (targetId != 0) {
+        if (targetId != TARGET_UNRESOLVED) {
             set.connect(childId, sourceSide, targetId, targetSide);
         }
     }
 
+    /**
+     * Resolves an XML constraint target ("parent", "@id/foo", "@+id/foo", or
+     * a bare Sketchware component id) to the Android View id ConstraintSet
+     * needs. "parent" always resolves to {@link ConstraintSet#PARENT_ID}
+     * (which is 0) and must be special-cased rather than looked up in
+     * {@link #previewIds}, since 0 is also used elsewhere as an
+     * "unresolved" sentinel.
+     */
     private int resolveTarget(String value) {
         if (TextUtils.isEmpty(value)) {
-            return 0;
+            return TARGET_UNRESOLVED;
         }
-        return previewIds.getOrDefault(normalizeReference(value), 0);
+        String reference = normalizeReference(value);
+        if ("parent".equals(reference)) {
+            return ConstraintSet.PARENT_ID;
+        }
+        Integer id = previewIds.get(reference);
+        return id != null ? id : TARGET_UNRESOLVED;
     }
 
     private String normalizeReference(String value) {
