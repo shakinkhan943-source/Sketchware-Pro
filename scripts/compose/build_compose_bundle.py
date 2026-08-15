@@ -15,6 +15,7 @@ COMPOSE_MATERIAL3 = os.environ.get("COMPOSE_MATERIAL3_VERSION", "1.3.1")
 ACTIVITY_COMPOSE = os.environ.get("ACTIVITY_COMPOSE_VERSION", "1.9.3")
 NAVIGATION_COMPOSE = os.environ.get("NAVIGATION_COMPOSE_VERSION", "2.8.5")
 LIFECYCLE_COMPOSE = os.environ.get("LIFECYCLE_COMPOSE_VERSION", "2.8.7")
+ANDROID_PLATFORM = os.environ.get("ANDROID_COMPILE_SDK", "android-36")
 
 FEATURES = {
     "core": {
@@ -108,10 +109,11 @@ def main():
             dependency_lines.append(f"dependencies.add('{config_name}', '{root}')")
 
     groovy = f"""
-repositories {{
-    google()
-    mavenCentral()
-}}
+// No repositories{{}} block here: this repo's settings.gradle sets
+// dependencyResolutionManagement.repositoriesMode = FAIL_ON_PROJECT_REPOS,
+// which means any project-level repositories{{}} declaration (including in
+// this ad hoc build file) hard-fails the build. The root project already
+// inherits google()/mavenCentral()/jitpack/sonatype from settings.gradle.
 {chr(10).join(dependency_lines)}
 
 tasks.register('dumpComposeArtifacts') {{
@@ -162,7 +164,7 @@ tasks.register('dumpComposeArtifacts') {{
     android_jar = Path(os.environ.get("ANDROID_JAR", ""))
     if not android_jar.exists():
         sdk = Path(os.environ.get("ANDROID_SDK_ROOT", os.environ.get("ANDROID_HOME", "")))
-        android_jar = sdk / "platforms/android-35/android.jar"
+        android_jar = sdk / "platforms" / ANDROID_PLATFORM / "android.jar"
     if not android_jar.exists():
         raise RuntimeError(f"android.jar not found: {android_jar}")
 
