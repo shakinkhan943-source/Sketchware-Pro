@@ -32,7 +32,7 @@ jobs:
 
       - name: Resolve & Download Dependencies
         run: |
-          gradle -b fetch_deps.gradle downloadDependencies
+          ./gradlew -b fetch_deps.gradle downloadDependencies
 
       - name: Dex Libraries & Generate Manifest JSON
         run: |
