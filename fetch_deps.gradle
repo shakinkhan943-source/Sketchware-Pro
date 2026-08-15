@@ -1,0 +1,23 @@
+repositories {
+    google()
+    mavenCentral()
+}
+
+configurations {
+    composeDeps
+}
+
+dependencies {
+    // Jetpack Compose & Material 3 core dependencies
+    composeDeps "androidx.compose.ui:ui:1.6.0"
+    composeDeps "androidx.compose.material3:material3:1.2.0"
+    composeDeps "androidx.compose.ui:ui-tooling-preview:1.6.0"
+    composeDeps "androidx.compose.runtime:runtime:1.6.0"
+    composeDeps "androidx.compose.foundation:foundation:1.6.0"
+    composeDeps "androidx.activity:activity-compose:1.8.2"
+}
+
+task downloadDependencies(type: Copy) {
+    from configurations.composeDeps
+    into "${buildDir}/downloaded_deps"
+}
