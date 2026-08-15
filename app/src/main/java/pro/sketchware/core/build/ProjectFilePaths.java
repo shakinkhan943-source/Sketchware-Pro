@@ -568,6 +568,7 @@ public class ProjectFilePaths {
         ProjectLibraryBean appCompat = projectLibraryManager.getCompat();
         ProjectLibraryBean firebase = projectLibraryManager.getFirebaseDB();
         ProjectLibraryBean googleMaps = projectLibraryManager.getGoogleMap();
+        ProjectLibraryBean compose = projectLibraryManager.getCompose();
         this.exportingType = exportingType;
         buildConfig = new BuildConfig();
         buildConfig.packageName = packageName;
@@ -591,6 +592,18 @@ public class ProjectFilePaths {
             buildConfig.addPermission(BuildConfig.PERMISSION_INTERNET);
             buildConfig.addPermission(BuildConfig.PERMISSION_ACCESS_NETWORK_STATE);
             buildConfig.setupAdmob(adMob);
+        }
+        if (compose != null && compose.useYn.equals(ProjectLibraryBean.LIB_USE_Y)) {
+            buildConfig.isComposeEnabled = true;
+            Object optionalFeatures = compose.configurations == null ? null
+                    : compose.configurations.get("compose_optional_features");
+            if (optionalFeatures instanceof List<?>) {
+                for (Object featureId : (List<?>) optionalFeatures) {
+                    if (featureId instanceof String && !((String) featureId).isEmpty()) {
+                        buildConfig.composeOptionalFeatures.add((String) featureId);
+                    }
+                }
+            }
         }
         if (googleMaps.useYn.equals(ProjectLibraryBean.LIB_USE_Y)) {
             buildConfig.isMapUsed = true;

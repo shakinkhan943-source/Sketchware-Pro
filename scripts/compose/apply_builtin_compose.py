@@ -118,8 +118,9 @@ patch("app/src/main/java/pro/sketchware/core/build/ProjectBuilder.java", [
         "        }\n\n        if (projectFilePaths.buildConfig.isAppCompatEnabled) {",
     ),
     (
-        "        }\n        KotlinCompilerBridge.maybeAddKotlinBuiltInLibraryDependenciesIfPossible(this, builtInLibraryManager);\n",
-        "        }\n        for (ComposeBuiltInLibraries.ComposeArtifact artifact : getSelectedComposeArtifacts()) {\n"
+        "        }\n\n        KotlinCompilerBridge.maybeAddKotlinBuiltInLibraryDependenciesIfPossible(this, builtInLibraryManager);\n",
+        "        }\n\n"
+        "        for (ComposeBuiltInLibraries.ComposeArtifact artifact : getSelectedComposeArtifacts()) {\n"
         "            // Validation is intentionally lightweight; the bundle contains all transitive artifacts.\n"
         "            if (!ComposeBuiltInLibraries.getLibraryClassesJarPath(artifact.id).exists()) {\n"
         "                throw new IllegalStateException(\"Missing built-in Compose artifact: \" + artifact.id);\n"
