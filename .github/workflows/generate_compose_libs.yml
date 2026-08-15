@@ -1,0 +1,110 @@
+name: Generate Jetpack Compose Assets
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_branch:
+        description: 'Branch to commit assets into'
+        required: true
+        default: 'fet/jetpack-compose-buitin'
+
+jobs:
+  build-and-commit-assets:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Main Branch
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Resolve & Download Dependencies
+        run: |
+          gradle -b fetch_deps.gradle downloadDependencies
+
+      - name: Dex Libraries & Generate Manifest JSON
+        run: |
+          mkdir -p temp_dex
+          mkdir -p app/src/main/assets/libs
+          
+          python3 - << 'EOF'
+          import os, json, subprocess, zipfile
+
+          download_dir = "build/downloaded_deps"
+          temp_dex_dir = "temp_dex"
+          d8_path = os.path.expandvars("$ANDROID_HOME/build-tools/34.0.0/d8")
+          manifest = []
+
+          for fname in sorted(os.listdir(download_dir)):
+              if not (fname.endswith('.aar') or fname.endswith('.jar')):
+                  continue
+              
+              fpath = os.path.join(download_dir, fname)
+              base_name = fname.rsplit('.', 1)[0]
+              target_jar = fpath
+
+              if fname.endswith('.aar'):
+                  extract_dir = f"temp_aar_{base_name}"
+                  with zipfile.ZipFile(fpath, 'r') as aar:
+                      if 'classes.jar' in aar.namelist():
+                          aar.extract('classes.jar', path=extract_dir)
+                          target_jar = os.path.join(extract_dir, 'classes.jar')
+
+              out_dex_file = os.path.join(temp_dex_dir, f"{base_name}.dex")
+              
+              # Execute d8 tool to convert JAR to DEX
+              try:
+                  subprocess.run([d8_path, target_jar, "--output", temp_dex_dir], check=True)
+                  gen_dex = os.path.join(temp_dex_dir, "classes.dex")
+                  if os.path.exists(gen_dex):
+                      os.rename(gen_dex, out_dex_file)
+              except Exception as e:
+                  print(f"Skipping {fname}: {e}")
+                  continue
+
+              manifest.append({
+                  "name": base_name,
+                  "dexPath": f"{base_name}.dex"
+              })
+
+          with open("app/src/main/assets/libs/compose-libraries.json", "w") as f:
+              json.dump(manifest, f, indent=2)
+
+          EOF
+
+      - name: Zip DEX Files into compose-libs.zip
+        run: |
+          cd temp_dex
+          zip -r ../app/src/main/assets/libs/compose-libs.zip .
+          cd ..
+
+      - name: Commit Assets directly to Branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TARGET_BRANCH="${{ github.event.inputs.target_branch }}"
+          
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Create or switch to target branch
+          git checkout -B $TARGET_BRANCH
+          
+          # Add output files keeping exact directory structure
+          git add app/src/main/assets/libs/compose-libs.zip -f
+          git add app/src/main/assets/libs/compose-libraries.json -f
+          
+          git commit -m "Build: Generate compose-libs.zip and compose-libraries.json"
+          git push origin $TARGET_BRANCH --force
