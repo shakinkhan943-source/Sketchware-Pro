@@ -42,9 +42,29 @@ jobs:
           sdkmanager "platforms;android-36" "platforms;android-35" "build-tools;36.0.0" "build-tools;35.0.0"
 
       - name: Generate minimal resolved Compose bundle
+        id: generate_bundle
         env:
           ANDROID_SDK_ROOT: ${{ env.ANDROID_HOME }}
-        run: python3 scripts/compose/build_compose_bundle.py
+        run: |
+          set -o pipefail
+          mkdir -p build/compose-bundle
+          python3 scripts/compose/build_compose_bundle.py 2>&1 | tee build/compose-bundle/ci-output.log
+
+      - name: Save debug log on failure
+        if: failure() && steps.generate_bundle.outcome == 'failure'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          mkdir -p scripts/compose/.ci-debug
+          cp build/compose-bundle/ci-output.log "scripts/compose/.ci-debug/last-failure.log" || true
+          cp build/compose-bundle/resolver.gradle "scripts/compose/.ci-debug/last-resolver.gradle" || true
+          git add scripts/compose/.ci-debug
+          if git diff --cached --quiet; then
+            echo "No debug log to commit."
+            exit 0
+          fi
+          git commit -m "ci: save Compose bundle failure log [skip ci]"
+          git push origin HEAD:${{ github.ref_name }}
 
       - name: Configure GitHub CLI authentication
         env:
