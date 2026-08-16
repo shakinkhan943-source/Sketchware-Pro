@@ -130,7 +130,7 @@ tasks.register('dumpComposeArtifacts') {{
 }}
 """
     temp.write_text(groovy, encoding="utf-8")
-    run("./gradlew", "-q", "--no-settings", "-b", temp, "dumpComposeArtifacts")
+    run("./gradlew", "-q", "-b", temp, "dumpComposeArtifacts")
 
     resolved = json.loads(output.read_text(encoding="utf-8"))
     required_files = set()
