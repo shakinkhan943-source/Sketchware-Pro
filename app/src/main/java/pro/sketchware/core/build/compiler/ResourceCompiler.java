@@ -18,6 +18,7 @@ import pro.sketchware.core.build.BuildSettings;
 import pro.sketchware.core.project.ProjectSettings;
 import pro.sketchware.core.build.BuildProgressReceiver;
 import pro.sketchware.util.library.BuiltInLibraries;
+import pro.sketchware.util.library.ComposeBuiltInLibraries;
 import pro.sketchware.core.exception.MissingFileException;
 import pro.sketchware.util.LogUtil;
 import pro.sketchware.SketchApplication;
@@ -104,6 +105,7 @@ public class ResourceCompiler {
         private final ProjectBuilder buildHelper;
         private final File compiledBuiltInLibraryResourcesDirectory;
         private final File compiledLocalLibraryResourcesDirectory;
+        private final File compiledComposeLibraryResourcesDirectory;
         private ProgressListener progressListener;
 
         public Aapt2Compiler(ProjectBuilder buildHelper, File aapt2, boolean buildAppBundle) {
@@ -112,6 +114,7 @@ public class ResourceCompiler {
             this.buildAppBundle = buildAppBundle;
             compiledBuiltInLibraryResourcesDirectory = new File(SketchApplication.getAppContext().getCacheDir(), "compiledLibs");
             compiledLocalLibraryResourcesDirectory = new File(SketchApplication.getAppContext().getCacheDir(), "compiledLocalLibs");
+            compiledComposeLibraryResourcesDirectory = new File(SketchApplication.getAppContext().getCacheDir(), "compiledComposeLibs");
         }
 
         @Override
@@ -124,6 +127,7 @@ public class ResourceCompiler {
                 progressListener.onProgressUpdate("Compiling resources with AAPT2...", 9);
             }
             compileBuiltInLibraryResources();
+            compileComposeLibraryResources();
             LogUtil.d(TAG + ":c", "Compiling built-in library resources took " + (System.currentTimeMillis() - savedTimeMillis) + " ms");
             savedTimeMillis = System.currentTimeMillis();
             compileLocalLibraryResources();
@@ -205,6 +209,15 @@ public class ResourceCompiler {
                 }
             }
 
+            /* Add selected Compose feature assets */
+            for (ComposeBuiltInLibraries.ComposeArtifact artifact : buildHelper.getSelectedComposeArtifacts()) {
+                File assets = ComposeBuiltInLibraries.getLibraryAssetsPath(artifact.id);
+                if (assets.exists()) {
+                    args.add("-A");
+                    args.add(assets.getAbsolutePath());
+                }
+            }
+
             /* Add local libraries' assets */
             for (String localLibraryAssetsDirectory : new ManageLocalLibrary(buildHelper.projectFilePaths.sc_id).getAssets()) {
                 linkingAssertDirectoryExists(localLibraryAssetsDirectory);
@@ -217,6 +230,15 @@ public class ResourceCompiler {
                 if (library.hasResources()) {
                     args.add("-R");
                     args.add(new File(compiledBuiltInLibraryResourcesDirectory, library.getName() + ".zip").getAbsolutePath());
+                }
+            }
+
+            /* Include compiled Compose resources */
+            for (ComposeBuiltInLibraries.ComposeArtifact artifact : buildHelper.getSelectedComposeArtifacts()) {
+                File cachedZip = new File(compiledComposeLibraryResourcesDirectory, artifact.id + ".zip");
+                if (cachedZip.exists()) {
+                    args.add("-R");
+                    args.add(cachedZip.getAbsolutePath());
                 }
             }
 
@@ -304,6 +326,25 @@ public class ResourceCompiler {
                 FileUtil.deleteFile(path);
             }
             FileUtil.makeDir(path);
+        }
+
+        private void compileComposeLibraryResources() throws SimpleException, MissingFileException {
+            compiledComposeLibraryResourcesDirectory.mkdirs();
+            for (ComposeBuiltInLibraries.ComposeArtifact artifact : buildHelper.getSelectedComposeArtifacts()) {
+                File resourceDirectory = ComposeBuiltInLibraries.getLibraryResourcesPath(artifact.id);
+                if (!resourceDirectory.exists()) continue;
+                File cachedZip = new File(compiledComposeLibraryResourcesDirectory, artifact.id + ".zip");
+                ArrayList<String> commands = new ArrayList<>();
+                commands.add(aapt2.getAbsolutePath());
+                commands.add("compile");
+                commands.add("--dir");
+                commands.add(resourceDirectory.getAbsolutePath());
+                commands.add("-o");
+                commands.add(cachedZip.getAbsolutePath());
+                BinaryExecutor executor = new BinaryExecutor();
+                executor.setCommands(commands);
+                if (!executor.execute().isEmpty()) throw new SimpleException(executor.getLog());
+            }
         }
 
         private void compileLocalLibraryResources() throws SimpleException, MissingFileException {

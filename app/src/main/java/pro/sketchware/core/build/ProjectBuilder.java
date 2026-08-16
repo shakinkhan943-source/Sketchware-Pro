@@ -78,6 +78,7 @@ import pro.sketchware.core.project.ProguardHandler;
 import pro.sketchware.util.SystemLogPrinter;
 import pro.sketchware.core.build.BuildProgressReceiver;
 import pro.sketchware.util.library.BuiltInLibraries;
+import pro.sketchware.util.library.ComposeBuiltInLibraries;
 import pro.sketchware.core.build.compiler.DexCompiler;
 import pro.sketchware.core.build.compiler.ResourceCompiler;
 import pro.sketchware.core.exception.MissingFileException;
@@ -419,6 +420,11 @@ public class ProjectBuilder {
             classpath.append(":").append(BuiltInLibraries.getLibraryClassesJarPathString(library.getName()));
         }
 
+        /* Add the separate built-in Jetpack Compose bundle. */
+        for (ComposeBuiltInLibraries.ComposeArtifact artifact : getSelectedComposeArtifacts()) {
+            classpath.append(":").append(ComposeBuiltInLibraries.getLibraryClassesJarPath(artifact.id).getAbsolutePath());
+        }
+
         /* Add local libraries to the classpath */
         classpath.append(localLibraryManager.getJarLocalLibrary());
 
@@ -568,7 +574,20 @@ public class ProjectBuilder {
                 extraPackages.append(library.getPackageName()).append(":");
             }
         }
+        for (ComposeBuiltInLibraries.ComposeArtifact artifact : getSelectedComposeArtifacts()) {
+            if (artifact.packageName != null && !artifact.packageName.isEmpty()) {
+                extraPackages.append(artifact.packageName).append(":");
+            }
+        }
         return extraPackages + localLibraryManager.getPackageNameLocalLibrary();
+    }
+
+    /** Returns the selected artifact closure from the separate Compose bundle. */
+    public List<ComposeBuiltInLibraries.ComposeArtifact> getSelectedComposeArtifacts() {
+        if (!projectFilePaths.buildConfig.isComposeEnabled) {
+            return java.util.Collections.emptyList();
+        }
+        return ComposeBuiltInLibraries.getSelectedArtifacts(projectFilePaths.buildConfig.composeOptionalFeatures);
     }
 
     /**
@@ -978,6 +997,10 @@ public class ProjectBuilder {
                 apkBuilder.addResourcesFromJar(BuiltInLibraries.getLibraryClassesJarPath(library.getName()));
             }
 
+            for (ComposeBuiltInLibraries.ComposeArtifact artifact : getSelectedComposeArtifacts()) {
+                apkBuilder.addResourcesFromJar(ComposeBuiltInLibraries.getLibraryClassesJarPath(artifact.id));
+            }
+
             for (String jarPath : localLibraryManager.getJarLocalLibrary().split(":")) {
                 if (!jarPath.trim().isEmpty()) {
                     apkBuilder.addResourcesFromJar(new File(jarPath));
@@ -1055,6 +1078,10 @@ public class ProjectBuilder {
         /* Add used built-in libraries' DEX files */
         for (BuiltInLibrary builtInLibrary : builtInLibraryManager.getLibraries()) {
             dexes.add(BuiltInLibraries.getLibraryDexFile(builtInLibrary.getName()));
+        }
+
+        for (ComposeBuiltInLibraries.ComposeArtifact artifact : getSelectedComposeArtifacts()) {
+            dexes.add(ComposeBuiltInLibraries.getLibraryDexFile(artifact.id));
         }
 
         /* Add local libraries' main DEX files */
@@ -1178,6 +1205,10 @@ public class ProjectBuilder {
      * all required library JARs.
      */
     public void buildBuiltInLibraryInformation() {
+        if (projectFilePaths.buildConfig.isComposeEnabled) {
+            ComposeBuiltInLibraries.ensureExtracted();
+        }
+
         if (projectFilePaths.buildConfig.isAppCompatEnabled) {
             builtInLibraryManager.addLibrary(BuiltInLibraries.ANDROIDX_APPCOMPAT);
             builtInLibraryManager.addLibrary(BuiltInLibraries.ANDROIDX_COORDINATORLAYOUT);
@@ -1209,6 +1240,13 @@ public class ProjectBuilder {
         }
         if (projectFilePaths.buildConfig.isHttp3Used) {
             builtInLibraryManager.addLibrary(BuiltInLibraries.OKHTTP_ANDROID);
+        }
+
+        for (ComposeBuiltInLibraries.ComposeArtifact artifact : getSelectedComposeArtifacts()) {
+            // Validation is intentionally lightweight; the bundle contains all transitive artifacts.
+            if (!ComposeBuiltInLibraries.getLibraryClassesJarPath(artifact.id).exists()) {
+                throw new IllegalStateException("Missing built-in Compose artifact: " + artifact.id);
+            }
         }
 
         KotlinCompilerBridge.maybeAddKotlinBuiltInLibraryDependenciesIfPossible(this, builtInLibraryManager);
@@ -1263,6 +1301,13 @@ public class ProjectBuilder {
     private void proguardAddLibConfigs(List<String> args) {
         for (BuiltInLibrary library : builtInLibraryManager.getLibraries()) {
             File config = BuiltInLibraries.getLibraryProguardConfiguration(library.getName());
+            if (config.exists()) {
+                args.add("-include");
+                args.add(config.getAbsolutePath());
+            }
+        }
+        for (ComposeBuiltInLibraries.ComposeArtifact artifact : getSelectedComposeArtifacts()) {
+            File config = ComposeBuiltInLibraries.getLibraryProguardConfiguration(artifact.id);
             if (config.exists()) {
                 args.add("-include");
                 args.add(config.getAbsolutePath());

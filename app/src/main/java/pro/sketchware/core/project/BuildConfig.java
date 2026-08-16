@@ -195,6 +195,12 @@ public class BuildConfig {
      */
     public boolean isHttp3Used = false;
 
+    /** True when the project has Jetpack Compose enabled. */
+    public boolean isComposeEnabled = false;
+
+    /** Optional Compose feature IDs selected by the user. */
+    public ArrayList<String> composeOptionalFeatures = new ArrayList<>();
+
     /**
      * If at least 1 TextToSpeech Component ({@link pro.sketchware.beans.ComponentBean#COMPONENT_TYPE_TEXT_TO_SPEECH})
      * is used in the project.
