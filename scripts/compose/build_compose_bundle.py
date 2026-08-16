@@ -108,6 +108,11 @@ def main():
         for root in feature["roots"]:
             dependency_lines.append(f"dependencies.add('{config_name}', '{root}')")
 
+    result_lines = [
+        f"result['{fid}'] = configurations.getByName('{cname}').resolvedConfiguration.resolvedArtifacts.collect {{ a -> [file: a.file.absolutePath, module: a.moduleVersion.id.group + ':' + a.moduleVersion.id.name + ':' + a.moduleVersion.id.version] }}"
+        for fid, cname in configurations
+    ]
+
     groovy = f"""
 // No repositories{{}} block here: this repo's settings.gradle sets
 // dependencyResolutionManagement.repositoriesMode = FAIL_ON_PROJECT_REPOS,
@@ -119,7 +124,7 @@ def main():
 tasks.register('dumpComposeArtifacts') {{
     doLast {{
         def result = [:]
-        {chr(10).join([f"result['{fid}'] = configurations.getByName('{cname}').resolvedConfiguration.resolvedArtifacts.collect {{ a -> [file: a.file.absolutePath, module: a.moduleVersion.id.group[...]
+        {chr(10).join(result_lines)}
         file('{output.as_posix()}').text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(result))
     }}
 }}
