@@ -119,13 +119,13 @@ def main():
 tasks.register('dumpComposeArtifacts') {{
     doLast {{
         def result = [:]
-        {chr(10).join([f"result['{fid}'] = configurations.getByName('{cname}').resolvedConfiguration.resolvedArtifacts.collect {{ a -> [file: a.file.absolutePath, module: a.moduleVersion.id.group + ':' + a.name + ':' + a.moduleVersion.id.version] }}" for fid, cname in configurations])}
+        {chr(10).join([f"result['{fid}'] = configurations.getByName('{cname}').resolvedConfiguration.resolvedArtifacts.collect {{ a -> [file: a.file.absolutePath, module: a.moduleVersion.id.group[...]
         file('{output.as_posix()}').text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(result))
     }}
 }}
 """
     temp.write_text(groovy, encoding="utf-8")
-    run("./gradlew", "-q", "-b", temp, "dumpComposeArtifacts")
+    run("./gradlew", "-q", "--no-settings", "-b", temp, "dumpComposeArtifacts")
 
     resolved = json.loads(output.read_text(encoding="utf-8"))
     required_files = set()
