@@ -9,7 +9,6 @@ import com.google.gson.JsonParser;
 
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -19,20 +18,14 @@ import java.util.Set;
 
 import pro.sketchware.SketchApplication;
 
-/**
- * Resolves feature -> artifact ids from the selected JSON. The current package
- * schema calls these entries "roots", while newer packages may call them
- * "artifacts". No artifact filenames are embedded here.
- */
+/** Resolves feature roots from the selected Compose JSON without hard-coded artifact filenames. */
 final class ComposeDependencyFeatureResolver {
     private ComposeDependencyFeatureResolver() {}
 
     static List<ComposeBuiltInLibraries.ComposeArtifact> select(
             ComposeBuiltInLibraries.ComposeManifest manifest,
             List<String> optionalFeatureIds) {
-        if (manifest == null || manifest.artifacts == null || manifest.artifacts.isEmpty()) {
-            return Collections.emptyList();
-        }
+        if (manifest == null || manifest.artifacts == null || manifest.artifacts.isEmpty()) return Collections.emptyList();
 
         Set<String> ids = readFeatureArtifactIds(optionalFeatureIds);
         if (ids.isEmpty()) {
@@ -65,7 +58,7 @@ final class ComposeDependencyFeatureResolver {
             JsonElement root = JsonParser.parseString(new String(bytes, 0, offset, java.nio.charset.StandardCharsets.UTF_8));
             if (!root.isJsonObject()) return selected;
             JsonElement featureElement = root.getAsJsonObject().get("features");
-            if (!featureElement.isJsonArray()) return selected;
+            if (featureElement == null || !featureElement.isJsonArray()) return selected;
 
             Set<String> optional = optionalFeatureIds == null
                     ? Collections.emptySet()
