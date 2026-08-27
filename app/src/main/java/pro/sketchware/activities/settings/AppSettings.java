@@ -1,6 +1,7 @@
 package pro.sketchware.activities.settings;
 
 import pro.sketchware.activities.editor.block.BlocksManager;
+import pro.sketchware.activities.editor.manage.library.compose.ComposeLibraryActivity;
 
 import static pro.sketchware.activities.editor.view.ViewEditor.shakeView;
 
@@ -161,8 +162,7 @@ public class AppSettings extends BaseAppCompatActivity {
                                             .setMessage(String.format(Helper.getResString(R.string.app_settings_delete_confirm_msg), Helper.getResString(R.string.common_word_file)))
                                             .setPositiveButton(R.string.common_word_delete, (deleteDialog, pressedButton) ->
                                                     FileUtil.deleteFile(files.get(0).getAbsolutePath()))
-                                            .setNegativeButton(R.string.common_word_cancel, null)
-                                            .show();
+                                            .setNegativeButton(R.string.common_word_cancel),
                                 }
                                 actionDialog.dismiss();
                             })
