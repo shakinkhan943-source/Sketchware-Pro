@@ -38,7 +38,7 @@ public final class ComposeBuiltInLibraries {
     }
 
     public static List<ComposeArtifact> getSelectedArtifacts(List<String> optionalFeatureIds) {
-        return ComposeDependencyManager.getSelectedArtifacts(optionalFeatureIds);
+        return ComposeDependencyFeatureResolver.select(getManifest(), optionalFeatureIds);
     }
 
     public static File getLibraryClassesJarPath(String artifactId) {
