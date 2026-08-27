@@ -162,7 +162,8 @@ public class AppSettings extends BaseAppCompatActivity {
                                             .setMessage(String.format(Helper.getResString(R.string.app_settings_delete_confirm_msg), Helper.getResString(R.string.common_word_file)))
                                             .setPositiveButton(R.string.common_word_delete, (deleteDialog, pressedButton) ->
                                                     FileUtil.deleteFile(files.get(0).getAbsolutePath()))
-                                            .setNegativeButton(R.string.common_word_cancel),
+                                            .setNegativeButton(R.string.common_word_cancel, null)
+                                            .show();
                                 }
                                 actionDialog.dismiss();
                             })
