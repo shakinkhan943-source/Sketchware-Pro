@@ -81,6 +81,7 @@ public class AppSettings extends BaseAppCompatActivity {
         managersCategory.addLibraryItem(createPreference(R.drawable.ic_mtrl_list, Helper.getResString(R.string.app_settings_event_manager), Helper.getResString(R.string.app_settings_event_manager_desc), openSettingsActivity(SettingsActivity.EVENTS_MANAGER_FRAGMENT)), true);
         managersCategory.addLibraryItem(createPreference(R.drawable.ic_mtrl_box, Helper.getResString(R.string.app_settings_local_library_manager), Helper.getResString(R.string.app_settings_local_library_manager_desc), new ActivityLauncher(new Intent(getApplicationContext(), ManageLocalLibraryActivity.class), new Pair<>("sc_id", "system"))), true);
         managersCategory.addLibraryItem(createPreference(R.drawable.ic_mtrl_article, Helper.getResString(R.string.design_drawer_menu_title_logcat_reader), Helper.getResString(R.string.design_drawer_menu_subtitle_logcat_reader), new ActivityLauncher(new Intent(getApplicationContext(), LogReaderActivity.class))), false);
+        managersCategory.addLibraryItem(createPreference(R.drawable.ic_mtrl_article, "Jetpack Compose Dependencies", "Select the Compose dependency ZIP and JSON package used by the Compose build pipeline.", new ActivityLauncher(new Intent(getApplicationContext(), ComposeLibraryActivity.class))), true);
 
         LibraryCategoryView generalCategory = new LibraryCategoryView(this);
         generalCategory.setTitle(Helper.getResString(R.string.app_settings_category_general));
