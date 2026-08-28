@@ -148,9 +148,16 @@ public final class ComposeDependencyManager {
             }
         }
         if (!hash.equals(cachedHash) || cachedManifest == null) {
-            cachedManifest = readManifest(json, extraction, hash);
-            cachedHash = hash;
-        }
+    try {
+        cachedManifest = readManifest(json, extraction, hash);
+        cachedHash = hash;
+    } catch (IOException e) {
+        cachedManifest = null;
+        cachedHash = null;
+        throw new IllegalStateException(
+                "Failed to read Jetpack Compose dependency manifest: " + e.getMessage(), e);
+    }
+            }
         validateManifestFiles(cachedManifest);
     }
 
