@@ -220,6 +220,11 @@ public class AddViewActivity extends BaseAppCompatActivity {
         binding.viewTypeSelector.addOnButtonCheckedListener((group, checkedId, isChecked) -> {
             if (isChecked) {
                 setManifestViewState(checkedId == R.id.select_activity);
+                boolean isActivity = checkedId == R.id.select_activity;
+                try {
+                    binding.languageSelectorLayout.setVisibility(isActivity ? View.VISIBLE : View.GONE);
+                } catch (Exception e) {
+                }
             }
         });
 
@@ -261,6 +266,15 @@ public class AddViewActivity extends BaseAppCompatActivity {
             options = options | ProjectFileBean.OPTION_ACTIVITY_DRAWER;
         }
         projectFileBean.options = options;
+        // Update language if selector is available
+        try {
+            int langIndex = getSelectedButtonIndex(binding.languageSelector);
+            if (langIndex != -1) {
+                projectFileBean.language = langIndex == 1 ? ProjectFileBean.LANGUAGE_KOTLIN : ProjectFileBean.LANGUAGE_JAVA;
+            }
+        } catch (Exception e) {
+            // binding may not have languageSelector in old layout, ignore
+        }
         Intent intent = new Intent();
         intent.putExtra("project_file", projectFileBean);
         setResult(RESULT_OK, intent);
@@ -270,7 +284,16 @@ public class AddViewActivity extends BaseAppCompatActivity {
 
     private void handleCreateFile() {
         String fileName = Helper.getText(binding.edName) + getSuffix(binding.viewTypeSelector);
-        ProjectFileBean projectFileBean = new ProjectFileBean(ProjectFileBean.PROJECT_FILE_TYPE_ACTIVITY, fileName, getSelectedButtonIndex(binding.screenOrientationSelector), getSelectedButtonIndex(binding.keyboardSettingsSelector), featureToolbar, !featureStatusBar, featureFab, featureDrawer);
+        int selectedLang = ProjectFileBean.LANGUAGE_JAVA;
+        try {
+            int langIndex = getSelectedButtonIndex(binding.languageSelector);
+            if (langIndex == 1) {
+                selectedLang = ProjectFileBean.LANGUAGE_KOTLIN;
+            }
+        } catch (Exception e) {
+            // ignore
+        }
+        ProjectFileBean projectFileBean = new ProjectFileBean(ProjectFileBean.PROJECT_FILE_TYPE_ACTIVITY, fileName, getSelectedButtonIndex(binding.screenOrientationSelector), getSelectedButtonIndex(binding.keyboardSettingsSelector), featureToolbar, !featureStatusBar, featureFab, featureDrawer, selectedLang);
         Intent intent = new Intent();
         intent.putExtra("project_file", projectFileBean);
         if (presetName != null) {
@@ -291,6 +314,21 @@ public class AddViewActivity extends BaseAppCompatActivity {
         if (projectFileBean.fileName.endsWith("_fragment")) {
             binding.viewOrientationSelectorLayout.setVisibility(View.GONE);
             binding.viewKeyboardSettingsSelectorLayout.setVisibility(View.GONE);
+            try {
+                binding.languageSelectorLayout.setVisibility(View.GONE);
+            } catch (Exception e) {
+            }
+        } else {
+            try {
+                // Set language selection based on existing bean
+                int lang = projectFileBean.language;
+                if (lang == ProjectFileBean.LANGUAGE_KOTLIN) {
+                    binding.languageSelector.check(R.id.select_kotlin);
+                } else {
+                    binding.languageSelector.check(R.id.select_java);
+                }
+            } catch (Exception e) {
+            }
         }
         binding.screenOrientationSelector.check(binding.screenOrientationSelector.getChildAt(projectFileBean.orientation).getId());
         binding.keyboardSettingsSelector.check(binding.keyboardSettingsSelector.getChildAt(projectFileBean.keyboardSetting).getId());
@@ -306,6 +344,10 @@ public class AddViewActivity extends BaseAppCompatActivity {
         featureToolbar = true;
         featureStatusBar = true;
         nameValidator = new ActivityNameValidator(getApplicationContext(), binding.tiName, BlockConstants.RESERVED_KEYWORDS, screenNames);
+        try {
+            binding.languageSelector.check(R.id.select_java);
+        } catch (Exception e) {
+        }
     }
 
 

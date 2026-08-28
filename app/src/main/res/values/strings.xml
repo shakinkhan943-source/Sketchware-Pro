@@ -1856,6 +1856,9 @@ ex)\"*/*\", \"image/*\", \"audio/*\", \"text/*\""</string>
     <string name="create_view_screen_orientation">Screen orientation</string>
     <string name="create_view_title">Create view</string>
     <string name="create_view_type">Type</string>
+    <string name="create_view_language">Language</string>
+    <string name="common_word_java">Java</string>
+    <string name="common_word_kotlin">Kotlin</string>
     <string name="create_view_unspecified">Unspecified</string>
     <string name="create_view_visible">Visible</string>
     <string name="custom_activity_hint_name">Activity name</string>
@@ -2114,6 +2117,15 @@ Choosing a theme mode lets you personalize the app\'s appearance, notes:\n
     <string name="design_run_title_ready_to_build">Getting ready to build</string>
     <string name="design_tab_title_component">Component</string>
     <string name="design_tab_title_java">Java</string>
+    <string name="design_tab_title_kotlin">Kotlin</string>
+    <string name="design_tab_title_ui">UI</string>
+    <string name="design_tab_title_tools">Tools</string>
+    <string name="design_tools_title">Tools</string>
+    <string name="design_tools_events">Events</string>
+    <string name="design_tools_components">Components</string>
+    <string name="design_tools_undo">Undo</string>
+    <string name="design_tools_redo">Redo</string>
+    <string name="design_tab_ui_disabled">UI disabled for Kotlin/Compose</string>
     <string name="java_editor_action_sync">Sync</string>
     <string name="java_editor_action_reload">Reload from blocks</string>
     <string name="java_editor_action_keep_java">Keep my Java code</string>

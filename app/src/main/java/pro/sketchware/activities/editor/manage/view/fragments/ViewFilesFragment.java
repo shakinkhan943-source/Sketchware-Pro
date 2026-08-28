@@ -102,6 +102,7 @@ public class ViewFilesFragment extends BaseFragment {
         newProjectFile.keyboardSetting = projectFileBean.keyboardSetting;
         newProjectFile.orientation = projectFileBean.orientation;
         newProjectFile.options = projectFileBean.options;
+        newProjectFile.language = projectFileBean.language;
 
         String drawerName = ProjectFileBean.getDrawerName(newProjectFile.fileName);
         if (projectFileBean.hasActivityOption(ProjectFileBean.OPTION_ACTIVITY_DRAWER)) {
@@ -294,7 +295,14 @@ public class ViewFilesFragment extends BaseFragment {
 
             viewHolder.binding.imgActivity.setImageResource(getImageResByOptions(projectFileBean.options));
             viewHolder.binding.tvScreenName.setText(projectFileBean.getXmlName());
-            viewHolder.binding.tvActivityName.setText(projectFileBean.getJavaName());
+            // Language-aware: show Kotlin or Java file name
+            String sourceName = projectFileBean.isKotlin() ? projectFileBean.getSourceFileName() : projectFileBean.getJavaName();
+            // Optionally append language label for clarity
+            if (projectFileBean.isKotlin()) {
+                viewHolder.binding.tvActivityName.setText(sourceName + " (Kotlin)");
+            } else {
+                viewHolder.binding.tvActivityName.setText(sourceName);
+            }
         }
 
         @Override

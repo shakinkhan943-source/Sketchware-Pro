@@ -385,6 +385,14 @@ public class ViewEditorFragment extends BaseFragment implements MenuProvider {
         return isPropertyViewVisible;
     }
 
+    public void performRedo() {
+        onRedo();
+    }
+
+    public void performUndo() {
+        onUndo();
+    }
+
     private void onRedo() {
         if (!isDragging) {
             HistoryViewBean historyViewBean = ViewHistoryManager.getInstance(sc_id).redo(projectFileBean.getXmlName());
