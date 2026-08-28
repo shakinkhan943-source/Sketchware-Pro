@@ -6,6 +6,7 @@ import pro.sketchware.beans.BlockBean;
 import java.nio.CharBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -16,6 +17,7 @@ import pro.sketchware.core.codegen.BlockLoader;
 import pro.sketchware.core.build.ViewBindingBuilder;
 import pro.sketchware.core.project.BuildConfig;
 import pro.sketchware.core.project.ClassInfo;
+import pro.sketchware.core.sync.CodeOwnershipRecorder;
 
 /**
  * Converts a chain of {@link BlockBean}s into executable Java source code.
@@ -57,6 +59,12 @@ public class BlockInterpreter {
     public BuildConfig buildConfig;
     public ArrayList<BlockBean> eventBlocks;
     public Map<String, BlockBean> blockMap;
+    /**
+     * Block entry key this interpreter is generating code for, used by the Java editor's
+     * synchronization layer to remember which block produced which lines. {@code null} disables
+     * ownership tracking (the default for every existing caller).
+     */
+    private String syncOwnerKey;
     private final boolean isActivity;
 
     public BlockInterpreter(String activityName, BuildConfig buildConfig, ArrayList<BlockBean> eventBlocks, boolean isViewBindingEnabled) {
@@ -90,10 +98,52 @@ public class BlockInterpreter {
                 blockMap.put(bean.id, bean);
             }
 
+            CodeOwnershipRecorder recorder = CodeOwnershipRecorder.active();
+            if (recorder != null && syncOwnerKey != null) {
+                return interpretBlocksWithOwnership(recorder);
+            }
             return generateBlock(eventBlocks.get(0), "");
         } else {
             return "";
         }
+    }
+
+    /**
+     * Same as {@link #interpretBlocks()}, but remembers which block entry the generated code
+     * belongs to. When the Java editor's synchronization layer is active
+     * ({@link CodeOwnershipRecorder}) the generated code is annotated with ownership markers, which
+     * lets the editor map every line back to its block. During a normal build no recorder is active
+     * and this behaves exactly like {@link #interpretBlocks()}.
+     *
+     * @param ownerKey the block entry key, e.g. {@code "button1_onClick"} or
+     *                 {@code "myMoreBlock_moreBlock"}
+     */
+    public String interpretBlocks(String ownerKey) {
+        syncOwnerKey = ownerKey;
+        return interpretBlocks();
+    }
+
+    /**
+     * Walks the top level chain of the event and wraps the code of every statement into ownership
+     * markers. Sub stacks and parameters stay part of their owning statement.
+     */
+    private String interpretBlocksWithOwnership(CodeOwnershipRecorder recorder) {
+        StringBuilder sb = new StringBuilder();
+        BlockBean current = eventBlocks.get(0);
+        Set<String> visited = new HashSet<>();
+        while (current != null && visited.add(current.id)) {
+            if (!current.disabled) {
+                String code = generateSingleBlock(current, "");
+                if (code != null && !code.trim().isEmpty()) {
+                    if (sb.length() > 0) {
+                        sb.append("\r\n");
+                    }
+                    sb.append(recorder.wrap(syncOwnerKey, current.id, current.opCode, code));
+                }
+            }
+            current = current.nextBlock >= 0 ? blockMap.get(String.valueOf(current.nextBlock)) : null;
+        }
+        return sb.toString();
     }
 
     /**
@@ -112,21 +162,28 @@ public class BlockInterpreter {
             return "";
         }
 
-        ArrayList<String> params = getBlockParams(bean);
-
-        String opcode = getBlockCode(bean, params);
-
-        String code = opcode;
-
-        if (needsParentheses(bean.opCode, parentOpcode)) {
-            code = "(" + opcode + ")";
-        }
+        String code = generateSingleBlock(bean, parentOpcode);
 
         if (bean.nextBlock >= 0) {
             code += (code.isEmpty() ? "" : "\r\n") + resolveBlock(String.valueOf(bean.nextBlock), moreBlock);
         }
 
         return code;
+    }
+
+    /**
+     * Generates the code of a single block (including its parameters and sub stacks) without
+     * following its {@code nextBlock} chain.
+     */
+    public final String generateSingleBlock(BlockBean bean, String parentOpcode) {
+        ArrayList<String> params = getBlockParams(bean);
+
+        String opcode = getBlockCode(bean, params);
+
+        if (needsParentheses(bean.opCode, parentOpcode)) {
+            return "(" + opcode + ")";
+        }
+        return opcode;
     }
 
     private boolean hasEmptySelectorParam(ArrayList<String> params, String spec) {

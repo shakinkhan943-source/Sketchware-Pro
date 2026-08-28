@@ -142,9 +142,10 @@ public class EventCodeGenerator {
 
     private void processEvents(ArrayList<EventBean> events, HashMap<String, ArrayList<BlockBean>> logicBlocks) {
         for (EventBean eventBean : events) {
-            ArrayList<BlockBean> eventLogicBlocks = logicBlocks.get(eventBean.targetId + "_" + eventBean.eventName);
+            String eventKey = eventBean.targetId + "_" + eventBean.eventName;
+            ArrayList<BlockBean> eventLogicBlocks = logicBlocks.get(eventKey);
             String eventLogic = (eventLogicBlocks == null || eventLogicBlocks.isEmpty()) ? "" :
-                    new BlockInterpreter(projectFileBean.getActivityName(), buildConfig, eventLogicBlocks, isViewBindingEnabled, projectFileBean.getXmlName()).interpretBlocks();
+                    new BlockInterpreter(projectFileBean.getActivityName(), buildConfig, eventLogicBlocks, isViewBindingEnabled, projectFileBean.getXmlName()).interpretBlocks(eventKey);
 
             switch (eventBean.eventType) {
                 case EventBean.EVENT_TYPE_VIEW:

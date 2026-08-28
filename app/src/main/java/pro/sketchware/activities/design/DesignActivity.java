@@ -95,6 +95,7 @@ import pro.sketchware.core.project.ProjectListManager;
 import pro.sketchware.core.async.TaskHost;
 import pro.sketchware.util.UIHelper;
 import pro.sketchware.activities.design.fragments.EventListFragment;
+import pro.sketchware.activities.design.fragments.JavaEditorFragment;
 import pro.sketchware.core.project.SketchwarePaths;
 import pro.sketchware.util.MapValueHelper;
 import pro.sketchware.core.build.ProjectFilePaths;
@@ -175,6 +176,7 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
     });
     private EventListFragment eventTabAdapter;
     private ComponentListFragment componentTabAdapter;
+    private JavaEditorFragment javaTabAdapter;
     private final ActivityResultLauncher<Intent> openImageManager = registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
         if (result.getResultCode() == RESULT_OK) {
             refresh();
@@ -301,6 +303,12 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
         }
     }
 
+    private void refreshJavaTabAdapter() {
+        if (javaTabAdapter != null && projectFile != null) {
+            javaTabAdapter.setProjectFile(projectFile);
+        }
+    }
+
     private void refresh() {
         refreshFileSelector();
         if (viewPager.getCurrentItem() == 0) {
@@ -308,6 +316,7 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
         } else {
             refreshEventTabAdapter();
             refreshComponentTabAdapter();
+            refreshJavaTabAdapter();
         }
     }
 
@@ -557,7 +566,7 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
         xmlLayoutOrientation = findViewById(R.id.img_orientation);
         viewPager = findViewById(R.id.viewpager);
         viewPager.setAdapter(new ViewPagerAdapter(getSupportFragmentManager()));
-        viewPager.setOffscreenPageLimit(3);
+        viewPager.setOffscreenPageLimit(4);
         viewPager.addOnPageChangeListener(new ViewPager.OnPageChangeListener() {
 
             @Override
@@ -598,7 +607,7 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
                             eventTabAdapter.refreshEvents();
                         }
                     }
-                } else {
+                } else if (position == 2) {
                     bottomMenu.findItem(7).setVisible(false);
                     bottomMenu.findItem(8).setVisible(false);
                     if (viewTabAdapter != null) {
@@ -607,6 +616,13 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
                         if (componentTabAdapter != null) {
                             componentTabAdapter.refreshData();
                         }
+                    }
+                } else {
+                    bottomMenu.findItem(7).setVisible(false);
+                    bottomMenu.findItem(8).setVisible(false);
+                    if (viewTabAdapter != null) {
+                        xmlLayoutOrientation.setImageResource(R.drawable.ic_mtrl_code);
+                        viewTabAdapter.showHidePropertyView(false);
                     }
                 }
                 currentTabNumber = position;
@@ -618,6 +634,11 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
                 } else {
                     refreshEventTabAdapter();
                     refreshComponentTabAdapter();
+                    refreshJavaTabAdapter();
+                    if (position == 3 && javaTabAdapter != null) {
+                        // Blocks → Java: always show what the blocks currently generate.
+                        javaTabAdapter.refresh();
+                    }
                 }
                 invalidateOptionsMenu();
             }
@@ -890,6 +911,7 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
             refreshFileSelector();
             refreshEventTabAdapter();
             refreshComponentTabAdapter();
+            refreshJavaTabAdapter();
             dialog.dismiss();
         });
         recyclerView.setAdapter(adapter);
@@ -1737,12 +1759,13 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
             labels = new String[]{
                     Helper.getResString(R.string.design_tab_title_view),
                     Helper.getResString(R.string.design_tab_title_event),
-                    Helper.getResString(R.string.design_tab_title_component)};
+                    Helper.getResString(R.string.design_tab_title_component),
+                    Helper.getResString(R.string.design_tab_title_java)};
         }
 
         @Override
         public int getCount() {
-            return 3;
+            return 4;
         }
 
         @Override
@@ -1758,8 +1781,13 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
                 viewTabAdapter = (ViewEditorFragment) fragment;
             } else if (position == 1) {
                 eventTabAdapter = (EventListFragment) fragment;
-            } else {
+            } else if (position == 2) {
                 componentTabAdapter = (ComponentListFragment) fragment;
+            } else {
+                javaTabAdapter = (JavaEditorFragment) fragment;
+                if (projectFile != null) {
+                    javaTabAdapter.setProjectFile(projectFile);
+                }
             }
 
             return fragment;
@@ -1768,11 +1796,12 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
         @Override
         @NonNull
         public Fragment getItem(int position) {
-            if (position == 0) {
-                return new ViewEditorFragment();
-            } else {
-                return position == 1 ? new EventListFragment() : new ComponentListFragment();
-            }
+            return switch (position) {
+                case 0 -> new ViewEditorFragment();
+                case 1 -> new EventListFragment();
+                case 2 -> new ComponentListFragment();
+                default -> new JavaEditorFragment();
+            };
         }
     }
 

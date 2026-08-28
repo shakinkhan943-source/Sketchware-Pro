@@ -133,12 +133,12 @@ public class ActivityCodeGenerator {
 
     public String activityResult() {
         ArrayList<BlockBean> blocks = ProjectDataManager.getProjectDataManager(projectDataManager.projectId).getBlocks(projectFileBean.getJavaName(), "onActivityResult_onActivityResult");
-        return ComponentCodeGenerator.formatCode(new BlockInterpreter(projectFileBean.getActivityName(), buildConfig, blocks, isViewBindingEnabled, projectFileBean.getXmlName()).interpretBlocks(), false);
+        return ComponentCodeGenerator.formatCode(new BlockInterpreter(projectFileBean.getActivityName(), buildConfig, blocks, isViewBindingEnabled, projectFileBean.getXmlName()).interpretBlocks("onActivityResult_onActivityResult"), false);
     }
 
     public String initializeLogic() {
         ArrayList<BlockBean> blocks = ProjectDataManager.getProjectDataManager(projectDataManager.projectId).getBlocks(projectFileBean.getJavaName(), "initializeLogic_initializeLogic");
-        return ComponentCodeGenerator.formatCode(new BlockInterpreter(projectFileBean.getActivityName(), buildConfig, blocks, isViewBindingEnabled, projectFileBean.getXmlName()).interpretBlocks(), false);
+        return ComponentCodeGenerator.formatCode(new BlockInterpreter(projectFileBean.getActivityName(), buildConfig, blocks, isViewBindingEnabled, projectFileBean.getXmlName()).interpretBlocks("initializeLogic_initializeLogic"), false);
     }
 
     private void extraVariables() {
@@ -901,7 +901,7 @@ public class ActivityCodeGenerator {
         addImport("java.util.regex.*");
         addImport("java.text.*");
         addImport("org.json.*");
-        onCreateEventCode = new BlockInterpreter(projectFileBean.getActivityName(), buildConfig, projectDataManager.getBlocks(projectFileBean.getJavaName(), "onCreate_initializeLogic"), isViewBindingEnabled, projectFileBean.getXmlName()).interpretBlocks();
+        onCreateEventCode = new BlockInterpreter(projectFileBean.getActivityName(), buildConfig, projectDataManager.getBlocks(projectFileBean.getJavaName(), "onCreate_initializeLogic"), isViewBindingEnabled, projectFileBean.getXmlName()).interpretBlocks("onCreate_initializeLogic");
     }
 
     private String getDrawerViewInitializer(ViewBean viewBean) {
@@ -917,7 +917,7 @@ public class ActivityCodeGenerator {
             String xmlName = ProjectFileBean.getXmlName(viewBean.customView);
             projectFileBean.getJavaName();
             String eventName = viewBean.id + "_onBindCustomView";
-            String adapterLogic = new BlockInterpreter(projectFileBean.getActivityName(), buildConfig, projectDataManager.getBlocks(projectFileBean.getJavaName(), eventName), isViewBindingEnabled, projectFileBean.getXmlName()).interpretBlocks();
+            String adapterLogic = new BlockInterpreter(projectFileBean.getActivityName(), buildConfig, projectDataManager.getBlocks(projectFileBean.getJavaName(), eventName), isViewBindingEnabled, projectFileBean.getXmlName()).interpretBlocks(eventName);
             String adapterCode;
             if (viewBean.type == ViewBeans.VIEW_TYPE_LAYOUT_VIEWPAGER) {
                 adapterCode = ComponentCodeGenerator.pagerAdapter(codeContext, layoutGenerator, viewBean.id, viewBean.customView, projectDataManager.getViews(xmlName), adapterLogic, isViewBindingEnabled);
@@ -949,7 +949,7 @@ public class ActivityCodeGenerator {
         for (int index = 0, pairsSize = pairs.size(); index < pairsSize; index++) {
             Pair<String, String> next = pairs.get(index);
             String name = next.first + "_moreBlock";
-            String code = ComponentCodeGenerator.getMoreBlockCode(next.first, next.second, new BlockInterpreter(projectFileBean.getActivityName(), buildConfig, projectDataManager.getBlocks(javaName, name), isViewBindingEnabled, projectFileBean.getXmlName()).interpretBlocks());
+            String code = ComponentCodeGenerator.getMoreBlockCode(next.first, next.second, new BlockInterpreter(projectFileBean.getActivityName(), buildConfig, projectDataManager.getBlocks(javaName, name), isViewBindingEnabled, projectFileBean.getXmlName()).interpretBlocks(name));
             if (index < (pairsSize - 1)) {
                 moreBlocks.add(code);
             } else {
