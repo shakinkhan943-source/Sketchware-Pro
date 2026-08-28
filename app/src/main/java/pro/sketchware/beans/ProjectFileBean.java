@@ -73,6 +73,10 @@ public class ProjectFileBean extends SelectableBean implements Parcelable {
     public static final int THEME_FULLSCREEN = 2;
     public static final int THEME_NOACTIONBAR = 1;
     public static final int THEME_NONE = -1;
+
+    public static final int LANGUAGE_JAVA = 0;
+    public static final int LANGUAGE_KOTLIN = 1;
+
     @Expose
     public String fileName;
     @Expose
@@ -88,6 +92,8 @@ public class ProjectFileBean extends SelectableBean implements Parcelable {
     @Expose
     @Deprecated
     public int theme = THEME_NONE;
+    @Expose
+    public int language = LANGUAGE_JAVA;
 
     public ProjectFileBean(int fileType, String filename) {
         this.fileType = fileType;
@@ -105,6 +111,7 @@ public class ProjectFileBean extends SelectableBean implements Parcelable {
         }
         keyboardSetting = THEME_DEFAULT;
         theme = THEME_NONE;
+        language = LANGUAGE_JAVA;
     }
 
     public ProjectFileBean(int fileType, String filename, int orientation, int keyboardSetting, @ActivityOption int options) {
@@ -115,6 +122,7 @@ public class ProjectFileBean extends SelectableBean implements Parcelable {
         this.options = options;
         presetName = "Basic Activity";
         theme = THEME_NONE;
+        language = LANGUAGE_JAVA;
     }
 
     public ProjectFileBean(int fileType, String filename, int orientation, int keyboardSetting, boolean noActionBar, boolean fullscreen, boolean hasFab, boolean hasDrawer) {
@@ -124,6 +132,29 @@ public class ProjectFileBean extends SelectableBean implements Parcelable {
         this.keyboardSetting = keyboardSetting;
         presetName = "Basic Activity";
         theme = THEME_NONE;
+        language = LANGUAGE_JAVA;
+        if (noActionBar) {
+            options |= OPTION_ACTIVITY_TOOLBAR;
+        }
+        if (fullscreen) {
+            options |= OPTION_ACTIVITY_FULLSCREEN;
+        }
+        if (hasFab) {
+            options |= OPTION_ACTIVITY_FAB;
+        }
+        if (hasDrawer) {
+            options |= OPTION_ACTIVITY_DRAWER;
+        }
+    }
+
+    public ProjectFileBean(int fileType, String filename, int orientation, int keyboardSetting, boolean noActionBar, boolean fullscreen, boolean hasFab, boolean hasDrawer, int language) {
+        this.fileType = fileType;
+        fileName = filename;
+        this.orientation = orientation;
+        this.keyboardSetting = keyboardSetting;
+        presetName = "Basic Activity";
+        theme = THEME_NONE;
+        this.language = language;
         if (noActionBar) {
             options |= OPTION_ACTIVITY_TOOLBAR;
         }
@@ -150,6 +181,7 @@ public class ProjectFileBean extends SelectableBean implements Parcelable {
         }
         keyboardSetting = THEME_DEFAULT;
         theme = THEME_NONE;
+        language = LANGUAGE_JAVA;
     }
 
     public ProjectFileBean(int fileType, String filename, String presetName, int orientation, int keyboardSetting, boolean noActionBar, boolean fullscreen, boolean hasFab, boolean hasDrawer) {
@@ -159,6 +191,29 @@ public class ProjectFileBean extends SelectableBean implements Parcelable {
         this.keyboardSetting = keyboardSetting;
         this.presetName = presetName;
         theme = THEME_NONE;
+        language = LANGUAGE_JAVA;
+        if (noActionBar) {
+            options |= OPTION_ACTIVITY_TOOLBAR;
+        }
+        if (fullscreen) {
+            options |= OPTION_ACTIVITY_FULLSCREEN;
+        }
+        if (hasFab) {
+            options |= OPTION_ACTIVITY_FAB;
+        }
+        if (hasDrawer) {
+            options |= OPTION_ACTIVITY_DRAWER;
+        }
+    }
+
+    public ProjectFileBean(int fileType, String filename, String presetName, int orientation, int keyboardSetting, boolean noActionBar, boolean fullscreen, boolean hasFab, boolean hasDrawer, int language) {
+        this.fileType = fileType;
+        fileName = filename;
+        this.orientation = orientation;
+        this.keyboardSetting = keyboardSetting;
+        this.presetName = presetName;
+        theme = THEME_NONE;
+        this.language = language;
         if (noActionBar) {
             options |= OPTION_ACTIVITY_TOOLBAR;
         }
@@ -180,6 +235,12 @@ public class ProjectFileBean extends SelectableBean implements Parcelable {
         keyboardSetting = parcel.readInt();
         options = parcel.readInt();
         presetName = parcel.readString();
+        // language field added later, handle backward compatibility
+        try {
+            language = parcel.readInt();
+        } catch (Exception e) {
+            language = LANGUAGE_JAVA;
+        }
     }
 
     public static String getActivityName(String name) {
@@ -211,8 +272,24 @@ public class ProjectFileBean extends SelectableBean implements Parcelable {
         return getActivityName(filename) + ".java";
     }
 
+    public static String getKotlinName(String filename) {
+        return getActivityName(filename) + ".kt";
+    }
+
     public static String getXmlName(String filename) {
         return filename + ".xml";
+    }
+
+    public String getKotlinName() {
+        return fileType != PROJECT_FILE_TYPE_ACTIVITY ? "" : getKotlinName(fileName);
+    }
+
+    public String getSourceFileName() {
+        return isKotlin() ? getKotlinName() : getJavaName();
+    }
+
+    public String getSourceExtension() {
+        return isKotlin() ? ".kt" : ".java";
     }
 
     public void copy(ProjectFileBean bean) {
@@ -223,6 +300,27 @@ public class ProjectFileBean extends SelectableBean implements Parcelable {
         options = bean.options;
         presetName = bean.presetName;
         theme = THEME_NONE;
+        language = bean.language;
+    }
+
+    public boolean isKotlin() {
+        return language == LANGUAGE_KOTLIN;
+    }
+
+    public boolean isJava() {
+        return language == LANGUAGE_JAVA;
+    }
+
+    public int getLanguage() {
+        return language;
+    }
+
+    public void setLanguage(int language) {
+        this.language = language;
+    }
+
+    public String getLanguageLabel() {
+        return isKotlin() ? "Kotlin" : "Java";
     }
 
     @Override
@@ -290,6 +388,7 @@ public class ProjectFileBean extends SelectableBean implements Parcelable {
         dest.writeInt(keyboardSetting);
         dest.writeInt(options);
         dest.writeString(presetName);
+        dest.writeInt(language);
     }
 
     @IntDef(flag = true,

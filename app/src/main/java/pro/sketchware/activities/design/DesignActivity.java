@@ -152,6 +152,9 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
     private TextView fileName;
     private String currentJavaFileName;
     private ViewEditorFragment viewTabAdapter;
+    private TabLayout tabLayout;
+    private int previousTab = 0;
+    private boolean isToolsTabHandling = false;
     private final ActivityResultLauncher<Intent> openCollectionManager = registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
         if (result.getResultCode() == RESULT_OK) {
             if (viewTabAdapter != null) {
@@ -161,7 +164,7 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
     });
     private final ActivityResultLauncher<Intent> openResourcesManager = registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
         if (result.getResultCode() == RESULT_OK) {
-            if (viewTabAdapter != null && viewPager.getCurrentItem() == 0) {
+            if (viewTabAdapter != null && viewPager.getCurrentItem() == 1) {
                 viewTabAdapter.refreshAllViews();
                 refreshViewTabAdapter();
             }
@@ -249,12 +252,15 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
 
         String javaFileName = projectFile.getJavaName();
         String xmlFileName = projectFile.getXmlName();
+        String sourceFileName = projectFile.isKotlin() ? projectFile.getSourceFileName() : javaFileName;
 
         if (!javaFileName.isEmpty()) {
             currentJavaFileName = javaFileName;
         }
 
-        if (viewPager.getCurrentItem() == 0) {
+        int currentItem = viewPager != null ? viewPager.getCurrentItem() : 0;
+        // Position 1 is UI (XML), others are Java/Kotlin source
+        if (currentItem == 1) {
             if (!ProjectFileBean.DEFAULT_XML_NAME.equals(xmlFileName) && ProjectDataManager.getFileManager(sc_id).getFileByXmlName(xmlFileName) == null) {
                 projectFile = getDefaultProjectFile();
                 xmlFileName = ProjectFileBean.DEFAULT_XML_NAME;
@@ -264,17 +270,88 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
             if (!ProjectFileBean.DEFAULT_JAVA_NAME.equals(currentJavaFileName) && ProjectDataManager.getFileManager(sc_id).getActivityByJavaName(currentJavaFileName) == null) {
                 projectFile = getDefaultProjectFile();
                 currentJavaFileName = ProjectFileBean.DEFAULT_JAVA_NAME;
+                sourceFileName = projectFile.isKotlin() ? projectFile.getSourceFileName() : currentJavaFileName;
             }
-            fileName.setText(currentJavaFileName);
+            fileName.setText(sourceFileName);
         }
         updateFileSelectorIcon();
+        updateTabsForCurrentFile();
+    }
+
+    private String getSourceTabLabel() {
+        if (projectFile != null && projectFile.isKotlin()) {
+            return Helper.getResString(R.string.design_tab_title_kotlin);
+        } else {
+            return Helper.getResString(R.string.design_tab_title_java);
+        }
+    }
+
+    private void updateTabsForCurrentFile() {
+        if (tabLayout == null) return;
+        TabLayout.Tab sourceTab = tabLayout.getTabAt(0);
+        if (sourceTab != null) {
+            sourceTab.setText(getSourceTabLabel());
+        }
+        updateUiTabEnabledState();
+    }
+
+    private void updateUiTabEnabledState() {
+        if (tabLayout == null) return;
+        TabLayout.Tab uiTab = tabLayout.getTabAt(1);
+        if (uiTab != null && uiTab.view != null) {
+            boolean isKotlin = projectFile != null && projectFile.isKotlin();
+            uiTab.view.setEnabled(!isKotlin);
+            uiTab.view.setAlpha(isKotlin ? 0.5f : 1.0f);
+            uiTab.view.setClickable(!isKotlin);
+            // Also disable ViewPager swipe to UI if Kotlin and currently on UI
+            if (isKotlin && viewPager != null && viewPager.getCurrentItem() == 1) {
+                viewPager.setCurrentItem(0, false);
+                currentTabNumber = 0;
+                previousTab = 0;
+                isToolsTabHandling = true;
+                TabLayout.Tab srcTab = tabLayout.getTabAt(0);
+                if (srcTab != null) srcTab.select();
+                isToolsTabHandling = false;
+            }
+        }
+    }
+
+    private void showToolsPopup(View anchor) {
+        if (anchor == null) {
+            anchor = tabLayout != null ? tabLayout : findViewById(R.id.tab_layout);
+            if (anchor == null) anchor = findViewById(R.id.file_name_container);
+        }
+        PopupMenu popup = new PopupMenu(this, anchor);
+        Menu menu = popup.getMenu();
+        menu.add(Menu.NONE, 1, Menu.NONE, Helper.getResString(R.string.design_tools_events));
+        menu.add(Menu.NONE, 2, Menu.NONE, Helper.getResString(R.string.design_tools_components));
+        menu.add(Menu.NONE, 3, Menu.NONE, Helper.getResString(R.string.design_tools_undo));
+        menu.add(Menu.NONE, 4, Menu.NONE, Helper.getResString(R.string.design_tools_redo));
+        popup.setOnMenuItemClickListener(item -> {
+            int id = item.getItemId();
+            if (id == 1) {
+                viewPager.setCurrentItem(2);
+            } else if (id == 2) {
+                viewPager.setCurrentItem(3);
+            } else if (id == 3) {
+                if (viewTabAdapter != null) {
+                    viewTabAdapter.performUndo();
+                }
+            } else if (id == 4) {
+                if (viewTabAdapter != null) {
+                    viewTabAdapter.performRedo();
+                }
+            }
+            return true;
+        });
+        popup.show();
     }
 
     private void updateFileSelectorIcon() {
         if (xmlLayoutOrientation == null || viewPager == null) {
             return;
         }
-        if (viewPager.getCurrentItem() != 0 || projectFile == null) {
+        if (viewPager.getCurrentItem() != 1 || projectFile == null) {
             xmlLayoutOrientation.setImageResource(R.drawable.ic_mtrl_code);
             return;
         }
@@ -311,12 +388,16 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
 
     private void refresh() {
         refreshFileSelector();
-        if (viewPager.getCurrentItem() == 0) {
+        int currentItem = viewPager.getCurrentItem();
+        if (currentItem == 1) {
             refreshViewTabAdapter();
         } else {
             refreshEventTabAdapter();
             refreshComponentTabAdapter();
             refreshJavaTabAdapter();
+            if (currentItem == 0 && javaTabAdapter != null) {
+                javaTabAdapter.refresh();
+            }
         }
     }
 
@@ -447,12 +528,14 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
             public void handleOnBackPressed() {
                 if (drawer.isDrawerOpen(GravityCompat.END)) {
                     drawer.closeDrawer(GravityCompat.END);
-                } else if (viewTabAdapter.isPropertyViewVisible()) {
+                } else if (viewTabAdapter != null && viewTabAdapter.isPropertyViewVisible()) {
                     hideViewPropertyView();
                 } else {
-                    if (currentTabNumber > 0) {
-                        currentTabNumber--;
-                        viewPager.setCurrentItem(currentTabNumber);
+                    // Handle back for Event/Component (2,3) -> go to previous tab, UI (1) -> source (0), source (0) -> exit dialog
+                    if (currentTabNumber == 2 || currentTabNumber == 3) {
+                        viewPager.setCurrentItem(previousTab);
+                    } else if (currentTabNumber == 1) {
+                        viewPager.setCurrentItem(0);
                     } else if (prefP12.getBooleanDefault("P12I2")) {
                         showLoadingDialog();
                         saveChangesAndCloseProject();
@@ -567,6 +650,57 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
         viewPager = findViewById(R.id.viewpager);
         viewPager.setAdapter(new ViewPagerAdapter(getSupportFragmentManager()));
         viewPager.setOffscreenPageLimit(4);
+
+        tabLayout = findViewById(R.id.tab_layout);
+        tabLayout.removeAllTabs();
+        // New tab order: 0 = Source (Java/Kotlin), 1 = UI, 2 = Tools
+        tabLayout.addTab(tabLayout.newTab().setText(Helper.getResString(R.string.design_tab_title_java)));
+        tabLayout.addTab(tabLayout.newTab().setText(Helper.getResString(R.string.design_tab_title_ui)));
+        tabLayout.addTab(tabLayout.newTab().setText(Helper.getResString(R.string.design_tab_title_tools)));
+
+        tabLayout.addOnTabSelectedListener(new TabLayout.OnTabSelectedListener() {
+            @Override
+            public void onTabSelected(TabLayout.Tab tab) {
+                if (isToolsTabHandling) return;
+                int pos = tab.getPosition();
+                if (pos == 2) {
+                    // Tools tab - show popup and revert
+                    View anchor = tab.view != null ? tab.view : tabLayout;
+                    showToolsPopup(anchor);
+                    isToolsTabHandling = true;
+                    TabLayout.Tab prev = tabLayout.getTabAt(previousTab);
+                    if (prev != null) prev.select();
+                    isToolsTabHandling = false;
+                } else if (pos == 1) {
+                    // UI tab - check if disabled for Kotlin
+                    if (projectFile != null && projectFile.isKotlin()) {
+                        SketchwareUtil.toast(Helper.getResString(R.string.design_tab_ui_disabled, "UI disabled for Kotlin/Compose"));
+                        isToolsTabHandling = true;
+                        TabLayout.Tab prev = tabLayout.getTabAt(previousTab);
+                        if (prev != null) prev.select();
+                        isToolsTabHandling = false;
+                    } else {
+                        previousTab = pos;
+                        viewPager.setCurrentItem(1);
+                    }
+                } else {
+                    previousTab = pos;
+                    viewPager.setCurrentItem(0);
+                }
+            }
+
+            @Override
+            public void onTabUnselected(TabLayout.Tab tab) {}
+
+            @Override
+            public void onTabReselected(TabLayout.Tab tab) {
+                if (tab.getPosition() == 2) {
+                    View anchor = tab.view != null ? tab.view : tabLayout;
+                    showToolsPopup(anchor);
+                }
+            }
+        });
+
         viewPager.addOnPageChangeListener(new ViewPager.OnPageChangeListener() {
 
             @Override
@@ -584,38 +718,19 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
 
             @Override
             public void onPageSelected(int position) {
-                if (currentTabNumber == 1) {
+                // position: 0=Source, 1=UI, 2=Event, 3=Component
+                if (currentTabNumber == 2) {
                     if (eventTabAdapter != null) {
                         eventTabAdapter.resetEventValues();
                     }
-                } else if (currentTabNumber == 2 && componentTabAdapter != null) {
+                } else if (currentTabNumber == 3 && componentTabAdapter != null) {
                     componentTabAdapter.unselectAll();
                 }
-                if (position == 0) {
+                if (position == 1) {
                     bottomMenu.findItem(7).setVisible(true);
                     bottomMenu.findItem(8).setVisible(true);
                     if (viewTabAdapter != null) {
                         viewTabAdapter.showHidePropertyView(true);
-                    }
-                } else if (position == 1) {
-                    bottomMenu.findItem(7).setVisible(false);
-                    bottomMenu.findItem(8).setVisible(false);
-                    if (viewTabAdapter != null) {
-                        xmlLayoutOrientation.setImageResource(R.drawable.ic_mtrl_code);
-                        viewTabAdapter.showHidePropertyView(false);
-                        if (eventTabAdapter != null) {
-                            eventTabAdapter.refreshEvents();
-                        }
-                    }
-                } else if (position == 2) {
-                    bottomMenu.findItem(7).setVisible(false);
-                    bottomMenu.findItem(8).setVisible(false);
-                    if (viewTabAdapter != null) {
-                        xmlLayoutOrientation.setImageResource(R.drawable.ic_mtrl_code);
-                        viewTabAdapter.showHidePropertyView(false);
-                        if (componentTabAdapter != null) {
-                            componentTabAdapter.refreshData();
-                        }
                     }
                 } else {
                     bottomMenu.findItem(7).setVisible(false);
@@ -623,11 +738,16 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
                     if (viewTabAdapter != null) {
                         xmlLayoutOrientation.setImageResource(R.drawable.ic_mtrl_code);
                         viewTabAdapter.showHidePropertyView(false);
+                        if (position == 2 && eventTabAdapter != null) {
+                            eventTabAdapter.refreshEvents();
+                        } else if (position == 3 && componentTabAdapter != null) {
+                            componentTabAdapter.refreshData();
+                        }
                     }
                 }
                 currentTabNumber = position;
                 refreshFileSelector();
-                if (position == 0) {
+                if (position == 1) {
                     if (projectFile != lastViewTabProjectFile) {
                         refreshViewTabAdapter();
                     }
@@ -635,16 +755,33 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
                     refreshEventTabAdapter();
                     refreshComponentTabAdapter();
                     refreshJavaTabAdapter();
-                    if (position == 3 && javaTabAdapter != null) {
+                    if (position == 0 && javaTabAdapter != null) {
                         // Blocks → Java: always show what the blocks currently generate.
                         javaTabAdapter.refresh();
                     }
                 }
                 invalidateOptionsMenu();
+
+                // Sync TabLayout for source and UI positions
+                if (position == 0 || position == 1) {
+                    if (projectFile != null && projectFile.isKotlin() && position == 1) {
+                        viewPager.setCurrentItem(0, false);
+                        return;
+                    }
+                    isToolsTabHandling = true;
+                    TabLayout.Tab tab = tabLayout.getTabAt(position);
+                    if (tab != null && tabLayout.getSelectedTabPosition() != position) {
+                        tab.select();
+                        previousTab = position;
+                    } else {
+                        previousTab = position;
+                    }
+                    isToolsTabHandling = false;
+                }
+                updateUiTabEnabledState();
             }
         });
         viewPager.getAdapter().notifyDataSetChanged();
-        ((TabLayout) findViewById(R.id.tab_layout)).setupWithViewPager(viewPager);
 
         IntentFilter filter = new IntentFilter(BuildTask.ACTION_CANCEL_BUILD);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -688,7 +825,7 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
         getMenuInflater().inflate(R.menu.design_menu, menu);
         MenuItem searchItem = menu.findItem(R.id.design_option_menu_search);
         if (searchItem != null) {
-            searchItem.setVisible(currentTabNumber == 1);
+            searchItem.setVisible(currentTabNumber == 2);
         }
         return true;
     }
@@ -764,7 +901,7 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
     @Override
     public void onClick(View view) {
         if (view.getId() == R.id.file_name_container) {
-            if (viewPager.getCurrentItem() == 0) {
+            if (viewPager.getCurrentItem() == 1) {
                 showAvailableViews();
             } else {
                 showAvailableJavaFiles();
@@ -1756,11 +1893,13 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
 
         public ViewPagerAdapter(FragmentManager fragmentManager) {
             super(fragmentManager);
+            // New order: 0=Source (Java/Kotlin), 1=UI, 2=Event, 3=Component
+            // Labels for ViewPager internal use, TabLayout uses custom tabs
             labels = new String[]{
-                    Helper.getResString(R.string.design_tab_title_view),
+                    Helper.getResString(R.string.design_tab_title_java),
+                    Helper.getResString(R.string.design_tab_title_ui),
                     Helper.getResString(R.string.design_tab_title_event),
-                    Helper.getResString(R.string.design_tab_title_component),
-                    Helper.getResString(R.string.design_tab_title_java)};
+                    Helper.getResString(R.string.design_tab_title_component)};
         }
 
         @Override
@@ -1770,6 +1909,14 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
 
         @Override
         public CharSequence getPageTitle(int position) {
+            // Return appropriate label, with language-aware first tab
+            if (position == 0) {
+                if (projectFile != null && projectFile.isKotlin()) {
+                    return Helper.getResString(R.string.design_tab_title_kotlin);
+                } else {
+                    return Helper.getResString(R.string.design_tab_title_java);
+                }
+            }
             return labels[position];
         }
 
@@ -1777,11 +1924,11 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
         @NonNull
         public Object instantiateItem(@NonNull ViewGroup container, int position) {
             Fragment fragment = (Fragment) super.instantiateItem(container, position);
-            if (position == 0) {
+            if (position == 1) {
                 viewTabAdapter = (ViewEditorFragment) fragment;
-            } else if (position == 1) {
-                eventTabAdapter = (EventListFragment) fragment;
             } else if (position == 2) {
+                eventTabAdapter = (EventListFragment) fragment;
+            } else if (position == 3) {
                 componentTabAdapter = (ComponentListFragment) fragment;
             } else {
                 javaTabAdapter = (JavaEditorFragment) fragment;
@@ -1797,11 +1944,17 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
         @NonNull
         public Fragment getItem(int position) {
             return switch (position) {
-                case 0 -> new ViewEditorFragment();
-                case 1 -> new EventListFragment();
-                case 2 -> new ComponentListFragment();
+                case 0 -> new JavaEditorFragment();
+                case 1 -> new ViewEditorFragment();
+                case 2 -> new EventListFragment();
+                case 3 -> new ComponentListFragment();
                 default -> new JavaEditorFragment();
             };
+        }
+
+        public void updateSourceLabel() {
+            // Force TabLayout to update if needed
+            notifyDataSetChanged();
         }
     }
 

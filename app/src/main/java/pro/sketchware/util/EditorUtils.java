@@ -52,6 +52,15 @@ public class EditorUtils {
         loadConfigByLanguage(editor, new JavaLanguage(), false);
     }
 
+    public static void loadKotlinConfig(CodeEditor editor) {
+        try {
+            loadConfigByLanguage(editor, CodeEditorLanguages.loadTextMateLanguage(CodeEditorLanguages.SCOPE_NAME_KOTLIN), true);
+        } catch (Exception e) {
+            // Fallback to Java if Kotlin grammar not available
+            loadJavaConfig(editor);
+        }
+    }
+
     public static void loadXmlConfig(CodeEditor editor) {
         loadConfigByLanguage(editor, CodeEditorLanguages.loadTextMateLanguage(CodeEditorLanguages.SCOPE_NAME_XML), true);
     }

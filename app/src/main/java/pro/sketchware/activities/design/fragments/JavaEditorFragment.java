@@ -70,7 +70,7 @@ public class JavaEditorFragment extends BaseFragment {
                 : requireActivity().getIntent().getStringExtra("sc_id");
 
         binding.editor.setTypefaceText(EditorUtils.getTypeface(requireContext()));
-        // Same editor language, color scheme and preferences as every other code editor of the app.
+        // Language-aware: default to Java, will be updated when projectFile is set
         EditorUtils.loadJavaConfig(binding.editor);
         editorPrefs = new CodeEditorPreferences(requireContext(), "java_tab");
         editorPrefs.applyToEditor(binding.editor, false);
@@ -79,6 +79,25 @@ public class JavaEditorFragment extends BaseFragment {
         binding.btnReload.setOnClickListener(v -> confirmReload());
         setStatus(Helper.getResString(R.string.java_editor_status_loading));
         return binding.getRoot();
+    }
+
+    private void updateEditorLanguage() {
+        if (binding == null || projectFile == null) return;
+        try {
+            if (projectFile.isKotlin()) {
+                EditorUtils.loadKotlinConfig(binding.editor);
+            } else {
+                EditorUtils.loadJavaConfig(binding.editor);
+            }
+            if (editorPrefs != null) {
+                editorPrefs.applyToEditor(binding.editor, false);
+            }
+        } catch (Exception e) {
+            // Fallback to Java config if Kotlin fails
+            try {
+                EditorUtils.loadJavaConfig(binding.editor);
+            } catch (Exception ignored) {}
+        }
     }
 
     @Override
@@ -99,15 +118,21 @@ public class JavaEditorFragment extends BaseFragment {
     /**
      * Called by {@link pro.sketchware.activities.design.DesignActivity} whenever the selected
      * Activity changes, so the tab always shows the source of the current Activity.
+     * Language-aware: supports both Java and Kotlin activities.
      */
     public void setProjectFile(ProjectFileBean projectFileBean) {
         projectFile = projectFileBean;
         if (binding != null && projectFile != null) {
+            updateEditorLanguage();
+            String displayName = projectFile.isKotlin() ? projectFile.getSourceFileName() : projectFile.getJavaName();
             if (loadedJavaName == null) {
-                binding.fileName.setText(projectFile.getJavaName());
+                binding.fileName.setText(displayName);
             }
             if (!projectFile.getJavaName().equals(loadedJavaName)) {
                 reloadKeepingEdits(false);
+            } else {
+                // Even if same file, update label for language change
+                binding.fileName.setText(displayName);
             }
         }
     }
@@ -168,7 +193,9 @@ public class JavaEditorFragment extends BaseFragment {
                     loadedJavaName = file.getJavaName();
                     binding.editor.setText(mapped.getText());
                     binding.editor.setEditable(true);
-                    binding.fileName.setText(file.getJavaName());
+                    String displayName = file.isKotlin() ? file.getSourceFileName() : file.getJavaName();
+                    binding.fileName.setText(displayName);
+                    updateEditorLanguage();
                     setStatus(describeMapping(mapped));
                     if (showToast) {
                         SketchwareUtil.toast(Helper.getResString(R.string.java_editor_message_reloaded));

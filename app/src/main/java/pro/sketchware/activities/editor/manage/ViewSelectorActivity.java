@@ -110,6 +110,7 @@ public class ViewSelectorActivity extends BaseAppCompatActivity {
                         activity.keyboardSetting = projectFile.keyboardSetting;
                         activity.orientation = projectFile.orientation;
                         activity.options = projectFile.options;
+                        activity.language = projectFile.language;
                         if (projectFile.hasActivityOption(ProjectFileBean.OPTION_ACTIVITY_DRAWER)) {
                             if (ProjectDataManager.getFileManager(sc_id).getFileByXmlName(projectFile.getDrawerXmlName()) == null) {
                                 ProjectDataManager.getFileManager(sc_id).addFile(2, projectFile.getDrawerName());

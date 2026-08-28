@@ -54,8 +54,17 @@ public class JavaFileAdapter extends RecyclerView.Adapter<JavaFileAdapter.ViewHo
         void bind(ProjectFileBean projectFile) {
             binding.tvFilename.setVisibility(View.VISIBLE);
             binding.tvLinkedFilename.setVisibility(View.VISIBLE);
-            binding.tvFilename.setText(projectFile.getJavaName());
-            binding.tvLinkedFilename.setText(projectFile.getXmlName());
+            // Language-aware display
+            String sourceName = projectFile.isKotlin() ? projectFile.getSourceFileName() : projectFile.getJavaName();
+            binding.tvFilename.setText(sourceName);
+            if (projectFile.isKotlin()) {
+                // For Kotlin/Compose, UI is disabled – show hint or hide XML
+                binding.tvLinkedFilename.setText(projectFile.getXmlName() + " (UI disabled)");
+                binding.tvLinkedFilename.setAlpha(0.5f);
+            } else {
+                binding.tvLinkedFilename.setText(projectFile.getXmlName());
+                binding.tvLinkedFilename.setAlpha(1.0f);
+            }
             binding.getRoot().setOnClickListener(v -> {
                 if (listener != null) {
                     listener.onItemClick(projectFile);
