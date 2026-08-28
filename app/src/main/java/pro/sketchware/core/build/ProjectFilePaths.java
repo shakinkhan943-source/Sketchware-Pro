@@ -1,6 +1,9 @@
 package pro.sketchware.core.build;
 
 import pro.sketchware.core.codegen.ActivityCodeGenerator;
+import pro.sketchware.core.sync.CodeOwnershipRecorder;
+import pro.sketchware.core.sync.JavaSyncManager;
+import pro.sketchware.core.sync.JavaSyncStore;
 import pro.sketchware.core.project.BlockConstants;
 import pro.sketchware.core.project.BuildConfig;
 import pro.sketchware.core.codegen.ComponentCodeGenerator;
@@ -937,7 +940,8 @@ public class ProjectFilePaths {
                             if (cachedFile.exists()) {
                                 String cachedCode = FileUtil.readFile(cachedFile.getAbsolutePath());
                                 cachedBeans.add(new SrcCodeBean(activity.getJavaName(),
-                                        ActivityCodeGenerator.applyCommands(cachedCode)));
+                                        withUserJavaCode(activity.getJavaName(),
+                                                ActivityCodeGenerator.applyCommands(cachedCode))));
                             } else {
                                 allCached = false;
                                 missingCachedFiles = activitiesToGenerate.size() - cachedBeans.size();
@@ -990,7 +994,8 @@ public class ProjectFilePaths {
                                 sharedMll, projectSettings, sharedExtraBlocksMap, sharedMaterialLibraryManager)
                                 .generateCode(isAndroidStudioExport, sc_id, false);
                         srcCodeBeans.add(new SrcCodeBean(activity.getJavaName(),
-                                ActivityCodeGenerator.applyCommands(phase1Code)));
+                                withUserJavaCode(activity.getJavaName(),
+                                        ActivityCodeGenerator.applyCommands(phase1Code))));
                         FileUtil.writeFile(new File(codegenCacheDir, activity.getJavaName() + ".code").getAbsolutePath(), phase1Code);
                     }
                 } else {
@@ -1012,7 +1017,8 @@ public class ProjectFilePaths {
                             try {
                                 Pair<String, String> result = futures.get(i).get();
                                 srcCodeBeans.add(new SrcCodeBean(result.first,
-                                        ActivityCodeGenerator.applyCommands(result.second)));
+                                        withUserJavaCode(result.first,
+                                                ActivityCodeGenerator.applyCommands(result.second))));
                                 FileUtil.writeFile(new File(codegenCacheDir, result.first + ".code").getAbsolutePath(), result.second);
                             } catch (InterruptedException | ExecutionException | RuntimeException e) {
                                 if (e instanceof InterruptedException) {
@@ -1024,7 +1030,8 @@ public class ProjectFilePaths {
                                         sharedMll, projectSettings, sharedExtraBlocksMap, sharedMaterialLibraryManager)
                                         .generateCode(isAndroidStudioExport, sc_id, false);
                                 srcCodeBeans.add(new SrcCodeBean(activity.getJavaName(),
-                                        ActivityCodeGenerator.applyCommands(phase1Code)));
+                                        withUserJavaCode(activity.getJavaName(),
+                                                ActivityCodeGenerator.applyCommands(phase1Code))));
                                 FileUtil.writeFile(new File(codegenCacheDir, activity.getJavaName() + ".code").getAbsolutePath(), phase1Code);
                             }
                         }
@@ -1200,7 +1207,8 @@ public class ProjectFilePaths {
             for (ProjectFileBean projectFile : projectFiles) {
                 if (filename.equals(isJavaFile ? projectFile.getJavaName() : projectFile.getXmlName())) {
                     if (isJavaFile) {
-                        return new ActivityCodeGenerator(buildConfig, projectFile, projectDataManager).generateCode(isAndroidStudioExport, sc_id);
+                        return withUserJavaCode(filename,
+                                new ActivityCodeGenerator(buildConfig, projectFile, projectDataManager).generateCode(isAndroidStudioExport, sc_id));
                     } else if (isXmlFile) {
                         LayoutGenerator xmlGenerator = new LayoutGenerator(buildConfig, projectFile);
                         xmlGenerator.setViews(ProjectDataStore.getSortedRootViews(projectDataManager.getViews(filename)), projectDataManager.getFabView(filename));
@@ -1368,11 +1376,27 @@ public class ProjectFilePaths {
     }
 
     /**
+     * Re-inserts Java code the user wrote manually in the Java editor into freshly generated code.
+     * <p>
+     * Returns the code unchanged for Activities without synchronization metadata, so existing
+     * projects keep generating exactly the same source as before. While the Java editor itself
+     * generates a mapped source ({@link CodeOwnershipRecorder} active) the injection is skipped,
+     * because the editor injects the user code together with the ownership mapping.
+     */
+    private String withUserJavaCode(String javaName, String code) {
+        if (CodeOwnershipRecorder.active() != null) {
+            return code;
+        }
+        return JavaSyncManager.injectUserCode(sc_id, javaName, code);
+    }
+
+    /**
      * Computes a cache key for code generation based on all input data files and settings.
      * If any input changes, the key changes and cached code is invalidated.
      */
     private String computeCodeGenCacheKey(ProjectFileManager projectFileManager, ProjectDataStore projectDataManager, LibraryManager projectLibraryManager) {
         StringBuilder key = new StringBuilder(256);
+        key.append("javaSync:").append(JavaSyncStore.getFingerprint(sc_id)).append('\n');
 
         String dataPath = SketchwarePaths.getDataPath(sc_id);
 
