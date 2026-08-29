@@ -17,7 +17,6 @@ import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 
-import android.os.Build;
 import android.os.StrictMode;
 import android.system.Os;
 import android.text.TextUtils;
@@ -104,7 +103,7 @@ import proguard.ProGuard;
  * <p>
  * The typical build sequence called from the UI is:
  * <ol>
- *   <li>{@link #maybeExtractAapt2()} —extract AAPT2 binary from assets</li>
+ *   <li>{@link #maybeExtractAapt2()} —verify the AAPT2 native library is available</li>
  *   <li>{@link #buildBuiltInLibraryInformation()} —resolve which built-in libraries are needed</li>
  *   <li>{@link #compileResources()} —AAPT2 compile + link</li>
  *   <li>{@link #generateViewBinding()} —generate ViewBinding Java sources (optional)</li>
@@ -175,7 +174,7 @@ public class ProjectBuilder {
             LogUtil.e(TAG, "Somehow failed to get package info about us!", e);
         }
 
-        aapt2Binary = new File(context.getCacheDir(), "aapt2");
+        aapt2Binary = new File(context.getApplicationInfo().nativeLibraryDir, "libaapt2.so");
         buildSettings = new BuildSettings(projectFilePaths.sc_id);
         this.context = context;
         this.projectFilePaths = projectFilePaths;
@@ -1163,43 +1162,20 @@ public class ProjectBuilder {
     }
 
     /**
-     * Extracts AAPT2 binaries (if they need to be extracted).
+     * Verifies that the AAPT2 native library ({@code libaapt2.so}) is present and executable.
      *
-     * @throws SketchwareException If anything goes wrong while extracting
+     * @throws SketchwareException If the AAPT2 binary is missing
      */
     public void maybeExtractAapt2() throws SketchwareException {
-        String assetPath = null;
-        for (String abi : Build.SUPPORTED_ABIS) {
-            String candidate = "aapt/aapt2-" + abi;
-            try (var ignored = context.getAssets().open(candidate)) {
-                assetPath = candidate;
-                break;
-            } catch (IOException ignored) {
-            }
+        if (!aapt2Binary.exists()) {
+            throw new SketchwareException("AAPT2 binary is missing at " + aapt2Binary.getAbsolutePath());
         }
-        if (assetPath == null) {
-            var abi = Build.SUPPORTED_ABIS.length > 0 ? Build.SUPPORTED_ABIS[0] : "unknown";
-            throw new SketchwareException(
-                    "Looks like the device's architecture (" + abi + ") isn't supported."
-            );
-        }
+        aapt2Binary.setExecutable(true, false);
+        aapt2Binary.setReadable(true, false);
         try {
-            hasFileChanged(assetPath, aapt2Binary.getAbsolutePath());
-            if (!aapt2Binary.exists()) {
-                throw new IOException("AAPT2 binary was not extracted to " + aapt2Binary.getAbsolutePath());
-            }
-            aapt2Binary.setExecutable(true, false);
-            aapt2Binary.setReadable(true, false);
-            try {
-                Os.chmod(aapt2Binary.getAbsolutePath(), S_IRUSR | S_IWUSR | S_IXUSR);
-            } catch (Exception e) {
-                LogUtil.w(TAG, "Failed to chmod AAPT2 binary with Os.chmod", e);
-            }
-        } catch (IOException | RuntimeException e) {
-            LogUtil.e(TAG, "Failed to extract AAPT2 binaries", e);
-            throw new SketchwareException(
-                    "Couldn't extract AAPT2 binaries! Message: " + e.getMessage()
-            );
+            Os.chmod(aapt2Binary.getAbsolutePath(), S_IRUSR | S_IWUSR | S_IXUSR);
+        } catch (Exception e) {
+            LogUtil.w(TAG, "Failed to chmod AAPT2 binary with Os.chmod", e);
         }
     }
 
