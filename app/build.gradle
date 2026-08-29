@@ -12,7 +12,7 @@ android {
     defaultConfig {
         applicationId = "pro.sketchware"
         namespace = "pro.sketchware"
-        targetSdk = 35
+        targetSdk = 28
         minSdk = 26
         versionCode = 161
         versionName = "v8.0.0"

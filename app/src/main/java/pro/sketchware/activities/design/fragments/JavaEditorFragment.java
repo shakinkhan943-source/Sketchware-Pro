@@ -78,6 +78,13 @@ public class JavaEditorFragment extends BaseFragment {
         binding.btnSync.setOnClickListener(v -> synchronizeNow());
         binding.btnReload.setOnClickListener(v -> confirmReload());
         setStatus(Helper.getResString(R.string.java_editor_status_loading));
+
+        binding.editor.subscribeEvent(io.github.rosemoe.sora.event.ContentChangeEvent.class, (event, unsubscribe) -> {
+            if (!loading && binding != null) {
+                binding.getRoot().post(this::updateSyncBarState);
+            }
+        });
+
         return binding.getRoot();
     }
 
@@ -197,6 +204,7 @@ public class JavaEditorFragment extends BaseFragment {
                     binding.fileName.setText(displayName);
                     updateEditorLanguage();
                     setStatus(describeMapping(mapped));
+                    updateSyncBarState(false);
                     if (showToast) {
                         SketchwareUtil.toast(Helper.getResString(R.string.java_editor_message_reloaded));
                     }
@@ -357,6 +365,78 @@ public class JavaEditorFragment extends BaseFragment {
     private void setStatus(String status) {
         if (binding != null) {
             binding.syncStatus.setText(status);
+        }
+    }
+
+    private void updateSyncBarState() {
+        updateSyncBarState(true);
+    }
+
+    private void updateSyncBarState(boolean animate) {
+        if (binding == null) {
+            return;
+        }
+        boolean hasEdits = hasUnsavedChanges();
+        if (hasEdits) {
+            setStatus(Helper.getResString(R.string.java_editor_status_unsaved));
+            setSyncBarVisible(true, animate);
+        } else {
+            setSyncBarVisible(false, animate);
+        }
+    }
+
+    private void setSyncBarVisible(boolean visible, boolean animate) {
+        if (binding == null) {
+            return;
+        }
+        View syncBar = binding.syncBarContainer;
+        boolean isCurrentlyVisible = syncBar.getVisibility() == View.VISIBLE && syncBar.getAlpha() > 0.01f;
+        if (visible == isCurrentlyVisible && syncBar.getVisibility() == (visible ? View.VISIBLE : View.GONE)) {
+            return;
+        }
+
+        syncBar.animate().cancel();
+
+        if (!animate) {
+            syncBar.setVisibility(visible ? View.VISIBLE : View.GONE);
+            syncBar.setAlpha(visible ? 1.0f : 0.0f);
+            syncBar.setTranslationY(0f);
+            return;
+        }
+
+        if (visible) {
+            syncBar.setVisibility(View.VISIBLE);
+            syncBar.setAlpha(0.0f);
+            syncBar.post(() -> {
+                if (binding == null) {
+                    return;
+                }
+                float height = syncBar.getHeight() > 0 ? syncBar.getHeight() : 120f;
+                syncBar.setTranslationY(-height);
+                syncBar.animate()
+                        .translationY(0f)
+                        .alpha(1.0f)
+                        .setDuration(250)
+                        .setInterpolator(new android.view.animation.DecelerateInterpolator())
+                        .setListener(null)
+                        .start();
+            });
+        } else {
+            float height = syncBar.getHeight() > 0 ? syncBar.getHeight() : 120f;
+            syncBar.animate()
+                    .translationY(-height)
+                    .alpha(0.0f)
+                    .setDuration(200)
+                    .setInterpolator(new android.view.animation.AccelerateInterpolator())
+                    .setListener(new android.animation.AnimatorListenerAdapter() {
+                        @Override
+                        public void onAnimationEnd(android.animation.Animator animation) {
+                            if (binding != null) {
+                                binding.syncBarContainer.setVisibility(View.GONE);
+                            }
+                        }
+                    })
+                    .start();
         }
     }
 }

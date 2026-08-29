@@ -645,7 +645,10 @@ public class BuiltInLibraries {
 
         maybeExtractAndroidJar(progressReceivers);
 
-        if (ProjectBuilder.hasFileChanged(baseAssetsPath + dexsArchiveName, dexsArchivePath)) {
+        if (ProjectBuilder.hasFileChanged(baseAssetsPath + dexsArchiveName, dexsArchivePath)
+                || !BuiltInLibraries.EXTRACTED_BUILT_IN_LIBRARY_DEX_FILES_PATH.exists()
+                || BuiltInLibraries.EXTRACTED_BUILT_IN_LIBRARY_DEX_FILES_PATH.list() == null
+                || BuiltInLibraries.EXTRACTED_BUILT_IN_LIBRARY_DEX_FILES_PATH.list().length == 0) {
             for (BuildProgressReceiver receiver : progressReceivers) {
                 receiver.onProgress("Extracting built-in libraries' DEX files...", 4);
             }
@@ -656,7 +659,10 @@ public class BuiltInLibraries {
             /* Extract dexs.zip to dexs/ */
             try { new ZipUtil().extractZipFile(dexsArchivePath, dexsDirectoryPath); } catch (java.io.FileNotFoundException e) { throw new RuntimeException(e); }
         }
-        if (ProjectBuilder.hasFileChanged(baseAssetsPath + libsArchiveName, libsArchivePath)) {
+        if (ProjectBuilder.hasFileChanged(baseAssetsPath + libsArchiveName, libsArchivePath)
+                || !BuiltInLibraries.EXTRACTED_BUILT_IN_LIBRARIES_PATH.exists()
+                || BuiltInLibraries.EXTRACTED_BUILT_IN_LIBRARIES_PATH.list() == null
+                || BuiltInLibraries.EXTRACTED_BUILT_IN_LIBRARIES_PATH.list().length == 0) {
             for (BuildProgressReceiver receiver : progressReceivers) {
                 receiver.onProgress("Extracting built-in libraries' resources...", 5);
             }
@@ -668,7 +674,10 @@ public class BuiltInLibraries {
             try { new ZipUtil().extractZipFile(libsArchivePath, libsDirectoryPath); } catch (java.io.FileNotFoundException e) { throw new RuntimeException(e); }
         }
         maybeExtractCoreLambdaStubsJar();
-        if (ProjectBuilder.hasFileChanged(baseAssetsPath + testkeyArchiveName, testkeyArchivePath)) {
+        if (ProjectBuilder.hasFileChanged(baseAssetsPath + testkeyArchiveName, testkeyArchivePath)
+                || !new File(testkeyDirectoryPath).exists()
+                || new File(testkeyDirectoryPath).list() == null
+                || new File(testkeyDirectoryPath).list().length == 0) {
             for (BuildProgressReceiver receiver : progressReceivers) {
                 receiver.onProgress("Extracting built-in signing keys...", 6);
             }
@@ -684,12 +693,14 @@ public class BuiltInLibraries {
     public static void maybeExtractAndroidJar(@NonNull BuildProgressReceiver... receivers) {
         String androidJarArchiveName = "android.jar.zip";
         String androidJarPath = new File(EXTRACTED_COMPILE_ASSETS_PATH, androidJarArchiveName).getAbsolutePath();
-        if (ProjectBuilder.hasFileChanged("libs" + File.separator + androidJarArchiveName, androidJarPath)) {
+        File androidJar = new File(EXTRACTED_COMPILE_ASSETS_PATH, "android.jar");
+        if (ProjectBuilder.hasFileChanged("libs" + File.separator + androidJarArchiveName, androidJarPath)
+                || !androidJar.exists() || androidJar.length() == 0) {
             for (BuildProgressReceiver receiver : receivers) {
                 receiver.onProgress("Extracting built-in android.jar...", 7);
             }
             /* Delete android.jar */
-            new EncryptedFileUtil().deleteFileByPath(EXTRACTED_COMPILE_ASSETS_PATH.getAbsolutePath() + File.separator + "android.jar");
+            new EncryptedFileUtil().deleteFileByPath(androidJar.getAbsolutePath());
             /* Extract android.jar.zip to android.jar */
             try { new ZipUtil().extractZipFile(androidJarPath, EXTRACTED_COMPILE_ASSETS_PATH.getAbsolutePath()); } catch (java.io.FileNotFoundException e) { throw new RuntimeException(e); }
         }

@@ -7,63 +7,73 @@
     android:orientation="vertical">
 
     <LinearLayout
-        android:id="@+id/status_bar"
+        android:id="@+id/sync_bar_container"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="?attr/colorSurfaceContainerLow"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingStart="16dp"
-        android:paddingTop="6dp"
-        android:paddingEnd="8dp"
-        android:paddingBottom="6dp">
+        android:orientation="vertical"
+        android:visibility="gone"
+        tools:visibility="visible">
 
         <LinearLayout
-            android:layout_width="0dp"
+            android:id="@+id/status_bar"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical">
+            android:background="?attr/colorSurfaceContainerLow"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="16dp"
+            android:paddingTop="6dp"
+            android:paddingEnd="8dp"
+            android:paddingBottom="6dp">
 
-            <TextView
-                android:id="@+id/file_name"
-                android:layout_width="match_parent"
+            <LinearLayout
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:ellipsize="middle"
-                android:singleLine="true"
-                android:textAppearance="?attr/textAppearanceTitleSmall"
-                tools:text="MainActivity.java" />
+                android:layout_weight="1"
+                android:orientation="vertical">
 
-            <TextView
-                android:id="@+id/sync_status"
-                android:layout_width="match_parent"
+                <TextView
+                    android:id="@+id/file_name"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="middle"
+                    android:singleLine="true"
+                    android:textAppearance="?attr/textAppearanceTitleSmall"
+                    tools:text="MainActivity.java" />
+
+                <TextView
+                    android:id="@+id/sync_status"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textAppearance="?attr/textAppearanceBodySmall"
+                    android:textColor="?attr/colorOnSurfaceVariant"
+                    tools:text="In sync with blocks" />
+
+            </LinearLayout>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_reload"
+                style="?attr/materialIconButtonStyle"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:textAppearance="?attr/textAppearanceBodySmall"
-                android:textColor="?attr/colorOnSurfaceVariant"
-                tools:text="In sync with blocks" />
+                android:contentDescription="@string/java_editor_action_reload"
+                app:icon="@drawable/ic_mtrl_refresh" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_sync"
+                style="?attr/materialButtonOutlinedStyle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/java_editor_action_sync" />
 
         </LinearLayout>
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btn_reload"
-            style="?attr/materialIconButtonStyle"
-            android:layout_width="wrap_content"
+        <com.google.android.material.divider.MaterialDivider
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:contentDescription="@string/java_editor_action_reload"
-            app:icon="@drawable/ic_mtrl_refresh" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btn_sync"
-            style="?attr/materialButtonOutlinedStyle"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/java_editor_action_sync" />
+            app:dividerColor="?attr/colorSurfaceContainerHighest" />
 
     </LinearLayout>
-
-    <com.google.android.material.divider.MaterialDivider
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        app:dividerColor="?attr/colorSurfaceContainerHighest" />
 
     <io.github.rosemoe.sora.widget.CodeEditor
         android:id="@+id/editor"

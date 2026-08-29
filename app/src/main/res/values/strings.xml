@@ -2130,6 +2130,7 @@ Choosing a theme mode lets you personalize the app\'s appearance, notes:\n
     <string name="java_editor_action_keep_java">Keep my Java code</string>
     <string name="java_editor_action_keep_blocks">Keep the blocks</string>
     <string name="java_editor_status_loading">Generating source code…</string>
+    <string name="java_editor_status_unsaved">Unsaved edits · Tap Sync to apply</string>
     <string name="java_editor_status_syncing">Synchronizing…</string>
     <string name="java_editor_status_sync_failed">Synchronization failed</string>
     <string name="java_editor_status_unreliable">Too many changes to synchronize safely</string>
