@@ -202,7 +202,7 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
     private final ActivityResultLauncher<Intent> openLibraryManager = registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
         if (result.getResultCode() == RESULT_OK) {
             refresh();
-            if (viewTabAdapter != null && viewTabAdapter.getProjectFileBean() != null) {
+            if (viewTabAdapter != null && currentDestination == DESTINATION_UI && viewTabAdapter.getProjectFileBean() != null) {
                 viewTabAdapter.updatePropertyViews();
             }
         }
@@ -1543,7 +1543,6 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
                     return;
                 }
 
-                onProgress("Extracting built-in libraries...", 3);
                 BuiltInLibraries.extractCompileAssets(this);
                 if (canceled) {
                     return;

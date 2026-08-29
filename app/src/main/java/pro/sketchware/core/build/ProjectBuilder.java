@@ -1168,29 +1168,34 @@ public class ProjectBuilder {
      * @throws SketchwareException If anything goes wrong while extracting
      */
     public void maybeExtractAapt2() throws SketchwareException {
-        var abi = Build.SUPPORTED_ABIS[0];
-        String assetPath = "aapt/aapt2-" + abi;
-        try {
-            try (var ignored = context.getAssets().open(assetPath)) {
-            } catch (FileNotFoundException e) {
-                throw e;
-            } catch (IOException e) {
-                throw new IOException("Failed to read AAPT2 asset: " + assetPath, e);
+        String assetPath = null;
+        for (String abi : Build.SUPPORTED_ABIS) {
+            String candidate = "aapt/aapt2-" + abi;
+            try (var ignored = context.getAssets().open(candidate)) {
+                assetPath = candidate;
+                break;
+            } catch (IOException ignored) {
             }
-            boolean extracted = hasFileChanged(assetPath, aapt2Binary.getAbsolutePath());
+        }
+        if (assetPath == null) {
+            var abi = Build.SUPPORTED_ABIS.length > 0 ? Build.SUPPORTED_ABIS[0] : "unknown";
+            throw new SketchwareException(
+                    "Looks like the device's architecture (" + abi + ") isn't supported."
+            );
+        }
+        try {
+            hasFileChanged(assetPath, aapt2Binary.getAbsolutePath());
             if (!aapt2Binary.exists()) {
                 throw new IOException("AAPT2 binary was not extracted to " + aapt2Binary.getAbsolutePath());
             }
-            if (extracted) {
+            aapt2Binary.setExecutable(true, false);
+            aapt2Binary.setReadable(true, false);
+            try {
                 Os.chmod(aapt2Binary.getAbsolutePath(), S_IRUSR | S_IWUSR | S_IXUSR);
+            } catch (Exception e) {
+                LogUtil.w(TAG, "Failed to chmod AAPT2 binary with Os.chmod", e);
             }
-        } catch (FileNotFoundException e) {
-            LogUtil.e(TAG, "Failed to extract AAPT2 binaries", e);
-            throw new SketchwareException(
-                    "Looks like the device's architecture (" + abi + ") isn't supported.\n"
-                            + Log.getStackTraceString(e)
-            );
-        } catch (IOException | android.system.ErrnoException | RuntimeException e) {
+        } catch (IOException | RuntimeException e) {
             LogUtil.e(TAG, "Failed to extract AAPT2 binaries", e);
             throw new SketchwareException(
                     "Couldn't extract AAPT2 binaries! Message: " + e.getMessage()

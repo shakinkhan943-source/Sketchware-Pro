@@ -160,11 +160,14 @@ public class ViewEditorFragment extends BaseFragment {
     }
 
     private void updateFab(ViewBean viewBean) {
-        viewEditor.removeFab();
-        if (isFabEnabled) viewEditor.addFab(viewBean);
+        if (viewEditor != null) {
+            viewEditor.removeFab();
+            if (isFabEnabled) viewEditor.addFab(viewBean);
+        }
     }
 
     private void refreshView(String viewId) {
+        if (projectFileBean == null || sc_id == null) return;
         ViewBean viewBean;
         if (viewId.equals("_fab")) {
             viewBean = ProjectDataManager.getProjectDataManager(sc_id).getFabView(projectFileBean.getXmlName());
@@ -172,7 +175,9 @@ public class ViewEditorFragment extends BaseFragment {
             viewBean = ProjectDataManager.getProjectDataManager(sc_id).getViewBean(projectFileBean.getXmlName(), viewId);
         }
         updateViewDisplay(viewBean);
-        viewProperty.refreshPropertyGroups();
+        if (viewProperty != null) {
+            viewProperty.refreshPropertyGroups();
+        }
     }
 
     private void toLogicEditorActivity(String eventId, String eventName, String eventName2) {
@@ -187,11 +192,14 @@ public class ViewEditorFragment extends BaseFragment {
     }
 
     public void loadViews(ArrayList<ViewBean> viewBeans) {
-        viewEditor.refreshResourceManager();
-        viewEditor.loadViews(ProjectDataStore.getSortedRootViews(viewBeans));
+        if (viewEditor != null) {
+            viewEditor.refreshResourceManager();
+            viewEditor.loadViews(ProjectDataStore.getSortedRootViews(viewBeans));
+        }
     }
 
     public void togglePropertyView(boolean showProperty) {
+        if (viewProperty == null) return;
         startAnimation();
         if (!isPropertyViewVisible || !showProperty) {
             cancelAnimations();
@@ -225,6 +233,7 @@ public class ViewEditorFragment extends BaseFragment {
     }
 
     private void selectPropertyWidget(String viewId) {
+        if (viewProperty == null) return;
         if (propertyViewsDirty) {
             updatePropertyViews();
         }
@@ -235,12 +244,13 @@ public class ViewEditorFragment extends BaseFragment {
     }
 
     private void schedulePropertyPanelWarmUp() {
+        if (viewProperty == null) return;
         if (propertyPanelWarmUpRunnable != null) {
             viewProperty.removeCallbacks(propertyPanelWarmUpRunnable);
         }
         propertyPanelWarmUpRunnable = () -> {
             propertyPanelWarmUpRunnable = null;
-            if (!isAdded() || projectFileBean == null || isPropertyViewVisible) {
+            if (!isAdded() || projectFileBean == null || isPropertyViewVisible || viewProperty == null) {
                 return;
             }
             if (propertyViewsDirty) {
@@ -257,11 +267,15 @@ public class ViewEditorFragment extends BaseFragment {
     }
 
     public void updateViewDisplay(ViewBean viewBean) {
-        viewEditor.selectView(viewBean);
+        if (viewEditor != null) {
+            viewEditor.selectView(viewBean);
+        }
     }
 
     public void showHidePropertyView(boolean shouldShow) {
-        viewProperty.setVisibility(shouldShow ? View.VISIBLE : View.GONE);
+        if (viewProperty != null) {
+            viewProperty.setVisibility(shouldShow ? View.VISIBLE : View.GONE);
+        }
     }
 
     public ProjectFileBean getProjectFileBean() {
@@ -438,8 +452,10 @@ public class ViewEditorFragment extends BaseFragment {
     }
 
     public void refreshAllViews() {
-        viewEditor.invalidateXmlStringCache();
-        if (projectFileBean != null) {
+        if (viewEditor != null) {
+            viewEditor.invalidateXmlStringCache();
+        }
+        if (projectFileBean != null && sc_id != null) {
             clearAndLoadViews(ProjectDataManager.getProjectDataManager(sc_id).getViews(projectFileBean.getXmlName()));
             updateFab(ProjectDataManager.getProjectDataManager(sc_id).getFabView(projectFileBean.getXmlName()));
             updatePropertyViews();
@@ -447,11 +463,15 @@ public class ViewEditorFragment extends BaseFragment {
     }
 
     public void refreshFavorites() {
-        viewEditor.setFavoriteData(WidgetCollectionManager.getInstance().getWidgets());
+        if (viewEditor != null) {
+            viewEditor.setFavoriteData(WidgetCollectionManager.getInstance().getWidgets());
+        }
     }
 
     public void clearViewEditor() {
-        viewEditor.resetViewPane();
+        if (viewEditor != null) {
+            viewEditor.resetViewPane();
+        }
     }
 
     private void onUndo() {
@@ -502,6 +522,9 @@ public class ViewEditorFragment extends BaseFragment {
     }
 
     public void updatePropertyViews() {
+        if (projectFileBean == null || sc_id == null || viewProperty == null) {
+            return;
+        }
         ArrayList<ViewBean> viewBeanArrayList = ProjectDataStore.getSortedRootViews(ProjectDataManager.getProjectDataManager(sc_id).getViews(projectFileBean.getXmlName()));
         ViewBean viewBean;
         if (projectFileBean.hasActivityOption(ProjectFileBean.OPTION_ACTIVITY_FAB)) {

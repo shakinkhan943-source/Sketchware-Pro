@@ -568,7 +568,6 @@ public class ExportProjectActivity extends BaseAppCompatActivity {
                 }
 
                 /* Check built-in libraries */
-                publishProgress(Helper.getResString(R.string.build_progress_extracting_libraries));
                 BuiltInLibraries.extractCompileAssets(this);
                 if (canceled) {
                     return;
