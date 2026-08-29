@@ -18,6 +18,7 @@
     <application
         android:name=".SketchApplication"
         android:allowBackup="true"
+        android:extractNativeLibs="true"
         android:appComponentFactory="androidx.core.app.CoreComponentFactory"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
