@@ -158,8 +158,10 @@ public class ProjectDataStore {
       identifiers.add(listVar.second);
     for (Pair<String, String> moreBlock : getMoreBlocks(javaName))
       identifiers.add(moreBlock.first);
-    for (ViewBean view : getViews(xmlName))
-      identifiers.add(view.id);
+    if (fileBean.usesXmlLayout()) {
+      for (ViewBean view : getViews(xmlName))
+        identifiers.add(view.id);
+    }
     for (ComponentBean comp : getComponents(javaName))
       identifiers.add(comp.componentId);
     return identifiers;
@@ -249,10 +251,12 @@ public class ProjectDataStore {
    */
   public void syncWithFileManager(ProjectFileManager fileManager) {
     for (ProjectFileBean projectFileBean : fileManager.getActivities()) {
-      if (!projectFileBean.hasActivityOption(ProjectFileBean.OPTION_ACTIVITY_FAB))
-        removeFab(projectFileBean); 
-      if (!projectFileBean.hasActivityOption(ProjectFileBean.OPTION_ACTIVITY_DRAWER))
-        removeViewTypeEvents(projectFileBean.getJavaName()); 
+      if (!projectFileBean.usesXmlLayout()
+          || !projectFileBean.hasActivityOption(ProjectFileBean.OPTION_ACTIVITY_FAB))
+        removeFab(projectFileBean);
+      if (!projectFileBean.usesXmlLayout()
+          || !projectFileBean.hasActivityOption(ProjectFileBean.OPTION_ACTIVITY_DRAWER))
+        removeViewTypeEvents(projectFileBean.getJavaName());
     } 
     ArrayList<String> viewKeysToRemove = new ArrayList<>();
     for (Map.Entry<String, ArrayList<ViewBean>> entry : viewMap.entrySet()) {

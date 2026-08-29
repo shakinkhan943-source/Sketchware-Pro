@@ -172,7 +172,9 @@ public class BlockCodeRegistry {
     }
     private static void registerStringBlocks() {
         register("stringLength", (bean, params, ctx) -> String.format("%s.length()", params.get(0)));
-        register("stringJoin", (bean, params, ctx) -> String.format("%s.concat(%s)", params.get(0), params.get(1)));
+        register("stringJoin", (bean, params, ctx) -> ctx.isKotlin()
+                ? String.format("%s + %s", params.get(0), params.get(1))
+                : String.format("%s.concat(%s)", params.get(0), params.get(1)));
         register("stringIndex", (bean, params, ctx) -> String.format("%s.indexOf(%s)", params.get(1), params.get(0)));
         register("stringLastIndex", (bean, params, ctx) -> String.format("%s.lastIndexOf(%s)", params.get(1), params.get(0)));
         register("stringSub", (bean, params, ctx) -> String.format("%s.substring((int)(%s), (int)(%s))", params.get(0), params.get(1), params.get(2)));
@@ -184,8 +186,12 @@ public class BlockCodeRegistry {
         register("trim", (bean, params, ctx) -> String.format("%s.trim()", params.get(0)));
         register("toUpperCase", (bean, params, ctx) -> String.format("%s.toUpperCase()", params.get(0)));
         register("toLowerCase", (bean, params, ctx) -> String.format("%s.toLowerCase()", params.get(0)));
-        register("toString", (bean, params, ctx) -> String.format("String.valueOf((long)(%s))", params.get(0)));
-        register("toStringWithDecimal", (bean, params, ctx) -> String.format("String.valueOf(%s)", params.get(0)));
+        register("toString", (bean, params, ctx) -> ctx.isKotlin()
+                ? String.format("(%s).toLong().toString()", params.get(0))
+                : String.format("String.valueOf((long)(%s))", params.get(0)));
+        register("toStringWithDecimal", (bean, params, ctx) -> ctx.isKotlin()
+                ? String.format("(%s).toString()", params.get(0))
+                : String.format("String.valueOf(%s)", params.get(0)));
         register("toStringFormat", (bean, params, ctx) -> String.format("new DecimalFormat(%s).format(%s)", params.get(1), params.get(0)));
         register("toNumber", (bean, params, ctx) -> {
             String doub = params.get(0);

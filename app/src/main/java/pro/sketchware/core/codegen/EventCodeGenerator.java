@@ -45,13 +45,15 @@ public class EventCodeGenerator {
         ProjectSettings projectSettings = new ProjectSettings(logicHolder.sc_id);
         isViewBindingEnabled = projectSettings.getValue(ProjectSettings.SETTING_ENABLE_VIEWBINDING, "false").equals("true");
 
-        ArrayList<ViewBean> views = new ArrayList<>(projectDataStore.getViews(projectFileBean.getXmlName()));
-        if (projectFileBean.hasActivityOption(ProjectFileBean.OPTION_ACTIVITY_FAB)) {
-            ViewBean fab = projectDataStore.getFabView(projectFileBean.getXmlName());
-            views.add(fab);
-        }
-        for (ViewBean view : views) {
-            viewEvents.add(new Event(this, isViewBindingEnabled ? "binding." + ViewBindingBuilder.generateParameterFromId(view.id) : view.id, view.getClassInfo(), isViewBindingEnabled));
+        if (projectFileBean.usesXmlLayout()) {
+            ArrayList<ViewBean> views = new ArrayList<>(projectDataStore.getViews(projectFileBean.getXmlName()));
+            if (projectFileBean.hasActivityOption(ProjectFileBean.OPTION_ACTIVITY_FAB)) {
+                ViewBean fab = projectDataStore.getFabView(projectFileBean.getXmlName());
+                if (fab != null) views.add(fab);
+            }
+            for (ViewBean view : views) {
+                viewEvents.add(new Event(this, isViewBindingEnabled ? "binding." + ViewBindingBuilder.generateParameterFromId(view.id) : view.id, view.getClassInfo(), isViewBindingEnabled));
+            }
         }
 
         ArrayList<ComponentBean> components = projectDataStore.getComponents(projectFileBean.getJavaName());
@@ -64,7 +66,8 @@ public class EventCodeGenerator {
             }
         }
 
-        if (projectFileBean.hasActivityOption(ProjectFileBean.OPTION_ACTIVITY_DRAWER)) {
+        if (projectFileBean.usesXmlLayout()
+                && projectFileBean.hasActivityOption(ProjectFileBean.OPTION_ACTIVITY_DRAWER)) {
             ArrayList<ViewBean> drawerViews = projectDataStore.getViews(projectFileBean.getDrawerXmlName());
             for (ViewBean view : drawerViews) {
                 drawerViewEvents.add(new Event(this, isViewBindingEnabled ? "binding.drawer." + ViewBindingBuilder.generateParameterFromId(view.id) : "_drawer_" + view.id, view.getClassInfo(), isViewBindingEnabled));
@@ -140,12 +143,19 @@ public class EventCodeGenerator {
         }
     }
 
+    private BlockInterpreter createBlockInterpreter(ArrayList<BlockBean> blocks) {
+        return new BlockInterpreter(projectFileBean.getActivityName(), buildConfig, blocks,
+                isViewBindingEnabled, projectFileBean.getXmlName(),
+                projectFileBean.isKotlin() ? BlockInterpreter.SourceLanguage.KOTLIN
+                        : BlockInterpreter.SourceLanguage.JAVA);
+    }
+
     private void processEvents(ArrayList<EventBean> events, HashMap<String, ArrayList<BlockBean>> logicBlocks) {
         for (EventBean eventBean : events) {
             String eventKey = eventBean.targetId + "_" + eventBean.eventName;
             ArrayList<BlockBean> eventLogicBlocks = logicBlocks.get(eventKey);
             String eventLogic = (eventLogicBlocks == null || eventLogicBlocks.isEmpty()) ? "" :
-                    new BlockInterpreter(projectFileBean.getActivityName(), buildConfig, eventLogicBlocks, isViewBindingEnabled, projectFileBean.getXmlName()).interpretBlocks(eventKey);
+                    createBlockInterpreter(eventLogicBlocks).interpretBlocks(eventKey);
 
             switch (eventBean.eventType) {
                 case EventBean.EVENT_TYPE_VIEW:

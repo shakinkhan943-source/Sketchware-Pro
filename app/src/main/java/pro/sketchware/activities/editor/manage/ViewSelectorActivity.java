@@ -34,6 +34,9 @@ import pro.sketchware.util.ThemeUtils;
 import pro.sketchware.util.UI;
 
 public class ViewSelectorActivity extends BaseAppCompatActivity {
+    public static final String EXTRA_SOURCE_MODE = "source_mode";
+    public static final String EXTRA_CURRENT_SOURCE = "current_source";
+
     private ActivityResultLauncher<Intent> addActivityLauncher;
     private ActivityResultLauncher<Intent> editActivityLauncher;
     private ActivityResultLauncher<Intent> addCustomViewLauncher;
@@ -46,8 +49,10 @@ public class ViewSelectorActivity extends BaseAppCompatActivity {
     private String sc_id;
     private ProjectFileBean projectFile;
     private String currentXml;
+    private String currentSource;
     private int selectedTab;
     private boolean isCustomView = false;
+    private boolean sourceMode = false;
     private FileSelectorPopupSelectXmlBinding binding;
 
     private int getViewIcon(int i) {
@@ -79,6 +84,19 @@ public class ViewSelectorActivity extends BaseAppCompatActivity {
         return screenNames;
     }
 
+    private void enableComposeFor(ProjectFileBean file) {
+        if (file != null && file.isComposeActivity()) {
+            ProjectDataManager.getLibraryManager(sc_id).getCompose().useYn = "Y";
+        }
+    }
+
+    private void returnSelectedFile(ProjectFileBean file) {
+        Intent intent = new Intent();
+        intent.putExtra("project_file", file);
+        setResult(RESULT_OK, intent);
+        finish();
+    }
+
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -90,15 +108,21 @@ public class ViewSelectorActivity extends BaseAppCompatActivity {
                         ProjectFileBean projectFile = result.getData().getParcelableExtra("project_file");
                         if (projectFile == null) return;
                         ProjectDataManager.getFileManager(sc_id).addProjectFile(projectFile);
-                        if (projectFile.hasActivityOption(ProjectFileBean.OPTION_ACTIVITY_DRAWER)) {
+                        enableComposeFor(projectFile);
+                        if (projectFile.usesXmlLayout()
+                                && projectFile.hasActivityOption(ProjectFileBean.OPTION_ACTIVITY_DRAWER)) {
                             ProjectDataManager.getFileManager(sc_id).addFile(2, projectFile.getDrawerName());
                         }
-                        if (result.getData().hasExtra("preset_views")) {
+                        if (projectFile.usesXmlLayout() && result.getData().hasExtra("preset_views")) {
                             addPresetViews(projectFile, result.getData().getParcelableArrayListExtra("preset_views"));
                         }
                         ProjectDataManager.getFileManager(sc_id).refreshNameLists();
                         ProjectDataManager.getFileManager(sc_id).saveToBackup();
-                        viewSelectorAdapter.notifyDataSetChanged();
+                        if (sourceMode) {
+                            returnSelectedFile(projectFile);
+                        } else {
+                            viewSelectorAdapter.notifyDataSetChanged();
+                        }
                     }
                 });
         editActivityLauncher = registerForActivityResult(
@@ -111,20 +135,25 @@ public class ViewSelectorActivity extends BaseAppCompatActivity {
                         activity.orientation = projectFile.orientation;
                         activity.options = projectFile.options;
                         activity.language = projectFile.language;
-                        if (projectFile.hasActivityOption(ProjectFileBean.OPTION_ACTIVITY_DRAWER)) {
-                            if (ProjectDataManager.getFileManager(sc_id).getFileByXmlName(projectFile.getDrawerXmlName()) == null) {
-                                ProjectDataManager.getFileManager(sc_id).addFile(2, projectFile.getDrawerName());
+                        enableComposeFor(activity);
+                        if (activity.usesXmlLayout()
+                                && activity.hasActivityOption(ProjectFileBean.OPTION_ACTIVITY_DRAWER)) {
+                            if (ProjectDataManager.getFileManager(sc_id).getFileByXmlName(activity.getDrawerXmlName()) == null) {
+                                ProjectDataManager.getFileManager(sc_id).addFile(2, activity.getDrawerName());
                             }
                         } else {
-                            ProjectDataManager.getFileManager(sc_id).removeFile(2, projectFile.getDrawerName());
+                            ProjectDataManager.getFileManager(sc_id).removeFile(2, activity.getDrawerName());
                         }
-                        if (projectFile.hasActivityOption(ProjectFileBean.OPTION_ACTIVITY_DRAWER)
-                                || projectFile.hasActivityOption(ProjectFileBean.OPTION_ACTIVITY_FAB)) {
+                        if (activity.usesXmlLayout()
+                                && (activity.hasActivityOption(ProjectFileBean.OPTION_ACTIVITY_DRAWER)
+                                || activity.hasActivityOption(ProjectFileBean.OPTION_ACTIVITY_FAB))) {
                             ProjectDataManager.getLibraryManager(sc_id).getCompat().useYn = "Y";
                         }
+                        ProjectDataManager.getFileManager(sc_id).refreshNameLists();
+                        ProjectDataManager.getFileManager(sc_id).saveToBackup();
                         viewSelectorAdapter.notifyItemChanged(viewSelectorAdapter.selectedItem);
                         Intent intent = new Intent();
-                        intent.putExtra("project_file", projectFile);
+                        intent.putExtra("project_file", activity);
                         setResult(RESULT_OK, intent);
                     }
                 });
@@ -180,21 +209,33 @@ public class ViewSelectorActivity extends BaseAppCompatActivity {
             Intent intent = getIntent();
             sc_id = intent.getStringExtra("sc_id");
             currentXml = intent.getStringExtra("current_xml");
+            currentSource = intent.getStringExtra(EXTRA_CURRENT_SOURCE);
+            sourceMode = intent.getBooleanExtra(EXTRA_SOURCE_MODE, false);
             isCustomView = intent.getBooleanExtra("is_custom_view", false);
         } else {
             sc_id = savedInstanceState.getString("sc_id");
             currentXml = savedInstanceState.getString("current_xml");
+            currentSource = savedInstanceState.getString(EXTRA_CURRENT_SOURCE);
+            sourceMode = savedInstanceState.getBoolean(EXTRA_SOURCE_MODE);
             isCustomView = savedInstanceState.getBoolean("is_custom_view");
         }
+        if (currentXml == null) currentXml = "";
+        if (currentSource == null) currentSource = "";
 
-        if (isCustomView) {
+        if (isCustomView && !sourceMode) {
             selectedTab = TAB_CUSTOM_VIEW;
         } else {
             selectedTab = TAB_ACTIVITY;
         }
 
         binding.optionsSelector.check(selectedTab == TAB_ACTIVITY ? R.id.option_view : R.id.option_custom_view);
-        binding.emptyMessage.setText(R.string.design_manager_view_message_no_view);
+        if (sourceMode) {
+            binding.optionsSelector.setVisibility(View.GONE);
+            binding.createNewView.setText(R.string.file_selector_create_new_activity);
+            binding.emptyMessage.setText(R.string.file_selector_no_activities);
+        } else {
+            binding.emptyMessage.setText(R.string.design_manager_view_message_no_view);
+        }
         viewSelectorAdapter = new ViewSelectorAdapter();
         binding.listXml.setHasFixedSize(true);
         binding.listXml.setAdapter(viewSelectorAdapter);
@@ -245,11 +286,16 @@ public class ViewSelectorActivity extends BaseAppCompatActivity {
     public void onSaveInstanceState(Bundle outState) {
         outState.putString("sc_id", sc_id);
         outState.putString("current_xml", currentXml);
+        outState.putString(EXTRA_CURRENT_SOURCE, currentSource);
+        outState.putBoolean(EXTRA_SOURCE_MODE, sourceMode);
         outState.putBoolean("is_custom_view", isCustomView);
         super.onSaveInstanceState(outState);
     }
 
     private void addPresetViews(ProjectFileBean projectFile, ArrayList<ViewBean> presetViews) {
+        if (!projectFile.usesXmlLayout() || presetViews == null) {
+            return;
+        }
         ProjectDataManager.getProjectDataManager(sc_id);
         for (ViewBean view : ProjectDataStore.getSortedRootViews(presetViews)) {
             view.id = generateUniqueViewId(view.type, projectFile.getXmlName());
@@ -262,6 +308,9 @@ public class ViewSelectorActivity extends BaseAppCompatActivity {
     }
 
     private void replaceWithPresetViews(ProjectFileBean presetData, ProjectFileBean projectFile, int requestCode) {
+        if (!projectFile.usesXmlLayout()) {
+            return;
+        }
         ArrayList<ViewBean> d = ProjectDataManager.getProjectDataManager(sc_id).getViews(projectFile.getXmlName());
         for (int size = d.size() - 1; size >= 0; size--) {
             ProjectDataManager.getProjectDataManager(sc_id).removeView(projectFile, d.get(size));
@@ -334,19 +383,27 @@ public class ViewSelectorActivity extends BaseAppCompatActivity {
                 viewHolder.itemBinding.tvLinkedFilename.setVisibility(View.VISIBLE);
                 ProjectFileBean projectFileBean = ProjectDataManager.getFileManager(sc_id).getActivities().get(position);
                 String xmlName = projectFileBean.getXmlName();
-                if (currentXml.equals(xmlName)) {
+                String sourceName = projectFileBean.getSourceFileName();
+                boolean selected = sourceMode ? currentSource.equals(sourceName) : currentXml.equals(xmlName);
+                if (selected) {
                     viewHolder.itemBinding.cardView.setStrokeColor(
                             ThemeUtils.getColor(ViewSelectorActivity.this, R.attr.colorPrimary));
                     viewHolder.itemBinding.cardView.setStrokeWidth(SketchwareUtil.dpToPx(3f));
                 } else {
                     viewHolder.itemBinding.cardView.setStrokeWidth(SketchwareUtil.dpToPx(0f));
                 }
-                String javaName = projectFileBean.getJavaName();
                 viewHolder.itemBinding.imgEdit.setVisibility(View.VISIBLE);
-                viewHolder.itemBinding.imgView.setImageResource(getViewIcon(projectFileBean.options));
-                viewHolder.itemBinding.tvFilename.setText(xmlName);
+                viewHolder.itemBinding.imgView.setImageResource(projectFileBean.isComposeActivity()
+                        ? R.drawable.ic_mtrl_compose : getViewIcon(projectFileBean.options));
                 viewHolder.itemBinding.tvLinkedFilename.setVisibility(View.VISIBLE);
-                viewHolder.itemBinding.tvLinkedFilename.setText(javaName);
+                if (sourceMode || projectFileBean.isComposeActivity()) {
+                    viewHolder.itemBinding.tvFilename.setText(sourceName);
+                    viewHolder.itemBinding.tvLinkedFilename.setText(projectFileBean.isComposeActivity()
+                            ? R.string.file_selector_compose_no_xml : projectFileBean.getXmlName());
+                } else {
+                    viewHolder.itemBinding.tvFilename.setText(xmlName);
+                    viewHolder.itemBinding.tvLinkedFilename.setText(sourceName);
+                }
             } else if (selectedTab == TAB_CUSTOM_VIEW) {
                 viewHolder.itemBinding.imgEdit.setVisibility(View.GONE);
                 viewHolder.itemBinding.tvLinkedFilename.setVisibility(View.GONE);
@@ -434,7 +491,13 @@ public class ViewSelectorActivity extends BaseAppCompatActivity {
                         int pos = getLayoutPosition();
                         if (pos == RecyclerView.NO_POSITION) return;
                         selectedItem = pos;
-                        int requestCode = getRequestCode(ProjectDataManager.getFileManager(sc_id).getActivities().get(pos));
+                        ProjectFileBean selectedFile = selectedTab == TAB_ACTIVITY
+                                ? ProjectDataManager.getFileManager(sc_id).getActivities().get(pos)
+                                : ProjectDataManager.getFileManager(sc_id).getCustomViews().get(pos);
+                        if (!selectedFile.usesXmlLayout()) {
+                            return;
+                        }
+                        int requestCode = getRequestCode(selectedFile);
                         Intent intent = new Intent(getApplicationContext(), PresetSettingActivity.class);
                         intent.putExtra("request_code", requestCode);
                         intent.putExtra("edit_mode", true);

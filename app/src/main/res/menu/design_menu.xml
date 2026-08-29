@@ -17,9 +17,16 @@
         app:showAsAction="always" />
 
     <item
+        android:id="@+id/design_option_menu_tools"
+        android:icon="@drawable/ic_mtrl_tune"
+        android:orderInCategory="120"
+        android:title="@string/design_tools_title"
+        app:showAsAction="always" />
+
+    <item
         android:id="@+id/design_actionbar_titleopen_drawer"
         android:icon="@drawable/selector_ic_more_tinted_24"
-        android:orderInCategory="110"
+        android:orderInCategory="130"
         android:title="@string/menu_design_drawer"
         app:showAsAction="always" />
 

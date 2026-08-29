@@ -7,18 +7,11 @@ import androidx.activity.result.contract.ActivityResultContracts;
 import android.content.res.Configuration;
 import android.os.Bundle;
 import android.view.LayoutInflater;
-import android.view.Menu;
-import android.view.MenuInflater;
-import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.animation.DecelerateInterpolator;
 
 import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
-import androidx.core.view.MenuHost;
-import androidx.core.view.MenuProvider;
-import androidx.lifecycle.Lifecycle;
 
 import pro.sketchware.beans.HistoryViewBean;
 import pro.sketchware.beans.ProjectFileBean;
@@ -60,7 +53,7 @@ import pro.sketchware.util.ViewUtil;
 import pro.sketchware.core.project.WidgetCollectionManager;
 import pro.sketchware.core.codegen.XmlLayoutParser;
 
-public class ViewEditorFragment extends BaseFragment implements MenuProvider {
+public class ViewEditorFragment extends BaseFragment {
 
     private ActivityResultLauncher<Intent> propertyLauncher;
     public ViewEditor viewEditor;
@@ -81,8 +74,6 @@ public class ViewEditorFragment extends BaseFragment implements MenuProvider {
     }
 
     private void initialize(ViewGroup viewGroup) {
-        MenuHost menuHost = requireActivity();
-        menuHost.addMenuProvider(this, getViewLifecycleOwner(), Lifecycle.State.RESUMED);
         viewEditor = viewGroup.findViewById(R.id.view_editor);
         viewEditor.setScreenType(getResources().getConfiguration().orientation);
         widgetsCreatorManager = new WidgetsCreatorManager(this);
@@ -101,7 +92,6 @@ public class ViewEditorFragment extends BaseFragment implements MenuProvider {
         });
         viewProperty.setOnPropertyValueChangedListener(viewBean -> {
             refreshView(viewBean.id);
-            invalidateOptionsMenu();
         });
         viewProperty.setOnPropertyDeleted(viewBean -> {
             viewEditor.deleteWidget(viewBean);
@@ -142,7 +132,6 @@ public class ViewEditorFragment extends BaseFragment implements MenuProvider {
             @Override
             public void onDragStarted() {
                 isDragging = true;
-                ((DesignActivity) requireActivity()).setTouchEventEnabled(false);
             }
 
             @Override
@@ -153,7 +142,6 @@ public class ViewEditorFragment extends BaseFragment implements MenuProvider {
             @Override
             public void onDragEnded() {
                 isDragging = false;
-                ((DesignActivity) requireActivity()).setTouchEventEnabled(true);
             }
         });
         viewEditor.setOnHistoryChangeListener(this::onViewHistoryChanged);
@@ -169,7 +157,6 @@ public class ViewEditorFragment extends BaseFragment implements MenuProvider {
         setupPalette();
         refreshAllViews();
         schedulePropertyPanelWarmUp();
-        invalidateOptionsMenu();
     }
 
     private void updateFab(ViewBean viewBean) {
@@ -267,7 +254,6 @@ public class ViewEditorFragment extends BaseFragment implements MenuProvider {
 
     private void onViewHistoryChanged() {
         propertyViewsDirty = true;
-        invalidateOptionsMenu();
     }
 
     public void updateViewDisplay(ViewBean viewBean) {
@@ -385,12 +371,26 @@ public class ViewEditorFragment extends BaseFragment implements MenuProvider {
         return isPropertyViewVisible;
     }
 
+    public boolean canRedo() {
+        return !isDragging && sc_id != null && projectFileBean != null
+                && ViewHistoryManager.getInstance(sc_id).canRedo(projectFileBean.getXmlName());
+    }
+
+    public boolean canUndo() {
+        return !isDragging && sc_id != null && projectFileBean != null
+                && ViewHistoryManager.getInstance(sc_id).canUndo(projectFileBean.getXmlName());
+    }
+
     public void performRedo() {
-        onRedo();
+        if (canRedo()) {
+            onRedo();
+        }
     }
 
     public void performUndo() {
-        onUndo();
+        if (canUndo()) {
+            onUndo();
+        }
     }
 
     private void onRedo() {
@@ -434,12 +434,10 @@ public class ViewEditorFragment extends BaseFragment implements MenuProvider {
                     refreshAllViews();
                 }
             }
-            invalidateOptionsMenu();
         }
     }
 
     public void refreshAllViews() {
-        invalidateOptionsMenu();
         viewEditor.invalidateXmlStringCache();
         if (projectFileBean != null) {
             clearAndLoadViews(ProjectDataManager.getProjectDataManager(sc_id).getViews(projectFileBean.getXmlName()));
@@ -450,12 +448,6 @@ public class ViewEditorFragment extends BaseFragment implements MenuProvider {
 
     public void refreshFavorites() {
         viewEditor.setFavoriteData(WidgetCollectionManager.getInstance().getWidgets());
-    }
-
-    private void invalidateOptionsMenu() {
-        if (getActivity() != null) {
-            getActivity().invalidateOptionsMenu();
-        }
     }
 
     public void clearViewEditor() {
@@ -506,7 +498,6 @@ public class ViewEditorFragment extends BaseFragment implements MenuProvider {
                     refreshAllViews();
                 }
             }
-            invalidateOptionsMenu();
         }
     }
 
@@ -520,30 +511,6 @@ public class ViewEditorFragment extends BaseFragment implements MenuProvider {
         }
         viewProperty.addActivityViews(viewBeanArrayList, viewBean);
         propertyViewsDirty = false;
-    }
-
-    @Override
-    public void onCreateMenu(@NonNull Menu menu, @NonNull MenuInflater menuInflater) {
-        menuInflater.inflate(R.menu.design_view_menu, menu);
-        menu.findItem(R.id.menu_view_redo).setEnabled(false);
-        menu.findItem(R.id.menu_view_undo).setEnabled(false);
-        if (projectFileBean != null) {
-            menu.findItem(R.id.menu_view_redo).setEnabled(ViewHistoryManager.getInstance(sc_id).canRedo(projectFileBean.getXmlName()));
-            menu.findItem(R.id.menu_view_undo).setEnabled(ViewHistoryManager.getInstance(sc_id).canUndo(projectFileBean.getXmlName()));
-        }
-    }
-
-    @Override
-    public boolean onMenuItemSelected(@NonNull MenuItem item) {
-        int itemId = item.getItemId();
-        if (itemId == R.id.menu_view_redo) {
-            onRedo();
-            return true;
-        } else if (itemId == R.id.menu_view_undo) {
-            onUndo();
-            return true;
-        }
-        return false;
     }
 
     public void showImportXmlDialog() {
@@ -644,7 +611,6 @@ public class ViewEditorFragment extends BaseFragment implements MenuProvider {
             }
 
             viewEditor.addViews(importedViews, true);
-            invalidateOptionsMenu();
 
             String msg = String.format(Helper.getResString(R.string.menu_import_xml_success), importedViews.size());
             if (!result.warnings.isEmpty()) {
@@ -656,11 +622,6 @@ public class ViewEditorFragment extends BaseFragment implements MenuProvider {
             String msg = String.format(Helper.getResString(R.string.menu_import_xml_error), e.getMessage());
             SketchwareUtil.toast(msg);
         }
-    }
-    @Override
-    public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
-        super.onViewCreated(view, savedInstanceState);
-        invalidateOptionsMenu();
     }
 
     @Override
@@ -692,7 +653,6 @@ public class ViewEditorFragment extends BaseFragment implements MenuProvider {
                             updateViewDisplay(ProjectDataManager.getProjectDataManager(sc_id).getFabView(projectFileBean.getXmlName()));
                         }
                     }
-                    invalidateOptionsMenu();
                 });
     }
 
