@@ -174,6 +174,18 @@ public class EventListFragment extends BaseFragment implements View.OnClickListe
 
     public void setCurrentActivity(ProjectFileBean projectFileBean) {
         currentActivity = projectFileBean;
+        updatePaletteForCurrentActivity();
+    }
+
+    private void updatePaletteForCurrentActivity() {
+        if (paletteView == null) return;
+        boolean hasXmlUi = currentActivity == null || currentActivity.usesXmlLayout();
+        paletteView.getMenu().findItem(R.id.view).setVisible(hasXmlUi);
+        paletteView.getMenu().findItem(R.id.drawer).setVisible(hasXmlUi);
+        if (!hasXmlUi && (paletteView.getSelectedItemId() == R.id.view
+                || paletteView.getSelectedItemId() == R.id.drawer)) {
+            paletteView.setSelectedItemId(R.id.activity);
+        }
     }
 
     public void refreshEvents() {
@@ -195,7 +207,7 @@ public class EventListFragment extends BaseFragment implements View.OnClickListe
                 eventBean.initValue();
                 int eventType = eventBean.eventType;
                 if (eventType == EventBean.EVENT_TYPE_VIEW) {
-                    viewEvents.add(eventBean);
+                    if (currentActivity.usesXmlLayout()) viewEvents.add(eventBean);
                 } else if (eventType == EventBean.EVENT_TYPE_COMPONENT) {
                     componentEvents.add(eventBean);
                 } else if (eventType == EventBean.EVENT_TYPE_ACTIVITY) {
@@ -203,7 +215,7 @@ public class EventListFragment extends BaseFragment implements View.OnClickListe
                         activityEvents.add(eventBean);
                     }
                 } else if (eventType == EventBean.EVENT_TYPE_DRAWER_VIEW) {
-                    drawerViewEvents.add(eventBean);
+                    if (currentActivity.usesXmlLayout()) drawerViewEvents.add(eventBean);
                 }
             }
             if (getPaletteIndex() == -1) {
@@ -304,6 +316,7 @@ public class EventListFragment extends BaseFragment implements View.OnClickListe
         importMoreBlockFromCollection.setText(R.string.logic_button_import_more_block);
         importMoreBlockFromCollection.setOnClickListener(v -> showImportMoreBlockFromCollectionsDialog());
         setupSearchAndSort(parent);
+        updatePaletteForCurrentActivity();
     }
 
     private void setupSearchAndSort(ViewGroup parent) {

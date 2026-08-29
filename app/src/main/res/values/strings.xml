@@ -2119,7 +2119,6 @@ Choosing a theme mode lets you personalize the app\'s appearance, notes:\n
     <string name="design_tab_title_java">Java</string>
     <string name="design_tab_title_kotlin">Kotlin</string>
     <string name="design_tab_title_ui">UI</string>
-    <string name="design_tab_title_tools">Tools</string>
     <string name="design_tools_title">Tools</string>
     <string name="design_tools_events">Events</string>
     <string name="design_tools_components">Components</string>
@@ -3910,5 +3909,11 @@ Please try again later"</string>
     <string name="array_select_type_title">Select Array Type</string>
     <string name="item_title_create">Create new item</string>
     <string name="item_title_edit">Edit item</string>
+
+    <!-- Activity source selector and Kotlin/Compose creation -->
+    <string name="file_selector_create_new_activity">Add Java or Kotlin Activity</string>
+    <string name="file_selector_no_activities">No activities yet. Create one to start editing source.</string>
+    <string name="file_selector_compose_no_xml">Jetpack Compose • no XML layout</string>
+    <string name="create_view_kotlin_compose_hint">Kotlin activities use Jetpack Compose. They are generated as .kt source files and do not create an XML layout.</string>
 
 </resources>

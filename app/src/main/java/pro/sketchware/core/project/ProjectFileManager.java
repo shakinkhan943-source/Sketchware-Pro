@@ -47,6 +47,15 @@ public class ProjectFileManager {
     } 
     return null;
   }
+
+  /** Returns an Activity by its real generated source name ({@code .java} or {@code .kt}). */
+  public ProjectFileBean getActivityBySourceName(String sourceName) {
+    for (ProjectFileBean projectFileBean : activities) {
+      if (projectFileBean.getSourceFileName().equals(sourceName))
+        return projectFileBean;
+    }
+    return null;
+  }
   
   public void deleteBackup() {
     fileUtil.deleteFileByPath(SketchwarePaths.getBackupPath(projectId) + File.separator + "file");
@@ -340,13 +349,19 @@ public class ProjectFileManager {
     for (ProjectFileBean projectFileBean : activities) {
       if (projectFileBean.fileType == 0) {
         if (projectFileBean.fileName.equals("main")) {
-          xmlNames.add(0, projectFileBean.getXmlName());
+          if (projectFileBean.usesXmlLayout()) {
+            xmlNames.add(0, projectFileBean.getXmlName());
+          }
+          // Logic data deliberately keeps the historic .java compatibility key for both
+          // languages. Changing this would orphan existing events, variables and blocks.
           javaNames.add(0, projectFileBean.getJavaName());
           continue;
-        } 
-        xmlNames.add(projectFileBean.getXmlName());
+        }
+        if (projectFileBean.usesXmlLayout()) {
+          xmlNames.add(projectFileBean.getXmlName());
+        }
         javaNames.add(projectFileBean.getJavaName());
-      } 
+      }
     } 
     if (customViews != null)
       for (ProjectFileBean projectFileBean : customViews) {

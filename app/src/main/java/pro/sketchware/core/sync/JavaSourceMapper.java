@@ -35,12 +35,12 @@ public final class JavaSourceMapper {
      */
     public static MappedSource map(Context context, String scId, ProjectFileBean projectFile,
                                    JavaSyncMetadata metadata) {
-        String javaName = projectFile.getJavaName();
+        String sourceName = projectFile.getSourceFileName();
         CodeOwnershipRecorder recorder = CodeOwnershipRecorder.start();
         String code;
         try {
             code = new ProjectFilePaths(context.getApplicationContext(), scId).getFileSrc(
-                    javaName,
+                    sourceName,
                     ProjectDataManager.getFileManager(scId),
                     ProjectDataManager.getProjectDataManager(scId),
                     ProjectDataManager.getLibraryManager(scId));

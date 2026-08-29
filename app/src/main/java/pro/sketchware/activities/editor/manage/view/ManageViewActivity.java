@@ -252,13 +252,19 @@ public class ManageViewActivity extends BaseAppCompatActivity implements OnClick
                             projectFileBean = data.getParcelableExtra("project_file");
                             if (projectFileBean == null) return;
                             activitiesFragment.addProjectFile(projectFileBean);
-                            if (projectFileBean.hasActivityOption(ProjectFileBean.OPTION_ACTIVITY_DRAWER)) {
+                            if (projectFileBean.isComposeActivity()) {
+                                ProjectDataManager.getLibraryManager(sc_id).getCompose().useYn = "Y";
+                            }
+                            if (projectFileBean.usesXmlLayout()
+                                    && projectFileBean.hasActivityOption(ProjectFileBean.OPTION_ACTIVITY_DRAWER)) {
                                 addCustomView(projectFileBean.getDrawerName());
                             }
-                            if (projectFileBean.hasActivityOption(ProjectFileBean.OPTION_ACTIVITY_DRAWER) || projectFileBean.hasActivityOption(ProjectFileBean.OPTION_ACTIVITY_FAB)) {
+                            if (projectFileBean.usesXmlLayout()
+                                    && (projectFileBean.hasActivityOption(ProjectFileBean.OPTION_ACTIVITY_DRAWER)
+                                    || projectFileBean.hasActivityOption(ProjectFileBean.OPTION_ACTIVITY_FAB))) {
                                 ProjectDataManager.getLibraryManager(sc_id).getCompat().useYn = "Y";
                             }
-                            if (data.hasExtra("preset_views")) {
+                            if (projectFileBean.usesXmlLayout() && data.hasExtra("preset_views")) {
                                 addPresetViews(projectFileBean, data.getParcelableArrayListExtra("preset_views"));
                             }
                         } else {

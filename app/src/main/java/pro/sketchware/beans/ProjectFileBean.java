@@ -307,6 +307,26 @@ public class ProjectFileBean extends SelectableBean implements Parcelable {
         return language == LANGUAGE_KOTLIN;
     }
 
+    /**
+     * Kotlin Activities in Sketchware Pro are source-only Jetpack Compose screens. Their UI is
+     * declared in the generated Kotlin source, so they must never participate in the XML layout
+     * pipeline. Custom views and every legacy Java Activity keep their XML layout.
+     */
+    public boolean isComposeActivity() {
+        return fileType == PROJECT_FILE_TYPE_ACTIVITY && isKotlin();
+    }
+
+    /**
+     * Whether this project file owns an Android XML layout.
+     *
+     * <p>Keep this as the single source of truth instead of checking the language at individual
+     * call sites. In particular, {@link #getXmlName()} remains available as a backwards-compatible
+     * project-data key, but it does not imply that an XML file should be shown or generated.</p>
+     */
+    public boolean usesXmlLayout() {
+        return !isComposeActivity();
+    }
+
     public boolean isJava() {
         return language == LANGUAGE_JAVA;
     }

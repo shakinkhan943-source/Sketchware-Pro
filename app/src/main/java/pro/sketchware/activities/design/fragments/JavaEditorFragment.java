@@ -59,7 +59,7 @@ public class JavaEditorFragment extends BaseFragment {
      * The mapping of the source currently displayed. Base of every reverse synchronization.
      */
     private MappedSource baseline;
-    private String loadedJavaName;
+    private String loadedSourceName;
     private boolean loading;
 
     @Override
@@ -125,10 +125,10 @@ public class JavaEditorFragment extends BaseFragment {
         if (binding != null && projectFile != null) {
             updateEditorLanguage();
             String displayName = projectFile.isKotlin() ? projectFile.getSourceFileName() : projectFile.getJavaName();
-            if (loadedJavaName == null) {
+            if (loadedSourceName == null) {
                 binding.fileName.setText(displayName);
             }
-            if (!projectFile.getJavaName().equals(loadedJavaName)) {
+            if (!projectFile.getSourceFileName().equals(loadedSourceName)) {
                 reloadKeepingEdits(false);
             } else {
                 // Even if same file, update label for language change
@@ -190,7 +190,7 @@ public class JavaEditorFragment extends BaseFragment {
                         return;
                     }
                     baseline = mapped;
-                    loadedJavaName = file.getJavaName();
+                    loadedSourceName = file.getSourceFileName();
                     binding.editor.setText(mapped.getText());
                     binding.editor.setEditable(true);
                     String displayName = file.isKotlin() ? file.getSourceFileName() : file.getJavaName();

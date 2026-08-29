@@ -45,6 +45,7 @@ public class AddViewActivity extends BaseAppCompatActivity {
     private static final int FEATURE_TYPE_FAB = 3;
     private ActivityNameValidator nameValidator;
     private boolean featureStatusBar, featureToolbar, featureFab, featureDrawer;
+    private boolean composeSelected;
     private int requestCode;
     private ProjectFileBean projectFileBean;
     private String presetName;
@@ -175,6 +176,30 @@ public class AddViewActivity extends BaseAppCompatActivity {
         featuresAdapter.notifyDataSetChanged();
     }
 
+    private boolean isKotlinSelected() {
+        return binding.languageSelector.getCheckedButtonId() == R.id.select_kotlin;
+    }
+
+    /** Kotlin files are Compose Activities, never one of the XML-backed fragment variants. */
+    private void updateLanguageUi() {
+        composeSelected = isKotlinSelected();
+        binding.composeActivityHint.setVisibility(composeSelected ? View.VISIBLE : View.GONE);
+        binding.addViewTypeSelectorLayout.setAlpha(composeSelected ? 0.5f : 1f);
+        for (int i = 0; i < binding.viewTypeSelector.getChildCount(); i++) {
+            binding.viewTypeSelector.getChildAt(i).setEnabled(!composeSelected);
+        }
+        if (composeSelected) {
+            binding.viewTypeSelector.check(R.id.select_activity);
+            // These options describe generated XML chrome. Compose source owns its own UI.
+            featureToolbar = false;
+            featureFab = false;
+            featureDrawer = false;
+            initializeItems();
+        } else if (featuresAdapter != null) {
+            featuresAdapter.notifyDataSetChanged();
+        }
+    }
+
     @Override
     public void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
@@ -221,10 +246,15 @@ public class AddViewActivity extends BaseAppCompatActivity {
             if (isChecked) {
                 setManifestViewState(checkedId == R.id.select_activity);
                 boolean isActivity = checkedId == R.id.select_activity;
-                try {
-                    binding.languageSelectorLayout.setVisibility(isActivity ? View.VISIBLE : View.GONE);
-                } catch (Exception e) {
+                binding.languageSelectorLayout.setVisibility(isActivity ? View.VISIBLE : View.GONE);
+                if (!isActivity) {
+                    binding.languageSelector.check(R.id.select_java);
                 }
+            }
+        });
+        binding.languageSelector.addOnButtonCheckedListener((group, checkedId, isChecked) -> {
+            if (isChecked) {
+                updateLanguageUi();
             }
         });
 
@@ -247,6 +277,7 @@ public class AddViewActivity extends BaseAppCompatActivity {
             handleCreateModeInitialization();
         }
         initializeItems();
+        updateLanguageUi();
     }
 
     private void handleEditFile() {
@@ -296,7 +327,7 @@ public class AddViewActivity extends BaseAppCompatActivity {
         ProjectFileBean projectFileBean = new ProjectFileBean(ProjectFileBean.PROJECT_FILE_TYPE_ACTIVITY, fileName, getSelectedButtonIndex(binding.screenOrientationSelector), getSelectedButtonIndex(binding.keyboardSettingsSelector), featureToolbar, !featureStatusBar, featureFab, featureDrawer, selectedLang);
         Intent intent = new Intent();
         intent.putExtra("project_file", projectFileBean);
-        if (presetName != null) {
+        if (projectFileBean.usesXmlLayout() && presetName != null) {
             intent.putExtra("preset_views", getPresetData(presetName));
         }
         setResult(RESULT_OK, intent);
@@ -419,6 +450,11 @@ public class AddViewActivity extends BaseAppCompatActivity {
             viewHolder.iconImageView.setImageResource(featureItem.previewImg);
             viewHolder.nameTextView.setText(featureItem.name);
             viewHolder.featureCheckBox.setChecked(featureItem.isEnabled);
+            boolean xmlChromeOption = featureItem.type == FEATURE_TYPE_TOOLBAR
+                    || featureItem.type == FEATURE_TYPE_DRAWER
+                    || featureItem.type == FEATURE_TYPE_FAB;
+            viewHolder.featureCheckBox.setEnabled(!composeSelected || !xmlChromeOption);
+            viewHolder.itemView.setAlpha(composeSelected && xmlChromeOption ? 0.5f : 1f);
 
             switch (featureItem.type) {
                 case FEATURE_TYPE_STATUS_BAR -> featureStatusBar = featureItem.isEnabled;

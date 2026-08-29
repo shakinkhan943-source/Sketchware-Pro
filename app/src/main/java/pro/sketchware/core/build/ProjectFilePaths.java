@@ -1,6 +1,7 @@
 package pro.sketchware.core.build;
 
 import pro.sketchware.core.codegen.ActivityCodeGenerator;
+import pro.sketchware.core.codegen.KotlinActivityCodeGenerator;
 import pro.sketchware.core.sync.CodeOwnershipRecorder;
 import pro.sketchware.core.sync.JavaSyncManager;
 import pro.sketchware.core.sync.JavaSyncStore;
@@ -301,6 +302,12 @@ public class ProjectFilePaths {
         return resDirectoryPath + File.separator + directoryName + File.separator + fileName;
     }
 
+    /** Returns the generated source path using the Activity's real language extension. */
+    public String getActivitySourcePath(ProjectFileBean projectFileBean) {
+        return javaFilesPath + File.separator + packageNameAsFolders + File.separator
+                + projectFileBean.getSourceFileName();
+    }
+
     private String getValuesFilePath(String fileName) {
         return valuesFilesPath + File.separator + fileName;
     }
@@ -534,7 +541,7 @@ public class ProjectFilePaths {
      * </pre>, while AndroidManifest.xml gets saved to {@link ProjectFilePaths#androidManifestPath}.
      */
     public void writeProjectFile(String fileName, String fileContent) {
-        if (fileName.endsWith("java")) {
+        if (fileName.endsWith(".java") || fileName.endsWith(".kt")) {
             fileUtil.writeText(javaFilesPath + File.separator + packageNameAsFolders + File.separator + fileName, fileContent);
         } else if (fileName.equals("AndroidManifest.xml")) {
             fileUtil.writeText(androidManifestPath, fileContent);
@@ -596,9 +603,22 @@ public class ProjectFilePaths {
             buildConfig.addPermission(BuildConfig.PERMISSION_ACCESS_NETWORK_STATE);
             buildConfig.setupAdmob(adMob);
         }
-        if (compose != null && compose.useYn.equals(ProjectLibraryBean.LIB_USE_Y)) {
+        boolean hasComposeActivity = false;
+        if (projectFileManager != null) {
+            for (ProjectFileBean activity : projectFileManager.getActivities()) {
+                if (activity.isComposeActivity()) {
+                    hasComposeActivity = true;
+                    break;
+                }
+            }
+        }
+        // Older projects can contain Kotlin Activities from before the Compose library flag was
+        // persisted. The source model is authoritative, so infer the dependency here as well.
+        if (hasComposeActivity || (compose != null
+                && compose.useYn.equals(ProjectLibraryBean.LIB_USE_Y))) {
             buildConfig.isComposeEnabled = true;
-            Object optionalFeatures = compose.configurations == null ? null
+            if (compose != null && hasComposeActivity) compose.useYn = ProjectLibraryBean.LIB_USE_Y;
+            Object optionalFeatures = compose == null || compose.configurations == null ? null
                     : compose.configurations.get("compose_optional_features");
             if (optionalFeatures instanceof List<?>) {
                 for (Object featureId : (List<?>) optionalFeatures) {
@@ -811,6 +831,17 @@ public class ProjectFilePaths {
                 + ") in " + generateSourceCodeBeansDuration + " ms");
         int writtenProjectFileCount = 0;
         long writeProjectFilesStarted = System.currentTimeMillis();
+        // Language changes must not leave an old Java class or XML layout in the generated tree.
+        for (ProjectFileBean activity : projectFileManager.getActivities()) {
+            String generatedSourceDirectory = javaFilesPath + File.separator + packageNameAsFolders
+                    + File.separator;
+            if (activity.isComposeActivity()) {
+                FileUtil.deleteFile(generatedSourceDirectory + activity.getJavaName());
+                FileUtil.deleteFile(layoutFilesPath + File.separator + activity.getXmlName());
+            } else {
+                FileUtil.deleteFile(generatedSourceDirectory + activity.getActivityName() + ".kt");
+            }
+        }
         if (buildConfig.isFileProviderUsed) {
             XmlBuilder pathsTag = new XmlBuilder("paths");
             pathsTag.addAttribute("xmlns", "android", "http://schemas.android.com/apk/res/android");
@@ -912,7 +943,7 @@ public class ProjectFilePaths {
 
             List<ProjectFileBean> activitiesToGenerate = new ArrayList<>();
             for (ProjectFileBean activity : projectFileManager.getActivities()) {
-                if (!javaFiles.contains(new File(javaDir + activity.getJavaName()))) {
+                if (!javaFiles.contains(new File(javaDir + activity.getSourceFileName()))) {
                     activitiesToGenerate.add(activity);
                 }
             }
@@ -936,11 +967,12 @@ public class ProjectFilePaths {
                         boolean allCached = true;
                         ArrayList<SrcCodeBean> cachedBeans = new ArrayList<>();
                         for (ProjectFileBean activity : activitiesToGenerate) {
-                            File cachedFile = new File(codegenCacheDir, activity.getJavaName() + ".code");
+                            String sourceName = activity.getSourceFileName();
+                            File cachedFile = new File(codegenCacheDir, sourceName + ".code");
                             if (cachedFile.exists()) {
                                 String cachedCode = FileUtil.readFile(cachedFile.getAbsolutePath());
-                                cachedBeans.add(new SrcCodeBean(activity.getJavaName(),
-                                        withUserJavaCode(activity.getJavaName(),
+                                cachedBeans.add(new SrcCodeBean(sourceName,
+                                        withUserSourceCode(activity,
                                                 ActivityCodeGenerator.applyCommands(cachedCode))));
                             } else {
                                 allCached = false;
@@ -990,13 +1022,13 @@ public class ProjectFilePaths {
                         : Math.min(Runtime.getRuntime().availableProcessors(), activitiesToGenerate.size());
                 if (threadCount <= 1) {
                     for (ProjectFileBean activity : activitiesToGenerate) {
-                        String phase1Code = new ActivityCodeGenerator(buildConfig, activity, projectDataManager,
-                                sharedMll, projectSettings, sharedExtraBlocksMap, sharedMaterialLibraryManager)
-                                .generateCode(isAndroidStudioExport, sc_id, false);
-                        srcCodeBeans.add(new SrcCodeBean(activity.getJavaName(),
-                                withUserJavaCode(activity.getJavaName(),
+                        String sourceName = activity.getSourceFileName();
+                        String phase1Code = generateActivityPhaseOne(activity, projectDataManager,
+                                sharedMll, sharedExtraBlocksMap, sharedMaterialLibraryManager);
+                        srcCodeBeans.add(new SrcCodeBean(sourceName,
+                                withUserSourceCode(activity,
                                         ActivityCodeGenerator.applyCommands(phase1Code))));
-                        FileUtil.writeFile(new File(codegenCacheDir, activity.getJavaName() + ".code").getAbsolutePath(), phase1Code);
+                        FileUtil.writeFile(new File(codegenCacheDir, sourceName + ".code").getAbsolutePath(), phase1Code);
                     }
                 } else {
                     ExecutorService executor = Executors.newFixedThreadPool(threadCount);
@@ -1004,20 +1036,18 @@ public class ProjectFilePaths {
                         List<Future<Pair<String, String>>> futures = new ArrayList<>();
 
                         for (ProjectFileBean activity : activitiesToGenerate) {
-                            futures.add(executor.submit(() -> {
-                                String rawCode = new ActivityCodeGenerator(buildConfig, activity, projectDataManager,
-                                        sharedMll, projectSettings, sharedExtraBlocksMap, sharedMaterialLibraryManager)
-                                        .generateCode(isAndroidStudioExport, sc_id, false);
-                                return new Pair<>(activity.getJavaName(), rawCode);
-                            }));
+                            futures.add(executor.submit(() -> new Pair<>(activity.getSourceFileName(),
+                                    generateActivityPhaseOne(activity, projectDataManager, sharedMll,
+                                            sharedExtraBlocksMap, sharedMaterialLibraryManager))));
                         }
 
                         // Phase 2: Apply command blocks serially (CommandBlock is not thread-safe)
                         for (int i = 0; i < futures.size(); i++) {
                             try {
                                 Pair<String, String> result = futures.get(i).get();
+                                ProjectFileBean activity = activitiesToGenerate.get(i);
                                 srcCodeBeans.add(new SrcCodeBean(result.first,
-                                        withUserJavaCode(result.first,
+                                        withUserSourceCode(activity,
                                                 ActivityCodeGenerator.applyCommands(result.second))));
                                 FileUtil.writeFile(new File(codegenCacheDir, result.first + ".code").getAbsolutePath(), result.second);
                             } catch (InterruptedException | ExecutionException | RuntimeException e) {
@@ -1025,14 +1055,14 @@ public class ProjectFilePaths {
                                     Thread.currentThread().interrupt();
                                 }
                                 ProjectFileBean activity = activitiesToGenerate.get(i);
-                                Log.e("ProjectFilePaths", "Parallel code generation failed for " + activity.getJavaName() + " in project " + sc_id + "; falling back to serial generation", e);
-                                String phase1Code = new ActivityCodeGenerator(buildConfig, activity, projectDataManager,
-                                        sharedMll, projectSettings, sharedExtraBlocksMap, sharedMaterialLibraryManager)
-                                        .generateCode(isAndroidStudioExport, sc_id, false);
-                                srcCodeBeans.add(new SrcCodeBean(activity.getJavaName(),
-                                        withUserJavaCode(activity.getJavaName(),
+                                String sourceName = activity.getSourceFileName();
+                                Log.e("ProjectFilePaths", "Parallel code generation failed for " + sourceName + " in project " + sc_id + "; falling back to serial generation", e);
+                                String phase1Code = generateActivityPhaseOne(activity, projectDataManager,
+                                        sharedMll, sharedExtraBlocksMap, sharedMaterialLibraryManager);
+                                srcCodeBeans.add(new SrcCodeBean(sourceName,
+                                        withUserSourceCode(activity,
                                                 ActivityCodeGenerator.applyCommands(phase1Code))));
-                                FileUtil.writeFile(new File(codegenCacheDir, activity.getJavaName() + ".code").getAbsolutePath(), phase1Code);
+                                FileUtil.writeFile(new File(codegenCacheDir, sourceName + ".code").getAbsolutePath(), phase1Code);
                             }
                         }
                     } finally {
@@ -1056,6 +1086,7 @@ public class ProjectFilePaths {
             // at /Internal storage/.sketchware/data/<sc_id>/files/resource/layout/
             ArrayList<ProjectFileBean> regularLayouts = projectFileManager.getActivities();
             for (ProjectFileBean layout : regularLayouts) {
+                if (!layout.usesXmlLayout()) continue;
                 String xmlName = layout.getXmlName();
                 LayoutGenerator layoutGenerator = new LayoutGenerator(buildConfig, layout);
                 layoutGenerator.setViews(ProjectDataStore.getSortedRootViews(projectDataManager.getViews(xmlName)), projectDataManager.getFabView(xmlName));
@@ -1173,6 +1204,8 @@ public class ProjectFilePaths {
         CommandBlock.clearTempCommands();
         try {
             boolean isJavaFile = filename.endsWith(".java");
+            boolean isKotlinFile = filename.endsWith(".kt");
+            boolean isSourceFile = isJavaFile || isKotlinFile;
             boolean isXmlFile = filename.endsWith(".xml");
             boolean isManifestFile = filename.equals("AndroidManifest.xml");
             ArrayList<ProjectFileBean> projectFiles = new ArrayList<>(projectFileManager.getActivities());
@@ -1205,11 +1238,18 @@ public class ProjectFilePaths {
             }
 
             for (ProjectFileBean projectFile : projectFiles) {
-                if (filename.equals(isJavaFile ? projectFile.getJavaName() : projectFile.getXmlName())) {
-                    if (isJavaFile) {
-                        return withUserJavaCode(filename,
-                                new ActivityCodeGenerator(buildConfig, projectFile, projectDataManager).generateCode(isAndroidStudioExport, sc_id));
-                    } else if (isXmlFile) {
+                String expectedName = isSourceFile
+                        ? projectFile.getSourceFileName() : projectFile.getXmlName();
+                if (filename.equals(expectedName)) {
+                    if (isSourceFile) {
+                        String generated = projectFile.isComposeActivity()
+                                ? ActivityCodeGenerator.applyCommands(
+                                        new KotlinActivityCodeGenerator(buildConfig, projectFile, projectDataManager)
+                                                .generateCode(sc_id))
+                                : new ActivityCodeGenerator(buildConfig, projectFile, projectDataManager)
+                                        .generateCode(isAndroidStudioExport, sc_id);
+                        return withUserSourceCode(projectFile, generated);
+                    } else if (isXmlFile && projectFile.usesXmlLayout()) {
                         LayoutGenerator xmlGenerator = new LayoutGenerator(buildConfig, projectFile);
                         xmlGenerator.setViews(ProjectDataStore.getSortedRootViews(projectDataManager.getViews(filename)), projectDataManager.getFabView(filename));
                         return CommandBlock.applyCommands(filename, xmlGenerator.toXmlString());
@@ -1233,7 +1273,12 @@ public class ProjectFilePaths {
         } else {
             for (ProjectFileBean projectFile : projectFiles) {
                 try {
-                    CommandBlock.collectXmlCommandBlocks(new ActivityCodeGenerator(buildConfig, projectFile, projectDataManager).generateCode(isAndroidStudioExport, sc_id, false));
+                    String generatedSource = projectFile.isComposeActivity()
+                            ? new KotlinActivityCodeGenerator(buildConfig, projectFile, projectDataManager)
+                                    .generateCode(sc_id, false)
+                            : new ActivityCodeGenerator(buildConfig, projectFile, projectDataManager)
+                                    .generateCode(isAndroidStudioExport, sc_id, false);
+                    CommandBlock.collectXmlCommandBlocks(generatedSource);
                 } catch (RuntimeException e) {
                     Log.e("ProjectFilePaths", "Failed to prepare XML commands", e);
                 }
@@ -1373,6 +1418,28 @@ public class ProjectFilePaths {
             manifest = LocalLibraryManifestMerger.mergeLocalLibraryManifests(manifest, sc_id, packageName);
         }
         return applyStoredXmlCommandsIfNeeded("AndroidManifest.xml", manifest);
+    }
+
+    private String generateActivityPhaseOne(
+            ProjectFileBean activity,
+            ProjectDataStore projectDataManager,
+            ManageLocalLibrary sharedMll,
+            HashMap<String, Map<String, Object>> sharedExtraBlocksMap,
+            Material3LibraryManager sharedMaterialLibraryManager) {
+        if (activity.isComposeActivity()) {
+            return new KotlinActivityCodeGenerator(buildConfig, activity, projectDataManager)
+                    .generateCode(sc_id, false);
+        }
+        return new ActivityCodeGenerator(buildConfig, activity, projectDataManager,
+                sharedMll, projectSettings, sharedExtraBlocksMap, sharedMaterialLibraryManager)
+                .generateCode(isAndroidStudioExport, sc_id, false);
+    }
+
+    private String withUserSourceCode(ProjectFileBean activity, String code) {
+        // Synchronization metadata deliberately keeps the historical .java logic key, while the
+        // generated file itself uses .kt for Kotlin Activities. User-code injection is line based
+        // and therefore works for both languages.
+        return withUserJavaCode(activity.getJavaName(), code);
     }
 
     /**

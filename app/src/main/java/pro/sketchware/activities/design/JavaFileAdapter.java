@@ -54,13 +54,10 @@ public class JavaFileAdapter extends RecyclerView.Adapter<JavaFileAdapter.ViewHo
         void bind(ProjectFileBean projectFile) {
             binding.tvFilename.setVisibility(View.VISIBLE);
             binding.tvLinkedFilename.setVisibility(View.VISIBLE);
-            // Language-aware display
-            String sourceName = projectFile.isKotlin() ? projectFile.getSourceFileName() : projectFile.getJavaName();
-            binding.tvFilename.setText(sourceName);
-            if (projectFile.isKotlin()) {
-                // For Kotlin/Compose, UI is disabled – show hint or hide XML
-                binding.tvLinkedFilename.setText(projectFile.getXmlName() + " (UI disabled)");
-                binding.tvLinkedFilename.setAlpha(0.5f);
+            binding.tvFilename.setText(projectFile.getSourceFileName());
+            if (projectFile.isComposeActivity()) {
+                binding.tvLinkedFilename.setText(pro.sketchware.R.string.file_selector_compose_no_xml);
+                binding.tvLinkedFilename.setAlpha(0.7f);
             } else {
                 binding.tvLinkedFilename.setText(projectFile.getXmlName());
                 binding.tvLinkedFilename.setAlpha(1.0f);

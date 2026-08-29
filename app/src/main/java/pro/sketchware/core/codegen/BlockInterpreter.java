@@ -39,6 +39,11 @@ import pro.sketchware.core.sync.CodeOwnershipRecorder;
  */
 public class BlockInterpreter {
 
+    public enum SourceLanguage {
+        JAVA,
+        KOTLIN
+    }
+
     private static final Pattern PARAM_PATTERN = Pattern.compile("%m(?!\\.[\\w]+)");
     private static final Pattern SPEC_PARAM_PATTERN = Pattern.compile("%[bdsm]");
     private static final Pattern EXTRACT_PARAMS_PATTERN = Pattern.compile("%\\w+(?:\\.\\w+)?|%\\w");
@@ -66,12 +71,19 @@ public class BlockInterpreter {
      */
     private String syncOwnerKey;
     private final boolean isActivity;
+    private final SourceLanguage sourceLanguage;
 
     public BlockInterpreter(String activityName, BuildConfig buildConfig, ArrayList<BlockBean> eventBlocks, boolean isViewBindingEnabled) {
-        this(activityName, buildConfig, eventBlocks, isViewBindingEnabled, null);
+        this(activityName, buildConfig, eventBlocks, isViewBindingEnabled, null, SourceLanguage.JAVA);
     }
 
     public BlockInterpreter(String activityName, BuildConfig buildConfig, ArrayList<BlockBean> eventBlocks, boolean isViewBindingEnabled, String currentXmlName) {
+        this(activityName, buildConfig, eventBlocks, isViewBindingEnabled, currentXmlName, SourceLanguage.JAVA);
+    }
+
+    public BlockInterpreter(String activityName, BuildConfig buildConfig,
+                            ArrayList<BlockBean> eventBlocks, boolean isViewBindingEnabled,
+                            String currentXmlName, SourceLanguage sourceLanguage) {
         this.activityName = activityName;
 
         isActivity = !(activityName.endsWith("DialogFragmentActivity") || activityName.endsWith("BottomDialogFragmentActivity") || activityName.endsWith("FragmentActivity"));
@@ -81,6 +93,11 @@ public class BlockInterpreter {
         this.eventBlocks = eventBlocks;
         this.isViewBindingEnabled = isViewBindingEnabled;
         this.currentXmlName = currentXmlName;
+        this.sourceLanguage = sourceLanguage == null ? SourceLanguage.JAVA : sourceLanguage;
+    }
+
+    public boolean isKotlin() {
+        return sourceLanguage == SourceLanguage.KOTLIN;
     }
 
     /**
@@ -179,6 +196,17 @@ public class BlockInterpreter {
         ArrayList<String> params = getBlockParams(bean);
 
         String opcode = getBlockCode(bean, params);
+        // Direct-source blocks already contain user-authored code in the target language. Every
+        // registry/custom block, however, is historically a Java template and must be translated
+        // before it is inserted into a Kotlin Activity.
+        if (isKotlin() && !"addSourceDirectly".equals(bean.opCode)) {
+            opcode = KotlinCodeConverter.convertBlock(opcode);
+            // Sketchware models every Number reporter as a Java double. Kotlin does not perform
+            // Java's implicit numeric widening, so normalize reporter results at the boundary.
+            if ("d".equals(bean.type) && !opcode.trim().isEmpty()) {
+                opcode = "(" + opcode + ").toDouble()";
+            }
+        }
 
         if (needsParentheses(bean.opCode, parentOpcode)) {
             return "(" + opcode + ")";
@@ -276,14 +304,16 @@ public class BlockInterpreter {
              */
             try {
                 if (param.isEmpty()) {
-                    return "0";
+                    return isKotlin() ? "0.0" : "0";
                 }
                 if (param.contains(".")) {
                     Double.parseDouble(param);
-                    return param + "d";
+                    return isKotlin() ? param : param + "d";
                 }
                 Integer.parseInt(param);
-                return param;
+                // Sketchware's numeric variable type is double. Java widens integer literals
+                // implicitly, while Kotlin requires a Double literal explicitly.
+                return isKotlin() ? param + ".0" : param;
             } catch (NumberFormatException e) {
                 return param;
             }

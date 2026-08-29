@@ -105,13 +105,19 @@ public class ViewFilesFragment extends BaseFragment {
         newProjectFile.language = projectFileBean.language;
 
         String drawerName = ProjectFileBean.getDrawerName(newProjectFile.fileName);
-        if (projectFileBean.hasActivityOption(ProjectFileBean.OPTION_ACTIVITY_DRAWER)) {
+        if (newProjectFile.isComposeActivity()) {
+            ProjectDataManager.getLibraryManager(sc_id).getCompose().useYn = "Y";
+        }
+        if (newProjectFile.usesXmlLayout()
+                && newProjectFile.hasActivityOption(ProjectFileBean.OPTION_ACTIVITY_DRAWER)) {
             ((ManageViewActivity) getActivity()).addCustomView(drawerName);
         } else {
             ((ManageViewActivity) getActivity()).removeCustomView(drawerName);
         }
 
-        if (projectFileBean.hasActivityOption(ProjectFileBean.OPTION_ACTIVITY_DRAWER) || projectFileBean.hasActivityOption(ProjectFileBean.OPTION_ACTIVITY_FAB)) {
+        if (newProjectFile.usesXmlLayout()
+                && (newProjectFile.hasActivityOption(ProjectFileBean.OPTION_ACTIVITY_DRAWER)
+                || newProjectFile.hasActivityOption(ProjectFileBean.OPTION_ACTIVITY_FAB))) {
             ProjectDataManager.getLibraryManager(sc_id).getCompat().useYn = "Y";
         }
     }
@@ -124,6 +130,7 @@ public class ViewFilesFragment extends BaseFragment {
         int position = projectFilesAdapter.layoutPosition;
         if (position < 0 || position >= activitiesFiles.size()) return;
         ProjectFileBean projectFileBean = activitiesFiles.get(position);
+        if (!projectFileBean.usesXmlLayout()) return;
 
         ArrayList<ViewBean> fileViewBeans = ProjectDataManager.getProjectDataManager(sc_id).getViews(projectFileBean.getXmlName());
         for (int i = fileViewBeans.size() - 1; i >= 0; --i) {
@@ -292,16 +299,17 @@ public class ViewFilesFragment extends BaseFragment {
             viewHolder.binding.chkSelect.setChecked(projectFileBean.isSelected);
             viewHolder.binding.chkSelect.setVisibility(position == 0 ? View.GONE : isSelectionMode ? View.VISIBLE : View.GONE);
             viewHolder.binding.imgActivity.setVisibility(isSelectionMode && position != 0 ? View.GONE : View.VISIBLE);
+            viewHolder.binding.imgPresetSetting.setVisibility(
+                    projectFileBean.usesXmlLayout() ? View.VISIBLE : View.GONE);
 
-            viewHolder.binding.imgActivity.setImageResource(getImageResByOptions(projectFileBean.options));
-            viewHolder.binding.tvScreenName.setText(projectFileBean.getXmlName());
-            // Language-aware: show Kotlin or Java file name
-            String sourceName = projectFileBean.isKotlin() ? projectFileBean.getSourceFileName() : projectFileBean.getJavaName();
-            // Optionally append language label for clarity
-            if (projectFileBean.isKotlin()) {
-                viewHolder.binding.tvActivityName.setText(sourceName + " (Kotlin)");
+            viewHolder.binding.imgActivity.setImageResource(projectFileBean.isComposeActivity()
+                    ? R.drawable.ic_mtrl_compose : getImageResByOptions(projectFileBean.options));
+            if (projectFileBean.isComposeActivity()) {
+                viewHolder.binding.tvScreenName.setText(projectFileBean.getSourceFileName());
+                viewHolder.binding.tvActivityName.setText(R.string.file_selector_compose_no_xml);
             } else {
-                viewHolder.binding.tvActivityName.setText(sourceName);
+                viewHolder.binding.tvScreenName.setText(projectFileBean.getXmlName());
+                viewHolder.binding.tvActivityName.setText(projectFileBean.getSourceFileName());
             }
         }
 
@@ -366,6 +374,7 @@ public class ViewFilesFragment extends BaseFragment {
                     if (!UIHelper.isClickThrottled()) {
                         layoutPosition = getBindingAdapterPosition();
                         if (layoutPosition == RecyclerView.NO_POSITION || layoutPosition < 0 || layoutPosition >= activitiesFiles.size()) return;
+                        if (!activitiesFiles.get(layoutPosition).usesXmlLayout()) return;
                         Intent intent = new Intent(getContext(), PresetSettingActivity.class);
                         intent.putExtra("request_code", REQUEST_CODE_PRESET_ACTIVITY);
                         intent.putExtra("edit_mode", true);

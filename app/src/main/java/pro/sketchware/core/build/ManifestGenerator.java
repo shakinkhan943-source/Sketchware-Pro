@@ -584,8 +584,7 @@ public class ManifestGenerator {
             if (!projectFileBean.fileName.contains("_fragment")) {
                 XmlBuilder activityTag = new XmlBuilder("activity");
 
-                String javaName = projectFileBean.getJavaName();
-                activityTag.addAttribute("android", "name", "." + javaName.substring(0, javaName.indexOf(".java")));
+                activityTag.addAttribute("android", "name", "." + projectFileBean.getActivityName());
 
                 if (!AndroidManifestInjector.injectActivityAttributes(activityTag, buildConfig.sc_id, projectFileBean.getJavaName())) {
                     activityTag.addAttribute("android", "configChanges", "orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout");
