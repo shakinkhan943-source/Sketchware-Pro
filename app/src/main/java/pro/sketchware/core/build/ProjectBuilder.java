@@ -1163,12 +1163,23 @@ public class ProjectBuilder {
 
     /**
      * Verifies that the AAPT2 native library ({@code libaapt2.so}) is present and executable.
+     * <p>
+     * {@code libaapt2.so} is not a JNI shared library — it is the AAPT2 executable shipped in
+     * {@code jniLibs/<abi>/}. It is run with {@link ProcessBuilder} from
+     * {@link ApplicationInfo#nativeLibraryDir}, which the package installer only populates when
+     * native libraries are extracted from the APK. If the app was packaged with compressed
+     * native libraries (the AGP default for {@code minSdk >= 23}) the directory is empty and the
+     * build cannot start.
      *
-     * @throws SketchwareException If the AAPT2 binary is missing
+     * @throws SketchwareException If the AAPT2 binary is missing or not executable
      */
     public void maybeExtractAapt2() throws SketchwareException {
         if (!aapt2Binary.exists()) {
-            throw new SketchwareException("AAPT2 binary is missing at " + aapt2Binary.getAbsolutePath());
+            throw new SketchwareException(describeMissingAapt2());
+        }
+        if (aapt2Binary.length() == 0) {
+            throw new SketchwareException("AAPT2 binary at " + aapt2Binary.getAbsolutePath()
+                    + " is empty (0 bytes). The installed APK is damaged - reinstall Sketchware Pro.");
         }
         aapt2Binary.setExecutable(true, false);
         aapt2Binary.setReadable(true, false);
@@ -1177,6 +1188,43 @@ public class ProjectBuilder {
         } catch (Exception e) {
             LogUtil.w(TAG, "Failed to chmod AAPT2 binary with Os.chmod", e);
         }
+        if (!aapt2Binary.canExecute()) {
+            throw new SketchwareException("AAPT2 binary at " + aapt2Binary.getAbsolutePath()
+                    + " could not be made executable.");
+        }
+    }
+
+    /**
+     * Builds a diagnostic message for a missing AAPT2 binary, listing the device ABIs and
+     * whatever the installer actually placed in the native library directory. This turns an
+     * opaque "file not found" into something that points at the real cause (native libraries
+     * not extracted, or no {@code jniLibs} entry for this device's ABI).
+     */
+    private String describeMissingAapt2() {
+        StringBuilder message = new StringBuilder("AAPT2 binary is missing at ")
+                .append(aapt2Binary.getAbsolutePath());
+
+        File nativeLibraryDirectory = aapt2Binary.getParentFile();
+        String[] presentLibraries = nativeLibraryDirectory == null
+                ? null
+                : nativeLibraryDirectory.list();
+
+        if (nativeLibraryDirectory != null && !nativeLibraryDirectory.exists()) {
+            message.append(". The native library directory does not exist");
+        } else if (presentLibraries == null || presentLibraries.length == 0) {
+            message.append(". The native library directory is empty, which means the installer did not "
+                    + "extract native libraries from the APK");
+        } else {
+            message.append(". The native library directory contains: ")
+                    .append(TextUtils.join(", ", presentLibraries));
+        }
+
+        message.append(". Device ABIs: ")
+                .append(TextUtils.join(", ", android.os.Build.SUPPORTED_ABIS))
+                .append(". Reinstall Sketchware Pro using the APK built for this device's ABI, "
+                        + "and make sure it was not installed from a stripped or re-signed (split) APK.");
+
+        return message.toString();
     }
 
     /**
