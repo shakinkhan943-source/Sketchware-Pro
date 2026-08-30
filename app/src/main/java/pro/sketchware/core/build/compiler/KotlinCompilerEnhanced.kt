@@ -122,8 +122,16 @@ class KotlinCompilerEnhanced(
 
         val compiler = K2JVMCompiler()
         val collector = DiagnosticCollector()
-        val plugins = getCompilerPlugins(workspace)
-            .filter { it.exists() }
+        val plugins = getCompilerPlugins(workspace).filter { it.exists() }
+
+        // kotlinc puts every -Xplugin JAR into a classloader of its own, and ART can only define
+        // classes from DEX. A JAR copied into kt_plugins therefore supplies the plugin's service
+        // descriptors but never the registrar class itself, which the loader has to inherit from the
+        // Sketchware APK. Verify that before running the compiler: kotlinc reports the same problem
+        // as a raw ClassNotFoundException that names only a single class.
+        KotlinCompilerUtil.ensurePluginRegistrarsAreLoadable(plugins)
+
+        val pluginPaths = plugins
             .map(File::getAbsolutePath)
             .toTypedArray()
 
@@ -141,7 +149,7 @@ class KotlinCompilerEnhanced(
 
             this.kotlinHome = kotlinHome.absolutePath
             destination = outputDir.absolutePath
-            pluginClasspaths = plugins
+            pluginClasspaths = pluginPaths
         }
 
         // IMPORTANT: pass classpath and source files through the compiler's
