@@ -628,7 +628,7 @@ public class ManifestGenerator {
                     XmlBuilder categoryTag = new XmlBuilder("category");
                     categoryTag.addAttribute("android", "name", Intent.CATEGORY_LAUNCHER);
                     intentFilterTag.addChildNode(categoryTag);
-                    if (targetsSdkVersion31OrHigher && !AndroidManifestInjector.isActivityExportedUsed(buildConfig.sc_id, javaName)) {
+                    if (targetsSdkVersion31OrHigher && !AndroidManifestInjector.isActivityExportedUsed(buildConfig.sc_id, projectFileBean.getJavaName())) {
                         activityTag.addAttribute("android", "exported", "true");
                     }
                     activityTag.addChildNode(intentFilterTag);

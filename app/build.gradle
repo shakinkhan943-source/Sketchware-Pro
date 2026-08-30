@@ -29,6 +29,12 @@ android {
     }
 
     packaging {
+        jniLibs {
+            // These bundled/prebuilt libraries are not strip-compatible. Keep their
+            // symbols and let AGP package them unchanged instead of warning/failing
+            // during native library stripping.
+            keepDebugSymbols += "**/*.so"
+        }
         resources {
             excludes += "license/*"
             excludes += "META-INF/DEPENDENCIES"
