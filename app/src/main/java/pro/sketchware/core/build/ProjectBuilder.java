@@ -420,8 +420,13 @@ public class ProjectBuilder {
         }
 
         /* Add the separate built-in Jetpack Compose bundle. */
+        // A DEX-only artifact in the bundle has no classes.jar to contribute: resolveClassesJar()
+        // then yields an empty File, whose absolute path would otherwise be the working directory.
         for (ComposeBuiltInLibraries.ComposeArtifact artifact : getSelectedComposeArtifacts()) {
-            classpath.append(":").append(ComposeBuiltInLibraries.getLibraryClassesJarPath(artifact.id).getAbsolutePath());
+            File composeClassesJar = ComposeBuiltInLibraries.getLibraryClassesJarPath(artifact.id);
+            if (composeClassesJar.exists()) {
+                classpath.append(":").append(composeClassesJar.getAbsolutePath());
+            }
         }
 
         /* Add local libraries to the classpath */
@@ -997,7 +1002,10 @@ public class ProjectBuilder {
             }
 
             for (ComposeBuiltInLibraries.ComposeArtifact artifact : getSelectedComposeArtifacts()) {
-                apkBuilder.addResourcesFromJar(ComposeBuiltInLibraries.getLibraryClassesJarPath(artifact.id));
+                File composeClassesJar = ComposeBuiltInLibraries.getLibraryClassesJarPath(artifact.id);
+                if (composeClassesJar.exists()) {
+                    apkBuilder.addResourcesFromJar(composeClassesJar);
+                }
             }
 
             for (String jarPath : localLibraryManager.getJarLocalLibrary().split(":")) {
@@ -1080,7 +1088,16 @@ public class ProjectBuilder {
         }
 
         for (ComposeBuiltInLibraries.ComposeArtifact artifact : getSelectedComposeArtifacts()) {
-            dexes.add(ComposeBuiltInLibraries.getLibraryDexFile(artifact.id));
+            // A bundle may declare an artifact as classes.jar only, and resolveDex() then returns an
+            // empty File. dexLibraries() opens every path it is handed, so skip those here instead of
+            // failing in the middle of the DEX merge; the build log keeps the artifact visible.
+            File composeDex = ComposeBuiltInLibraries.getLibraryDexFile(artifact.id);
+            if (composeDex.exists()) {
+                dexes.add(composeDex);
+            } else {
+                LogUtil.d(TAG, "Compose artifact " + artifact.id + " ships no DEX file ("
+                        + composeDex.getAbsolutePath() + "); its classes must reach the app another way");
+            }
         }
 
         /* Add local libraries' main DEX files */
@@ -1272,9 +1289,17 @@ public class ProjectBuilder {
         }
 
         for (ComposeBuiltInLibraries.ComposeArtifact artifact : getSelectedComposeArtifacts()) {
-            // Validation is intentionally lightweight; the bundle contains all transitive artifacts.
-            if (!ComposeBuiltInLibraries.getLibraryClassesJarPath(artifact.id).exists()) {
-                throw new IllegalStateException("Missing built-in Compose artifact: " + artifact.id);
+            // The selection is expanded over the declared dependencies, so an artifact the features
+            // never named can still end up here, and kotlinc reports a missing one as unrelated
+            // "Unresolved reference" errors. A dex-only artifact is valid: ComposeDependencyManager
+            // accepts either file, so both roles are checked before the build starts.
+            String artifactId = artifact.id;
+            boolean usable = ComposeBuiltInLibraries.getLibraryClassesJarPath(artifactId).exists()
+                    || ComposeBuiltInLibraries.getLibraryDexFile(artifactId).exists();
+            if (!usable) {
+                throw new IllegalStateException("The Jetpack Compose dependency bundle declares '"
+                        + artifactId + "' but contains neither its classes.jar nor its dex file. "
+                        + "Add that artifact to the ZIP, or drop its entry from the Compose JSON.");
             }
         }
 

@@ -1193,6 +1193,45 @@ resolver/ 子模块
 └── 被主模块通过 `implementation project(':resolver')` 引用
 ```
 
+## 6.12 Jetpack Compose 依赖包（用户自选 ZIP + JSON）
+
+设备上无法运行 Gradle，因此 Compose 依赖由用户在 **设置 → Jetpack Compose 依赖包** 中选择
+`compose-libs.zip` 与 `compose-libraries.json` 提供，由 `ComposeDependencyManager` 负责拷贝、校验、
+解压与缓存（按两文件的联合哈希缓存，任一文件改动即自动重新解压，无需手动清缓存）。
+
+```
+运行目录：<cacheDir>/compose-dependencies/
+├── source/compose-package.zip|.json     # configure() 时复制的原件
+├── extracted/<hash>/                    # 安全解压结果（拒绝 ../ 与绝对路径）
+└── index/<hash>.json                    # 解析后的清单缓存
+
+构建侧唯一入口：ProjectBuilder.getSelectedComposeArtifacts()
+├── classpath（kotlinc -cp）
+├── AAPT2 资源/asset 合并（ResourceCompiler）
+├── APK 内 jar 资源（ApkBuilder.addResourcesFromJar）
+└── DEX 合并输入（getDexFilesReady）
+```
+
+**清单字段**（每个 `artifacts[]` 条目）：`id`（或 `name`/`coordinate`/`path` 推导）、`coordinate`、
+`packageName`/`package`、`dependencies`，以及 `files{classes|jar, res|resource, assets, proguard,
+dex|dexFile}`；若只给出 `path`/`root`/`directory`，则按 `<root>/classes.jar`、`<root>/res`、
+`dex/<id>.dex` 推导。`features[]` 里的 `roots`（或 `artifacts`）列出用户勾选的“根”构件；
+没有 `features[]` 时整个 ZIP 都参与构建。
+
+**依赖闭包是必须的，不是可选的。** Compose 把同一个库拆成很多 artifact：`ui:ui` 里没有 `Color`
+（在 `ui-graphics`）、没有 `Dp`（在 `ui-unit`）、没有 `TextStyle`（在 `ui-text`），`foundation` 里也
+没有 `Box`/`fillMaxSize`（在 `foundation-layout`）。所以选择逻辑必须以 `features[].roots` 为种子，沿
+`dependencies` 做传递闭包（`ComposeDependencyFeatureResolver`），否则编译期只会看到一片
+`Unresolved reference 'layout'` / `Cannot access class 'Color'` 之类与真实原因无关的报错。
+构件名在匹配时同时接受 `id`、Maven 坐标（可带或不带 `-version`）以及把所有非字母数字折叠成 `_`
+的宽松形式，手写清单里的两种拼法可以混用。
+
+闭包发现 ZIP 里没有的 Compose 构件时会**直接失败并点名构件**（`androidx.compose.…`
+只可能来自该 ZIP，因此不作警告处理）；`lifecycle`、`collection`、`coroutines`、`kotlin-stdlib`
+这类由 App 自身或 `android.jar` 提供的依赖只记日志。若某构件只声明了 `dex`（或只声明了
+`classes.jar`），缺失的那一侧会在对应步骤被跳过——但请注意：只有 `classes.jar` 而没有 DEX 的
+Compose 构件不会进入 APK，运行时仍会 `NoClassDefFoundError`，打包时务必为每个构件生成 DEX。
+
 ---
 
 # 第七章：扩展系统

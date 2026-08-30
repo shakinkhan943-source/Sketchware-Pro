@@ -24,7 +24,6 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -62,6 +61,9 @@ public final class ComposeDependencyManager {
 
     private static ComposeBuiltInLibraries.ComposeManifest cachedManifest;
     private static String cachedHash;
+    /** Memoized selection, valid while {@link #selectionCacheKey} still describes the same package. */
+    private static String selectedArtifactsCacheKey;
+    private static List<ComposeBuiltInLibraries.ComposeArtifact> selectedArtifactsCache;
 
     private ComposeDependencyManager() {}
 
@@ -161,31 +163,41 @@ public final class ComposeDependencyManager {
         validateManifestFiles(cachedManifest);
     }
 
+    /**
+     * Returns the artifacts a project needs: the feature roots plus everything they depend on.
+     *
+     * <p>Delegates to {@link ComposeDependencyFeatureResolver} so this list, the compile classpath,
+     * the resource merge and the dex input can never disagree about what "selected" means.</p>
+     *
+     * <p>A build asks for the same selection from every stage, and the roots require re-reading the
+     * package's JSON, so the result is cached for as long as the configured package and the chosen
+     * optional features stay unchanged.</p>
+     */
     public static synchronized List<ComposeBuiltInLibraries.ComposeArtifact> getSelectedArtifacts(List<String> optionalFeatureIds) {
         ComposeBuiltInLibraries.ComposeManifest manifest = getManifest();
-        if (manifest.artifacts == null || manifest.artifacts.isEmpty()) return Collections.emptyList();
-
-        Set<String> selectedFeatures = new LinkedHashSet<>();
-        if (optionalFeatureIds != null) selectedFeatures.addAll(optionalFeatureIds);
-
-        Set<String> ids = new LinkedHashSet<>();
-        if (manifest.features == null || manifest.features.isEmpty()) {
-            for (ComposeBuiltInLibraries.ComposeArtifact artifact : manifest.artifacts) {
-                if (artifact != null && !TextUtils.isEmpty(artifact.id)) ids.add(artifact.id);
-            }
-        } else {
-            for (ComposeBuiltInLibraries.ComposeFeature feature : manifest.features) {
-                if (feature != null && (feature.required || selectedFeatures.contains(feature.id)) && feature.artifacts != null) {
-                    ids.addAll(feature.artifacts);
-                }
-            }
+        String cacheKey = selectionCacheKey(manifest, optionalFeatureIds);
+        List<ComposeBuiltInLibraries.ComposeArtifact> cached = selectedArtifactsCache;
+        if (cacheKey != null && cacheKey.equals(selectedArtifactsCacheKey) && cached != null) {
+            return cached;
         }
-
-        List<ComposeBuiltInLibraries.ComposeArtifact> result = new ArrayList<>();
-        for (ComposeBuiltInLibraries.ComposeArtifact artifact : manifest.artifacts) {
-            if (artifact != null && ids.contains(artifact.id)) result.add(artifact);
-        }
+        List<ComposeBuiltInLibraries.ComposeArtifact> result =
+                ComposeDependencyFeatureResolver.select(manifest, optionalFeatureIds);
+        selectedArtifactsCacheKey = cacheKey;
+        selectedArtifactsCache = result;
         return result;
+    }
+
+    private static String selectionCacheKey(ComposeBuiltInLibraries.ComposeManifest manifest,
+                                            List<String> optionalFeatureIds) {
+        // Identity of the parsed manifest changes with the extracted package hash, and the optional
+        // feature ids are the only other input of the selection.
+        String hash = getConfiguredPackageName();
+        if (TextUtils.isEmpty(hash)) return null;
+        StringBuilder key = new StringBuilder(hash).append('|').append(System.identityHashCode(manifest));
+        if (optionalFeatureIds != null) {
+            for (String featureId : optionalFeatureIds) key.append('|').append(featureId);
+        }
+        return key.toString();
     }
 
     public static synchronized File resolveFile(String artifactId, String kind) {
