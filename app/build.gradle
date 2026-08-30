@@ -34,6 +34,28 @@ android {
             // symbols and let AGP package them unchanged instead of warning/failing
             // during native library stripping.
             keepDebugSymbols += "**/*.so"
+
+            // libaapt2.so is not a shared library loaded via System.loadLibrary() — it is
+            // the AAPT2 *executable* that ProjectBuilder runs with ProcessBuilder from
+            // ApplicationInfo.nativeLibraryDir. That directory is only populated when the
+            // package installer extracts native libraries out of the APK.
+            //
+            // Since AGP 3.6, extractNativeLibs defaults to "false" whenever minSdk >= 23
+            // (ours is 26), so the .so stays compressed inside the APK, nativeLibraryDir is
+            // left empty and the build fails with:
+            //     SketchwareException: AAPT2 binary is missing at /data/app/.../lib/arm/libaapt2.so
+            //
+            // useLegacyPackaging = true is the AGP 4.2+ DSL replacement for
+            // android:extractNativeLibs="true" and forces the installer to extract the
+            // binary to disk, where it can be chmod +x'd and exec'd. Do not remove this:
+            // executing a binary from anywhere else (app data dir, cache) is blocked by
+            // the W^X SELinux policy for targetSdk >= 29.
+            //
+            // This also covers app bundle installs. The old gradle.properties flag
+            // android.bundle.enableUncompressedNativeLibs was REMOVED in AGP 8.1 and now
+            // hard-fails plugin application, so this DSL option is the only supported
+            // way to request compressed/extracted native libs for both APKs and AABs.
+            useLegacyPackaging = true
         }
         resources {
             excludes += "license/*"
