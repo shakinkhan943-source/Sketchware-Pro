@@ -33,25 +33,44 @@ public class LocalLibrariesUtil {
         return FilePathUtil.getLocalLibsFallbackDir().getAbsolutePath() + "/";
     }
 
-    public static List<LocalLibrary> getAllLocalLibraries() {
-        ArrayList<File> localLibraryFiles = new ArrayList<>();
-        // Check primary shared storage path
-        listDirAsFile(getLocalLibsPath(), localLibraryFiles);
-        // Also check app-specific fallback path
-        ArrayList<File> fallbackFiles = new ArrayList<>();
-        listDirAsFile(getFallbackLocalLibsPath(), fallbackFiles);
-        for (File legacyFile : fallbackFiles) {
-            boolean alreadyExists = false;
-            for (File newFile : localLibraryFiles) {
-                if (newFile.getName().equals(legacyFile.getName())) {
-                    alreadyExists = true;
+    private static String getJetpackLibsPath() {
+        return FilePathUtil.getJetpackLibsDir().getAbsolutePath() + "/";
+    }
+
+    private static String getJetpackLibsFallbackPath() {
+        return FilePathUtil.getJetpackLibsFallbackDir().getAbsolutePath() + "/";
+    }
+
+    /** Adds every library directory of {@code path} that is not shadowed by an earlier root. */
+    private static void appendLibraryDirectories(ArrayList<File> into, String path) {
+        ArrayList<File> found = new ArrayList<>();
+        listDirAsFile(path, found);
+        for (File candidate : found) {
+            // A leading dot marks bookkeeping (an import's staging directory), not a library.
+            if (!candidate.isDirectory() || candidate.getName().startsWith(".")) continue;
+            boolean shadowed = false;
+            for (File existing : into) {
+                if (existing.getName().equals(candidate.getName())) {
+                    shadowed = true;
                     break;
                 }
             }
-            if (!alreadyExists) {
-                localLibraryFiles.add(legacyFile);
+            if (!shadowed) {
+                into.add(candidate);
             }
         }
+    }
+
+    public static List<LocalLibrary> getAllLocalLibraries() {
+        ArrayList<File> localLibraryFiles = new ArrayList<>();
+        // Every root that can hold a library directory, in precedence order: the shared local
+        // libraries, their app-specific fallback for FUSE-restricted storage, and the Jetpack
+        // dependency store with its fallback. Names win over locations, so an artifact is listed
+        // once even when an old copy of it survives in another root.
+        appendLibraryDirectories(localLibraryFiles, getLocalLibsPath());
+        appendLibraryDirectories(localLibraryFiles, getFallbackLocalLibsPath());
+        appendLibraryDirectories(localLibraryFiles, getJetpackLibsPath());
+        appendLibraryDirectories(localLibraryFiles, getJetpackLibsFallbackPath());
         localLibraryFiles.sort(new LocalLibrariesComparator());
 
         List<LocalLibrary> allLibraries = new LinkedList<>();
@@ -374,6 +393,20 @@ public class LocalLibrariesUtil {
         if (fallbackPath.exists()) {
             return fallbackPath;
         }
+        File jetpackPath = new File(getJetpackLibsPath() + name);
+        if (jetpackPath.exists()) {
+            return jetpackPath;
+        }
+        File jetpackFallback = new File(getJetpackLibsFallbackPath() + name);
+        if (jetpackFallback.exists()) {
+            return jetpackFallback;
+        }
         return null;
+    }
+
+    /** All roots a library directory may live in, in precedence order. */
+    public static List<String> getLocalLibsRootPaths() {
+        return List.of(getLocalLibsPath(), getFallbackLocalLibsPath(),
+                getJetpackLibsPath(), getJetpackLibsFallbackPath());
     }
 }

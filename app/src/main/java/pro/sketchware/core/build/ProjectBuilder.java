@@ -78,6 +78,7 @@ import pro.sketchware.util.SystemLogPrinter;
 import pro.sketchware.core.build.BuildProgressReceiver;
 import pro.sketchware.util.library.BuiltInLibraries;
 import pro.sketchware.util.library.ComposeBuiltInLibraries;
+import pro.sketchware.util.library.JetpackLibs;
 import pro.sketchware.core.build.compiler.DexCompiler;
 import pro.sketchware.core.build.compiler.ResourceCompiler;
 import pro.sketchware.core.exception.MissingFileException;
@@ -420,13 +421,8 @@ public class ProjectBuilder {
         }
 
         /* Add the separate built-in Jetpack Compose bundle. */
-        // A DEX-only artifact in the bundle has no classes.jar to contribute: resolveClassesJar()
-        // then yields an empty File, whose absolute path would otherwise be the working directory.
         for (ComposeBuiltInLibraries.ComposeArtifact artifact : getSelectedComposeArtifacts()) {
-            File composeClassesJar = ComposeBuiltInLibraries.getLibraryClassesJarPath(artifact.id);
-            if (composeClassesJar.exists()) {
-                classpath.append(":").append(composeClassesJar.getAbsolutePath());
-            }
+            classpath.append(":").append(ComposeBuiltInLibraries.getLibraryClassesJarPath(artifact.id).getAbsolutePath());
         }
 
         /* Add local libraries to the classpath */
@@ -573,22 +569,31 @@ public class ProjectBuilder {
      */
     public String getLibraryPackageNames() {
         StringBuilder extraPackages = new StringBuilder();
-        // Compose splits one package across artifacts (ui, ui-graphics, ui-unit, ui-text, ui-util and
-        // ui-geometry are all "androidx.compose.ui") and lifecycle alone contributes several more, so
-        // every name is handed to aapt2 exactly once.
-        Set<String> addedPackages = new HashSet<>();
         for (BuiltInLibrary library : builtInLibraryManager.getLibraries()) {
-            if (library.hasResources() && addedPackages.add(library.getPackageName())) {
+            if (library.hasResources()) {
                 extraPackages.append(library.getPackageName()).append(":");
             }
         }
         for (ComposeBuiltInLibraries.ComposeArtifact artifact : getSelectedComposeArtifacts()) {
-            if (artifact.packageName != null && !artifact.packageName.isEmpty()
-                    && addedPackages.add(artifact.packageName)) {
+            if (artifact.packageName != null && !artifact.packageName.isEmpty()) {
                 extraPackages.append(artifact.packageName).append(":");
             }
         }
         return extraPackages + localLibraryManager.getPackageNameLocalLibrary();
+    }
+
+    /** Names of the local libraries this project activated, roots and expanded sub-dependencies. */
+    private Set<String> activatedLocalLibraryNames() {
+        Set<String> names = new HashSet<>();
+        if (localLibraryManager == null || localLibraryManager.list == null) {
+            return names;
+        }
+        for (HashMap<String, Object> library : localLibraryManager.list) {
+            if (library == null) continue;
+            Object name = library.get("name");
+            if (name instanceof String) names.add((String) name);
+        }
+        return names;
     }
 
     /** Returns the selected artifact closure from the separate Compose bundle. */
@@ -1007,10 +1012,7 @@ public class ProjectBuilder {
             }
 
             for (ComposeBuiltInLibraries.ComposeArtifact artifact : getSelectedComposeArtifacts()) {
-                File composeClassesJar = ComposeBuiltInLibraries.getLibraryClassesJarPath(artifact.id);
-                if (composeClassesJar.exists()) {
-                    apkBuilder.addResourcesFromJar(composeClassesJar);
-                }
+                apkBuilder.addResourcesFromJar(ComposeBuiltInLibraries.getLibraryClassesJarPath(artifact.id));
             }
 
             for (String jarPath : localLibraryManager.getJarLocalLibrary().split(":")) {
@@ -1093,16 +1095,7 @@ public class ProjectBuilder {
         }
 
         for (ComposeBuiltInLibraries.ComposeArtifact artifact : getSelectedComposeArtifacts()) {
-            // A bundle may declare an artifact as classes.jar only, and resolveDex() then returns an
-            // empty File. dexLibraries() opens every path it is handed, so skip those here instead of
-            // failing in the middle of the DEX merge; the build log keeps the artifact visible.
-            File composeDex = ComposeBuiltInLibraries.getLibraryDexFile(artifact.id);
-            if (composeDex.exists()) {
-                dexes.add(composeDex);
-            } else {
-                LogUtil.d(TAG, "Compose artifact " + artifact.id + " ships no DEX file ("
-                        + composeDex.getAbsolutePath() + "); its classes must reach the app another way");
-            }
+            dexes.add(ComposeBuiltInLibraries.getLibraryDexFile(artifact.id));
         }
 
         /* Add local libraries' main DEX files */
@@ -1294,21 +1287,19 @@ public class ProjectBuilder {
         }
 
         for (ComposeBuiltInLibraries.ComposeArtifact artifact : getSelectedComposeArtifacts()) {
-            // The selection is expanded over the declared dependencies, so an artifact the features
-            // never named can still end up here, and kotlinc reports a missing one as unrelated
-            // "Unresolved reference" errors. A dex-only artifact is valid: ComposeDependencyManager
-            // accepts either file, so both roles are checked before the build starts.
-            String artifactId = artifact.id;
-            boolean usable = ComposeBuiltInLibraries.getLibraryClassesJarPath(artifactId).exists()
-                    || ComposeBuiltInLibraries.getLibraryDexFile(artifactId).exists();
-            if (!usable) {
-                throw new IllegalStateException("The Jetpack Compose dependency bundle declares '"
-                        + artifactId + "' but contains neither its classes.jar nor its dex file. "
-                        + "Add that artifact to the ZIP, or drop its entry from the Compose JSON.");
+            // Validation is intentionally lightweight; the bundle contains all transitive artifacts.
+            if (!ComposeBuiltInLibraries.getLibraryClassesJarPath(artifact.id).exists()) {
+                throw new IllegalStateException("Missing built-in Compose artifact: " + artifact.id);
             }
         }
 
         KotlinCompilerBridge.maybeAddKotlinBuiltInLibraryDependenciesIfPossible(this, builtInLibraryManager);
+
+        /* An artifact in the shared Jetpack store can deliberately carry a newer copy of a runtime the
+           app also ships (kotlin-stdlib, kotlinx-coroutines). Only one version of each type may reach the
+           DEX, and the merge keeps the first, so the copy this project activated wins and the built-in
+           steps aside instead of shadowing it. */
+        JetpackLibs.applyRuntimeOverrides(builtInLibraryManager, activatedLocalLibraryNames());
 
         ExtLibSelected.addUsedDependencies(projectFilePaths.buildConfig.constVarComponent, builtInLibraryManager);
     }

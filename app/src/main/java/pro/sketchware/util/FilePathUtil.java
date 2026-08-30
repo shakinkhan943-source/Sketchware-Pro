@@ -24,6 +24,19 @@ public class FilePathUtil {
         return SketchwarePaths.getLocalLibsFallbackDir();
     }
 
+    /**
+     * Shared Jetpack/Compose dependency store: {@code .sketchware/libs/JetpackLibs/<artifact>/}.
+     * Artifacts live there once and every project that activates them reads the same files, so they
+     * are looked up through the local library machinery rather than copied per project.
+     */
+    public static File getJetpackLibsDir() {
+        return SketchwarePaths.getJetpackLibsDir();
+    }
+
+    public static File getJetpackLibsFallbackDir() {
+        return SketchwarePaths.getJetpackLibsFallbackDir();
+    }
+
     public static String getLastCompileLogPath(String sc_id) {
         return SketchwarePaths.getProjectCompileLogPath(sc_id);
     }

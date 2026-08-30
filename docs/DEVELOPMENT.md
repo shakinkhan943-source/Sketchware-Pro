@@ -1238,6 +1238,47 @@ classpath / 资源 / DEX。这样功能开关仍然能关掉体积最大的那�
 但请注意：只有 `classes.jar` 而没有 DEX 的 Compose 构件不会进入 APK，运行时仍会 `NoClassDefFoundError`，
 打包时务必为每个构件生成 DEX。
 
+### 6.12.1 Jetpack 库商店（推荐路径，无需 JSON）
+
+`JetpackLibsInstaller` 提供一条不需要清单文件的现代路径：在 **项目库管理 → Jetpack Compose**
+（或 App 设置里的同名页）选择一个 ZIP，目录形如：
+
+```
+zip/
+├── androidx_compose_ui_ui/
+│   ├── classes.jar
+│   ├── classes.dex          # 可选：缺失时用内嵌 D8 自动生成
+│   ├── res/
+│   ├── AndroidManifest.xml
+│   ├── proguard.txt
+│   ├── assets/  libs/*.jar
+│   └── maven-coordinate     # 可选 "group:artifact:version"
+└── ...
+```
+
+- **解压位置**：`/storage/emulated/0/.sketchware/libs/JetpackLibs/<id>/`（写入被 FUSE 拒绝时退回
+  app 专属外部目录的同名子目录）。**不使用 cacheDir**：系统随时可清缓存,而商店里的构件一旦丢失，
+  所有启用了它们的项目都会构建失败。
+- **后台执行**：单线程 `ThreadPoolExecutor`（`allowCoreThreadTimeOut`），队列排空后立刻 `shutdown()`，
+  下次导入再惰性创建；导入可取消。整个流程不占用主线程。
+- **自动清单**：不再需要 `compose-libraries.json`。构件间依赖由**各自 class 文件的常量池**推导
+  （扫描 `CONSTANT_Class` 引用得到被引用的包，再与别的构件 `classes.jar` 里“定义的包”精确匹配），
+  然后压平成 `dependency-tree.json`。这比任何手写清单可靠：漏掉 `ui → ui-graphics` 这类边
+  曾让 19 条报错与真实原因毫无关系。
+- **复用本地库系统**：商店目录就是本地库目录（`config`/`res`/`classes.jar`/`classes.dex`/
+  `AndroidManifest.xml`/`proguard.txt`），因此 classpath、aapt2 资源、DEX 合并、清单合并、ProGuard
+  规则全部沿用既有管线；`LocalLibrariesUtil` 会把商店目录一并列入扫描，
+  `dependency-tree.json` 额外支持 `folder` 字段以保留商店自己的目录名。
+- **一份资源，多项目共享**：项目只在 `localLib` 文件里记录**启用哪些构件名**，不复制文件；
+  启用一个根会带上它的整棵依赖子树（一层展开即可，因为清单已压平），关闭只是不再出现在该项目的列表里。
+- **运行时重复的保护**：默认不安装 ZIP 里的 `kotlin-stdlib` / `kotlinx-coroutines*` /
+  `androidx.annotation`（App 对所有 Kotlin 项目已经内建 `kotlin-stdlib-2.2.0`、
+  `kotlinx-coroutines-android-1.8.1`）。两份 Kotlin 运行时进入同一个 APK 时，DEX 合并按
+  `CollisionPolicy.KEEP_FIRST` 只保留先到的那份，另一份编译出来的代码就会在
+  `kotlin.coroutines.CoroutineContext` 的默认方法转发处炸掉。若 ZIP 里确实带有**更新**的运行时,
+  可以在项目页勾选“使用 ZIP 自带的 Kotlin 运行时”，`JetpackLibs.applyRuntimeOverrides()` 会比较版本,
+  只让更新的那份留下（替换掉内建库,而不是两份并存）。
+
 ---
 
 # 第七章：扩展系统
