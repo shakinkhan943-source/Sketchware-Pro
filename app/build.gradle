@@ -50,6 +50,11 @@ android {
             // binary to disk, where it can be chmod +x'd and exec'd. Do not remove this:
             // executing a binary from anywhere else (app data dir, cache) is blocked by
             // the W^X SELinux policy for targetSdk >= 29.
+            //
+            // This also covers app bundle installs. The old gradle.properties flag
+            // android.bundle.enableUncompressedNativeLibs was REMOVED in AGP 8.1 and now
+            // hard-fails plugin application, so this DSL option is the only supported
+            // way to request compressed/extracted native libs for both APKs and AABs.
             useLegacyPackaging = true
         }
         resources {
