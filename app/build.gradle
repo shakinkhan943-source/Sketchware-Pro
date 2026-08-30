@@ -14,7 +14,7 @@ android {
         namespace = "pro.sketchware"
         targetSdk = 35
         minSdk = 26
-        versionCode = 161
+        versionCode = 162
         versionName = "v8.0.0"
         buildConfigField("String", "GIT_HASH", "\"${gitCommitHash}\"")
         buildConfigField("String", "SKETCHUB_API_KEY", "\"${System.getenv("SKETCHUB_API_KEY")}\"")
