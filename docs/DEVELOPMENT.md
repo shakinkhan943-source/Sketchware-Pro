@@ -246,6 +246,7 @@ mock 文件包含虚假的 project_number、firebase_url、api_key 等，足以�
 | `Out of memory` | Gradle 堆内存不足 | `gradle.properties` 中调整 `org.gradle.jvmargs=-Xmx4096m` |
 | `Unsupported class file major version 65` | 当前 JDK、Gradle 缓存或第三方 class 文件版本不兼容 | 清理构建缓存，并改用受支持的 JDK 17+（推荐直接使用仓库自带 Gradle Wrapper） |
 | `Duplicate class javax.inject` | 依赖冲突 | 已在 `build.gradle` 中通过 `exclude` 处理 |
+| `Unable to find class androidx.compose.compiler.plugins.kotlin.ComposePluginRegistrar` | 编译器插件 JAR 只含 `.class`，ART 无法从中加载类 | 插件必须同时作为 `implementation` 依赖打进 APK（见 6.5） |
 
 ---
 
@@ -1066,6 +1067,22 @@ Kotlin 编译流程：
 5. 后续与 Java .class 一起 DEX 化
 ```
 
+### Compose 编译器插件的加载约束
+
+`-Xplugin` 只接受 **JAR 路径**：kotlinc 从该 JAR 的 `META-INF/services/...` 描述符发现插件，再实例化插件类。
+Android 上这两步的宿主完全不同，必须同时满足：
+
+| 环节 | 位置 | 原因 |
+|------|------|------|
+| 服务描述符 | `files/kt_plugins/*.jar`（由 APK assets 在构建时释放） | kotlinc 需要一个真实文件路径来读取插件的 `-P` 选项与注册信息 |
+| 插件**类**本身 | Sketchware APK 自身的 DEX（`implementation libs.compose.compiler.plugin`） | ART 只能从 DEX 定义类；`.class` 条目对 ClassLoader 不可见 |
+
+如果只做第一件事，`ServiceLoaderLite` 会报 `ClassNotFoundException: Unable to find class
+androidx.compose.compiler.plugins.kotlin.ComposePluginRegistrar`——插件 JAR 里明明有该类，但插件类加载器
+只能通过与 kotlinc 相同的父加载器（即 App 的 ClassLoader）拿到它。因此 `app/build.gradle` 中的
+`implementation libs.compose.compiler.plugin` 与 assets 内的 JAR **缺一不可**，升级内嵌 kotlinc 版本时两处需同步
+（插件版本必须与 `kotlinCompiler` 完全一致，且必须使用非 embeddable 变体）。
+
 ## 6.6 ProGuard / R8
 
 ```
@@ -1868,6 +1885,28 @@ if (tmpFile.renameTo(new File(targetPath))) {
     // 回退处理
 }
 ```
+
+### 模式 6：正则字面量的跨引擎写法
+
+Android 上的 `java.util.regex` 并不是桌面 JDK 的实现：`Pattern.compileImpl` 是 native 方法，底层由
+ICU4C 负责编译正则（Android 的 libcore 在 `Pattern`/`Matcher` 上始终保留 “Use ICU4C as the regex
+backend” 改动）。两者对**字面量大括号**的要求相反，桌面单元测试永远发现不了：
+
+```java
+// 错误：Android 29 及以下抛 PatternSyntaxException
+//        "Syntax error in regexp pattern near index N"，桌面 JVM 却能正常编译
+Pattern.compile("new\\s+TypeToken<(.+?)>\\s*\\{\\s*}");
+
+// 正确：两个引擎都接受——用单元素字符类包住字面量括号
+Pattern.compile("new\\s+TypeToken<(.+?)>\\s*\\(\\s*\\)\\s*[{]\\s*[}]");
+```
+
+规则：
+
+- 字符类**之外**的字面量 `{` / `}` 一律写成 `[{]` / `[}]`（`\{` 在 ICU 可用，裸 `}` 不行）。
+- 字符类**之内**保持原样（`[^{}]` 安全），但 `]` 必须转义：`[^]{}]` 在 OpenJDK 里是「空字符类 + `{}`」。
+- 静态字段里的 `Pattern.compile` 一旦抛异常，会变成整个类的 `ExceptionInInitializerError`，
+  因此集中用一个 `pattern(...)` 工厂包裹编译调用，出错时把正则本身打进异常信息。
 
 ## 10.6 调试技巧
 
