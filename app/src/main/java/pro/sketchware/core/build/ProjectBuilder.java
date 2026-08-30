@@ -573,13 +573,18 @@ public class ProjectBuilder {
      */
     public String getLibraryPackageNames() {
         StringBuilder extraPackages = new StringBuilder();
+        // Compose splits one package across artifacts (ui, ui-graphics, ui-unit, ui-text, ui-util and
+        // ui-geometry are all "androidx.compose.ui") and lifecycle alone contributes several more, so
+        // every name is handed to aapt2 exactly once.
+        Set<String> addedPackages = new HashSet<>();
         for (BuiltInLibrary library : builtInLibraryManager.getLibraries()) {
-            if (library.hasResources()) {
+            if (library.hasResources() && addedPackages.add(library.getPackageName())) {
                 extraPackages.append(library.getPackageName()).append(":");
             }
         }
         for (ComposeBuiltInLibraries.ComposeArtifact artifact : getSelectedComposeArtifacts()) {
-            if (artifact.packageName != null && !artifact.packageName.isEmpty()) {
+            if (artifact.packageName != null && !artifact.packageName.isEmpty()
+                    && addedPackages.add(artifact.packageName)) {
                 extraPackages.append(artifact.packageName).append(":");
             }
         }

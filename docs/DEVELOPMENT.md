@@ -1195,8 +1195,8 @@ resolver/ 子模块
 
 ## 6.12 Jetpack Compose 依赖包（用户自选 ZIP + JSON）
 
-设备上无法运行 Gradle，因此 Compose 依赖由用户在 **设置 → Jetpack Compose 依赖包** 中选择
-`compose-libs.zip` 与 `compose-libraries.json` 提供，由 `ComposeDependencyManager` 负责拷贝、校验、
+设备上无法运行 Gradle，因此 Compose 依赖由用户在项目库管理的 **Jetpack Compose** 页
+（`ComposeLibraryActivity`）中选择 `compose-libs.zip` 与 `compose-libraries.json` 提供，由 `ComposeDependencyManager` 负责拷贝、校验、
 解压与缓存（按两文件的联合哈希缓存，任一文件改动即自动重新解压，无需手动清缓存）。
 
 ```
@@ -1218,19 +1218,25 @@ dex|dexFile}`；若只给出 `path`/`root`/`directory`，则按 `<root>/classes.
 `dex/<id>.dex` 推导。`features[]` 里的 `roots`（或 `artifacts`）列出用户勾选的“根”构件；
 没有 `features[]` 时整个 ZIP 都参与构建。
 
-**依赖闭包是必须的，不是可选的。** Compose 把同一个库拆成很多 artifact：`ui:ui` 里没有 `Color`
-（在 `ui-graphics`）、没有 `Dp`（在 `ui-unit`）、没有 `TextStyle`（在 `ui-text`），`foundation` 里也
-没有 `Box`/`fillMaxSize`（在 `foundation-layout`）。所以选择逻辑必须以 `features[].roots` 为种子，沿
-`dependencies` 做传递闭包（`ComposeDependencyFeatureResolver`），否则编译期只会看到一片
-`Unresolved reference 'layout'` / `Cannot access class 'Color'` 之类与真实原因无关的报错。
-构件名在匹配时同时接受 `id`、Maven 坐标（可带或不带 `-version`）以及把所有非字母数字折叠成 `_`
-的宽松形式，手写清单里的两种拼法可以混用。
+**“选了哪些构件”由打包内容决定，而不是只由功能开关决定。** 依赖闭包是必须的：Compose 把一个库拆成很多
+artifact，`ui:ui` 里没有 `Color`（在 `ui-graphics`）、没有 `Dp`（在 `ui-unit`）、没有 `TextStyle`（在
+`ui-text`），`foundation` 里也没有 `Box`/`fillMaxSize`（在 `foundation-layout`），`material3` 运行时还要
+`material-ripple` 与 `material-icons-core`。但**不能假设清单里的 `dependencies` 一定写了这些边**：按 Gradle
+“新增依赖”生成的清单常常只记录需要额外下载的那些非 Compose 依赖（`core`、`emoji2`、`lifecycle`…），
+Compose 构件之间的边被剪掉了，只做闭包展开仍然会漏掉上面每一个 artifact，报错依旧是一堆与真实原因无关的
+`Unresolved reference` / `Cannot access class`。
 
-闭包发现 ZIP 里没有的 Compose 构件时会**直接失败并点名构件**（`androidx.compose.…`
-只可能来自该 ZIP，因此不作警告处理）；`lifecycle`、`collection`、`coroutines`、`kotlin-stdlib`
-这类由 App 自身或 `android.jar` 提供的依赖只记日志。若某构件只声明了 `dex`（或只声明了
-`classes.jar`），缺失的那一侧会在对应步骤被跳过——但请注意：只有 `classes.jar` 而没有 DEX 的
-Compose 构件不会进入 APK，运行时仍会 `NoClassDefFoundError`，打包时务必为每个构件生成 DEX。
+因此 `ComposeDependencyFeatureResolver.select()` 的规则是：**ZIP 里打包的就是构建需要的集合**，
+`dependencies` 仍然会被沿袭（清单写了真实边时结果更精确），而未勾选的可选功能负责剪枝——
+只有“某个未启用的可选功能独占”的那棵树会被排除（例如 `material-icons-extended`、`animation`、
+`navigation-compose`），凡是同时被必需功能用到、或不属于任何可选功能的构件都会进入
+classpath / 资源 / DEX。这样功能开关仍然能关掉体积最大的那批 dex，又不会因为清单边不全而漏类。
+
+只有当某条 `androidx.compose.*` 依赖在整个包里都找不到时才会**直接失败并点名构件与其请求方**（这些类不可能
+由别处提供）；`lifecycle`、`collection`、`coroutines`、`kotlin-stdlib` 之类的边只记日志，因为它们由 App 自身
+或 `android.jar` 提供。若某构件只声明了 `dex`（或只声明了 `classes.jar`），缺失的那一侧会在对应步骤被跳过——
+但请注意：只有 `classes.jar` 而没有 DEX 的 Compose 构件不会进入 APK，运行时仍会 `NoClassDefFoundError`，
+打包时务必为每个构件生成 DEX。
 
 ---
 

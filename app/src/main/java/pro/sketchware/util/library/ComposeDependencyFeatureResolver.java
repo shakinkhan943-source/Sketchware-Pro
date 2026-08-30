@@ -14,6 +14,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Deque;
 import java.util.HashMap;
@@ -28,13 +29,20 @@ import pro.sketchware.SketchApplication;
 /**
  * Resolves feature roots from the selected Compose JSON without hard-coded artifact filenames.
  *
- * <p>A feature lists the artifacts the user asked for — its <em>roots</em>. What the project needs
- * to compile and run is the roots <em>plus everything they depend on</em>, because Compose splits one
- * library across many artifacts: {@code androidx.compose.foundation:foundation} does not contain
- * {@code androidx.compose.foundation.layout}, {@code androidx.compose.ui:ui} does not contain
- * {@code Color} ({@code ui-graphics}), {@code Dp} ({@code ui-unit}) or {@code TextStyle}
- * ({@code ui-text}). Selecting the roots alone produced the very confusing report of imports that
- * "exist" in the bundle yet resolve to nothing.</p>
+ * <p>A feature lists the artifacts the user asked for — its <em>roots</em>. Compose splits one
+ * library across many artifacts, so the roots alone are never enough: {@code foundation} does not
+ * contain {@code androidx.compose.foundation.layout}, {@code ui} does not contain {@code Color}
+ * ({@code ui-graphics}), {@code Dp} ({@code ui-unit}) or {@code TextStyle} ({@code ui-text}), and
+ * {@code material3} needs {@code material-ripple} and {@code material-icons-core} at runtime.
+ * Selecting the roots alone reported imports that "exist" in the bundle yet resolve to nothing.</p>
+ *
+ * <p>The selection therefore treats the package as what it is: a set the user assembled for one
+ * purpose. It contains the <em>union</em> of everything the build needs, so every packed artifact is
+ * used, minus whatever an <em>unselected optional feature</em> claims together with everything only
+ * it reaches. Declared {@code dependencies} are still followed, because they are the precise answer
+ * when a bundle does describe them — but a bundle whose graph is pruned (a generator that lists only
+ * the dependencies it had to fetch from elsewhere, which is common) still builds, which the closure
+ * alone could not promise.</p>
  */
 final class ComposeDependencyFeatureResolver {
     private static final String TAG = "ComposeDependencyResolver";
@@ -48,72 +56,29 @@ final class ComposeDependencyFeatureResolver {
             return Collections.emptyList();
         }
 
-        Set<String> ids = readFeatureArtifactIds(optionalFeatureIds);
-        if (ids.isEmpty()) ids = readFeatureArtifactIds(manifest, optionalFeatureIds);
-        if (ids.isEmpty()) {
-            // Without usable feature roots the whole bundle is the selection, which is also the
-            // layout of a flat (feature-less) manifest. Every artifact of such a package has to be
-            // usable on its own, because nothing declares which one depends on which.
-            List<ComposeBuiltInLibraries.ComposeArtifact> all = new ArrayList<>();
-            for (ComposeBuiltInLibraries.ComposeArtifact artifact : manifest.artifacts) {
-                if (artifact != null && !TextUtils.isEmpty(artifact.id)) all.add(artifact);
-            }
-            Log.d(TAG, "Compose package declares no features, using all " + all.size() + " artifacts");
-            return all;
+        FeatureRoots roots = readFeatureRoots(optionalFeatureIds);
+        if (roots.isEmpty()) roots = readFeatureRoots(manifest, optionalFeatureIds);
+        if (roots.isEmpty()) {
+            // Nothing to prune: a flat (feature-less) package uses everything it carries.
+            return usableArtifacts(manifest);
         }
 
-        return expandDependencies(manifest, ids);
-    }
-
-    /** Fallback to the parsed manifest, e.g. when only the cached index of a package survives. */
-    private static Set<String> readFeatureArtifactIds(
-            ComposeBuiltInLibraries.ComposeManifest manifest, List<String> optionalFeatureIds) {
-        Set<String> selected = new LinkedHashSet<>();
-        if (manifest.features == null) return selected;
-        Set<String> optional = optionalFeatureIds == null
-                ? Collections.emptySet()
-                : new LinkedHashSet<>(optionalFeatureIds);
-        for (ComposeBuiltInLibraries.ComposeFeature feature : manifest.features) {
-            if (feature == null) continue;
-            if (!feature.required && !optional.contains(feature.id)) continue;
-            if (feature.artifacts == null) continue;
-            for (String artifactId : feature.artifacts) {
-                if (!TextUtils.isEmpty(artifactId)) selected.add(artifactId);
-            }
-        }
-        return selected;
-    }
-
-    /**
-     * Walks {@link ComposeBuiltInLibraries.ComposeArtifact#dependencies} transitively from the roots.
-     *
-     * <p>Results keep the manifest order so the compile classpath, the resource merge and the dex
-     * list stay stable between builds. The visited set makes a dependency cycle harmless instead of
-     * an infinite loop.</p>
-     */
-    private static List<ComposeBuiltInLibraries.ComposeArtifact> expandDependencies(
-            ComposeBuiltInLibraries.ComposeManifest manifest, Set<String> roots) {
         Map<String, ComposeBuiltInLibraries.ComposeArtifact> byName = indexByNames(manifest);
+        Map<String, String> unresolved = new HashMap<>();
+        Set<String> requested = expand(byName, roots.selected, unresolved);
+        // Turning a feature off has to remove something, otherwise a "large optional artifact"
+        // toggle (Material Icons Extended is megabytes of DEX) would be a no-op.
+        Set<String> turnedOff = expand(byName, roots.deselected, null);
 
-        Set<String> selected = new LinkedHashSet<>();
-        Map<String, String> requiredBy = new HashMap<>();
-        Deque<String> pending = new ArrayDeque<>(roots);
-        for (String root : roots) requiredBy.put(root, "the selected Compose features");
-
-        while (!pending.isEmpty()) {
-            String name = pending.poll();
-            ComposeBuiltInLibraries.ComposeArtifact artifact = find(byName, name);
-            if (artifact == null) continue;
-            requiredBy.remove(name);
-            if (!selected.add(artifact.id)) continue;
-            for (String dependency : artifact.dependencies) {
-                if (TextUtils.isEmpty(dependency)) continue;
-                pending.add(dependency);
-                requiredBy.putIfAbsent(dependency, artifact.id);
-            }
+        Set<String> selected = new LinkedHashSet<>(requested);
+        int packed = 0;
+        for (ComposeBuiltInLibraries.ComposeArtifact artifact : manifest.artifacts) {
+            if (artifact == null || TextUtils.isEmpty(artifact.id)) continue;
+            packed++;
+            if (!turnedOff.contains(artifact.id)) selected.add(artifact.id);
         }
 
-        reportUnresolved(requiredBy);
+        reportUnresolved(unresolved, selected);
 
         List<ComposeBuiltInLibraries.ComposeArtifact> result = new ArrayList<>();
         Set<String> emitted = new LinkedHashSet<>();
@@ -122,22 +87,66 @@ final class ComposeDependencyFeatureResolver {
                 result.add(artifact);
             }
         }
-        Log.d(TAG, "Selected " + result.size() + " Compose artifacts: " + describe(result));
+        Log.d(TAG, "Selected " + result.size() + " of " + packed + " Compose artifacts ("
+                + turnedOff.size() + " turned off by unselected features, " + requested.size()
+                + " reachable from the features): " + describe(result));
         return result;
     }
 
+    private static List<ComposeBuiltInLibraries.ComposeArtifact> usableArtifacts(
+            ComposeBuiltInLibraries.ComposeManifest manifest) {
+        List<ComposeBuiltInLibraries.ComposeArtifact> all = new ArrayList<>();
+        for (ComposeBuiltInLibraries.ComposeArtifact artifact : manifest.artifacts) {
+            if (artifact != null && !TextUtils.isEmpty(artifact.id)) all.add(artifact);
+        }
+        Log.d(TAG, "Compose package declares no features, using all " + all.size() + " artifacts");
+        return all;
+    }
+
     /**
-     * A dependency the bundle does not declare is a broken build, not a warning, when the name is a
-     * Compose artifact: those classes exist in no other place of a Sketchware build — not in
-     * {@code android.jar}, not in the built-in libraries. Anything else (lifecycle, collection,
-     * coroutines, kotlin-stdlib) is legitimately provided from somewhere else and is only logged.
+     * Follows {@link ComposeBuiltInLibraries.ComposeArtifact#dependencies} transitively from
+     * {@code names} and returns the artifact ids it reached. Names are matched leniently (see
+     * {@link #indexByNames}), the visited set makes a cycle harmless, and every name that reaches no
+     * artifact is handed to {@code unresolved} together with whatever asked for it.
      */
-    private static void reportUnresolved(Map<String, String> requiredBy) {
-        if (requiredBy.isEmpty()) return;
+    private static Set<String> expand(Map<String, ComposeBuiltInLibraries.ComposeArtifact> byName,
+                                      Collection<String> names,
+                                      Map<String, String> unresolved) {
+        Set<String> reached = new LinkedHashSet<>();
+        Deque<String> pending = new ArrayDeque<>();
+        for (String name : names) {
+            if (TextUtils.isEmpty(name)) continue;
+            pending.add(name);
+            if (unresolved != null) unresolved.put(name, "the selected Compose features");
+        }
+
+        while (!pending.isEmpty()) {
+            String name = pending.poll();
+            ComposeBuiltInLibraries.ComposeArtifact artifact = find(byName, name);
+            if (artifact == null) continue;
+            if (unresolved != null) unresolved.remove(name);
+            if (!reached.add(artifact.id)) continue;
+            for (String dependency : artifact.dependencies) {
+                if (TextUtils.isEmpty(dependency)) continue;
+                pending.add(dependency);
+                if (unresolved != null) unresolved.putIfAbsent(dependency, artifact.id);
+            }
+        }
+        return reached;
+    }
+
+    /**
+     * A dependency nobody can satisfy is a broken build rather than a warning, but only once the whole
+     * bundle has been consulted: a name the package simply does not carry is a gap that cannot be
+     * filled from anywhere else, while {@code androidx.core}, {@code lifecycle}, {@code collection}
+     * and {@code kotlinx.coroutines} are legitimately provided by the app or {@code android.jar}.
+     */
+    private static void reportUnresolved(Map<String, String> unresolved, Set<String> selected) {
+        if (unresolved.isEmpty() || selected.isEmpty()) return;
 
         List<String> missing = new ArrayList<>();
         List<String> ignored = new ArrayList<>();
-        for (Map.Entry<String, String> entry : requiredBy.entrySet()) {
+        for (Map.Entry<String, String> entry : unresolved.entrySet()) {
             if (isComposeArtifact(entry.getKey())) {
                 missing.add(entry.getKey() + " (required by " + entry.getValue() + ")");
             } else {
@@ -151,11 +160,11 @@ final class ComposeDependencyFeatureResolver {
         if (!missing.isEmpty()) {
             throw new IllegalStateException("The Jetpack Compose dependency bundle is incomplete: "
                     + TextUtils.join("; ", missing) + " " + (missing.size() > 1 ? "are" : "is")
-                    + " not declared in the Compose JSON, and no other part of a Sketchware build"
-                    + " provides androidx.compose classes. kotlinc would only report the resulting"
-                    + " gaps as unrelated 'Unresolved reference' or 'Cannot access class' errors."
-                    + " Add every required artifact to the JSON and pack its classes.jar plus its dex"
-                    + " file into the ZIP, then re-select both in Settings.");
+                    + " neither declared in the Compose JSON nor packed into the ZIP, and no other"
+                    + " part of a Sketchware build provides androidx.compose classes. kotlinc would"
+                    + " only report the resulting gaps as unrelated 'Unresolved reference' or 'Cannot"
+                    + " access class' errors. Add every required artifact to the JSON and pack its"
+                    + " classes.jar plus its dex file into the ZIP, then re-select both in Settings.");
         }
     }
 
@@ -249,11 +258,39 @@ final class ComposeDependencyFeatureResolver {
         return TextUtils.join(", ", ids);
     }
 
-    private static Set<String> readFeatureArtifactIds(List<String> optionalFeatureIds) {
-        Set<String> selected = new LinkedHashSet<>();
+    /** Which artifact names the required and chosen optional features ask for, and which they do not. */
+    private static final class FeatureRoots {
+        final Set<String> selected = new LinkedHashSet<>();
+        final Set<String> deselected = new LinkedHashSet<>();
+
+        boolean isEmpty() {
+            return selected.isEmpty() && deselected.isEmpty();
+        }
+
+        void add(boolean enabled, JsonElement roots) {
+            if (!(roots instanceof JsonArray)) return;
+            for (JsonElement item : roots.getAsJsonArray()) {
+                if (!item.isJsonPrimitive() || !item.getAsJsonPrimitive().isString()) continue;
+                String artifactId = item.getAsString();
+                if (!artifactId.isEmpty()) (enabled ? selected : deselected).add(artifactId);
+            }
+        }
+
+        void add(boolean enabled, String artifactId) {
+            if (artifactId == null || artifactId.isEmpty()) return;
+            (enabled ? selected : deselected).add(artifactId);
+        }
+    }
+
+    /**
+     * Reads the feature roots straight from the selected JSON, because a feature may spell its roots
+     * either {@code roots} or {@code artifacts} and the parsed manifest keeps only one of them.
+     */
+    private static FeatureRoots readFeatureRoots(List<String> optionalFeatureIds) {
+        FeatureRoots roots = new FeatureRoots();
         File json = new File(SketchApplication.getAppContext().getCacheDir(),
                 "compose-dependencies/source/compose-package.json");
-        if (!json.isFile()) return selected;
+        if (!json.isFile()) return roots;
 
         try (InputStream input = new FileInputStream(json)) {
             byte[] bytes = new byte[(int) Math.min(json.length(), Integer.MAX_VALUE)];
@@ -264,9 +301,9 @@ final class ComposeDependencyFeatureResolver {
                 offset += read;
             }
             JsonElement root = JsonParser.parseString(new String(bytes, 0, offset, StandardCharsets.UTF_8));
-            if (!root.isJsonObject()) return selected;
+            if (!root.isJsonObject()) return roots;
             JsonElement featureElement = root.getAsJsonObject().get("features");
-            if (featureElement == null || !featureElement.isJsonArray()) return selected;
+            if (featureElement == null || !featureElement.isJsonArray()) return roots;
 
             Set<String> optional = optionalFeatureIds == null
                     ? Collections.emptySet()
@@ -276,22 +313,31 @@ final class ComposeDependencyFeatureResolver {
                 JsonObject feature = element.getAsJsonObject();
                 boolean required = feature.has("required") && feature.get("required").getAsBoolean();
                 String id = feature.has("id") ? feature.get("id").getAsString() : "";
-                if (!required && !optional.contains(id)) continue;
+                boolean enabled = required || optional.contains(id);
 
-                JsonElement roots = feature.get("roots");
-                if (roots == null) roots = feature.get("artifacts");
-                if (roots instanceof JsonArray) {
-                    for (JsonElement item : roots.getAsJsonArray()) {
-                        if (item.isJsonPrimitive() && item.getAsJsonPrimitive().isString()) {
-                            String artifactId = item.getAsString();
-                            if (!artifactId.isEmpty()) selected.add(artifactId);
-                        }
-                    }
-                }
+                JsonElement artifacts = feature.get("roots");
+                if (artifacts == null) artifacts = feature.get("artifacts");
+                roots.add(enabled, artifacts);
             }
         } catch (Exception e) {
             throw new IllegalStateException("Failed to resolve Compose feature roots from the selected JSON: " + e.getMessage(), e);
         }
-        return selected;
+        return roots;
+    }
+
+    /** Fallback to the parsed manifest, e.g. when only the cached index of a package survives. */
+    private static FeatureRoots readFeatureRoots(
+            ComposeBuiltInLibraries.ComposeManifest manifest, List<String> optionalFeatureIds) {
+        FeatureRoots roots = new FeatureRoots();
+        if (manifest.features == null) return roots;
+        Set<String> optional = optionalFeatureIds == null
+                ? Collections.emptySet()
+                : new LinkedHashSet<>(optionalFeatureIds);
+        for (ComposeBuiltInLibraries.ComposeFeature feature : manifest.features) {
+            if (feature == null || feature.artifacts == null) continue;
+            boolean enabled = feature.required || optional.contains(feature.id);
+            for (String artifactId : feature.artifacts) roots.add(enabled, artifactId);
+        }
+        return roots;
     }
 }
