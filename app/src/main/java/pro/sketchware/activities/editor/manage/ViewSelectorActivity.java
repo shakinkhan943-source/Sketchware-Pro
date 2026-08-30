@@ -399,7 +399,7 @@ public class ViewSelectorActivity extends BaseAppCompatActivity {
                 if (sourceMode || projectFileBean.isComposeActivity()) {
                     viewHolder.itemBinding.tvFilename.setText(sourceName);
                     viewHolder.itemBinding.tvLinkedFilename.setText(projectFileBean.isComposeActivity()
-                            ? R.string.file_selector_compose_no_xml : projectFileBean.getXmlName());
+                            ? getString(R.string.file_selector_compose_no_xml) : projectFileBean.getXmlName());
                 } else {
                     viewHolder.itemBinding.tvFilename.setText(xmlName);
                     viewHolder.itemBinding.tvLinkedFilename.setText(sourceName);
