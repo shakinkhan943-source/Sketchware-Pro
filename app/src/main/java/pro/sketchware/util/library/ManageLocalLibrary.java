@@ -54,7 +54,10 @@ public class ManageLocalLibrary {
                         String name = (String) nameObject;
                         File primaryLibDir = new File(FilePathUtil.getLocalLibsDir(), name);
                         File fallbackLibDir = new File(FilePathUtil.getLocalLibsFallbackDir(), name);
-                        if (!primaryLibDir.exists() && !fallbackLibDir.exists()) {
+                        File jetpackLibDir = new File(FilePathUtil.getJetpackLibsDir(), name);
+                        File jetpackFallbackLibDir = new File(FilePathUtil.getJetpackLibsFallbackDir(), name);
+                        if (!primaryLibDir.exists() && !fallbackLibDir.exists()
+                                && !jetpackLibDir.exists() && !jetpackFallbackLibDir.exists()) {
                             changed = true;
                             continue;
                         }
