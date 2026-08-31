@@ -798,12 +798,25 @@ public final class JetpackLibsInstaller {
 
     private static void normalize(Artifact artifact) throws IOException {
         File jar = artifact.classesJar();
+        if (jar.isFile() && jar.length() < 22) {
+            // A stub of a file is what an interrupted extraction leaves behind. It is not a library, and
+            // leaving it would hide the real payload sitting next to it: classes.jar is the only name the
+            // build looks at, so an empty one is worse than none.
+            if (jar.delete()) artifact.notes.add("removed an empty classes.jar before looking for the"
+                    + " real payload in this folder");
+        }
         if (jar.isFile() && isAar(jar)) {
             // A renamed AAR: the real classes are one ZIP level deeper.
             File aar = new File(artifact.directory, "library.aar");
             if (!jar.renameTo(aar)) throw new IOException("cannot set aside " + jar.getName());
-            unpackAar(artifact, aar, true);
-            artifact.notes.add("classes.jar was an AAR — unpacked it in place");
+            try {
+                unpackAar(artifact, aar, true);
+                artifact.notes.add("classes.jar was an AAR — unpacked it in place");
+            } catch (IOException | RuntimeException failure) {
+                // Never leave the artifact worse than it was found: the renamed file is all it had.
+                if (!new File(artifact.directory, "classes.jar").isFile()) aar.renameTo(jar);
+                throw failure;
+            }
         } else if (!jar.isFile()) {
             File aar = findDeep(artifact.directory, ".aar", 3, true);
             if (aar != null) {
