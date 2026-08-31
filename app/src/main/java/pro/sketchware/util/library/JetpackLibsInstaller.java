@@ -75,6 +75,9 @@ import pro.sketchware.core.project.SketchwarePaths;
 public final class JetpackLibsInstaller {
     private static final String TAG = "JetpackLibs";
 
+    /** The id given to files that sit at the ZIP root, before the archive's name decides its real one. */
+    private static final String ROOT_ID = "root";
+
     /** Wrappers some packing styles put around the real artifact directories. */
     private static final Set<String> WRAPPER_FOLDERS = Set.of(
             "librarys", "libraries", "lib", "libs", "aar", "artifact", "artifacts", "modules");
@@ -361,6 +364,7 @@ public final class JetpackLibsInstaller {
                 throw new IOException("No artifact folders found. Expected <id>/classes.jar"
                         + " (and optionally classes.dex, res/, AndroidManifest.xml) inside the ZIP");
             }
+            adoptRootArtifact(zip, artifacts, report);
             unwrapWrapper(staging, artifacts, report);
             report.artifacts = artifacts.size();
 
@@ -440,6 +444,9 @@ public final class JetpackLibsInstaller {
      */
     private static String artifactIdOf(String path) {
         String[] parts = path.split("/");
+        // A single exploded AAR is often zipped without a folder around it: classes.jar, res/, … sit at
+        // the archive root. They are one artifact, and its name is decided from the ZIP, not here.
+        if (parts.length == 1) return ROOT_ID;
         if (parts.length >= 2 && WRAPPER_FOLDERS.contains(parts[0].toLowerCase())) {
             return sanitize(parts[1]);
         }
@@ -453,6 +460,7 @@ public final class JetpackLibsInstaller {
     /** Maps a ZIP entry onto the role it plays inside its artifact directory. */
     private static String rolePathOf(String path) {
         String[] parts = path.split("/");
+        if (parts.length == 1) return parts[0];
         int start;
         if (parts.length >= 2 && WRAPPER_FOLDERS.contains(parts[0].toLowerCase())) {
             start = 2;
@@ -574,7 +582,7 @@ public final class JetpackLibsInstaller {
                 if (!entry.getName().endsWith(".class")) continue;
                 if (artifact != null) artifact.classesScanned++;
                 try (InputStream in = archive.getInputStream(entry)) {
-                    readReferencedPackages(in, packages);
+                    readReferencedPackages(readAll(in), packages);
                 } catch (IOException | RuntimeException ignored) {
                     // One unreadable class must not cost the whole artifact: the remaining constant
                     // pools still describe most of what it references.
@@ -650,69 +658,102 @@ public final class JetpackLibsInstaller {
     }
 
     /**
-     * Reads a class file's constant pool and records the package of each class it mentions. Only tags 1
-     * (Utf8) and 7 (Class) carry the names, but the walk has to stay aligned with the pool, and Long and
-     * Double occupy two slots each.
+     * Reads a class file's constant pool and records the package of each class its entries mention. Tags
+     * 1 (Utf8) and 7 (Class) carry the names; every other entry still has to be stepped over, and Long and
+     * Double occupy two pool slots each.
+     *
+     * <p>The entry is read whole and walked with an index instead of streamed. Two reasons, both learned
+     * the hard way here: {@code InputStream.skip} may return fewer bytes than asked — which silently
+     * changes the meaning of every byte after it — and a stream that misreads its own header has to be
+     * caught, not trusted. Every read is bounds-checked for the same reason: this function's only output
+     * is an <em>absence</em> when it fails, and an artifact reported as depending on nothing looks exactly
+     * like a library that genuinely needs nothing. (The first version compared the magic number against
+     * {@code 0xCAFEBABE} as an {@code int}; that literal is negative, so it never equalled the
+     * {@code long} that was read, every class bailed out at line one, and a device showed 1 409 classes
+     * read with zero references found.)</p>
      */
-    private static void readReferencedPackages(InputStream input, Set<String> packages)
-            throws IOException {
-        BufferedInputStream in = new BufferedInputStream(input);
-        if (readU4(in) != 0xCAFEBABE) return;
-        readU2(in); // minor version
-        readU2(in); // major version
-        int count = readU2(in);
+    private static void readReferencedPackages(byte[] data, Set<String> packages) {
+        if (data == null || data.length < 10 || u32be(data, 0) != 0xCAFEBABEL) return;
+        int count = u16be(data, 8);
+        if (count <= 1) return;
         String[] utf8 = new String[count];
         int[] classes = new int[count];
         int classCount = 0;
+        int pos = 10;
+        pool:
         for (int i = 1; i < count; i++) {
-            int tag = in.read();
-            if (tag < 0) throw new IOException("truncated constant pool");
+            if (pos + 1 > data.length) break pool;
+            int tag = data[pos++] & 0xFF;
             switch (tag) {
                 case 1: {
-                    int length = readU2(in);
-                    utf8[i] = new String(readFully(in, length), StandardCharsets.UTF_8);
+                    if (pos + 2 > data.length) break pool;
+                    int length = u16be(data, pos);
+                    pos += 2;
+                    if (length < 0 || pos + length > data.length) break pool;
+                    utf8[i] = new String(data, pos, length, StandardCharsets.UTF_8);
+                    pos += length;
                     break;
                 }
                 case 7:
-                    if (classCount < classes.length) classes[classCount++] = readU2(in);
-                    break;
-                case 3: // Integer
-                case 4: // Float
-                case 9: // Fieldref
-                case 10: // Methodref
-                case 11: // InterfaceMethodref
-                case 12: // NameAndType
-                case 17: // Dynamic
-                case 18: // InvokeDynamic
-                    skip(in, 4);
+                    if (pos + 2 > data.length) break pool;
+                    if (classCount < classes.length) classes[classCount++] = u16be(data, pos);
+                    pos += 2;
                     break;
                 case 5: // Long
-                case 6: // Double
-                    skip(in, 8);
-                    i++; // occupies two entries of the pool
+                case 6: // Double: eight bytes, and the following pool slot does not exist
+                    if (pos + 8 > data.length) break pool;
+                    pos += 8;
+                    i++;
                     break;
-                case 8: // String
-                case 16: // MethodType
-                case 19: // Module
-                case 20: // Package
-                    skip(in, 2);
+                default: {
+                    int size = constantPoolEntrySize(tag);
+                    if (size < 0 || pos + size > data.length) break pool;
+                    pos += size;
                     break;
-                case 15: // MethodHandle
-                    skip(in, 3);
-                    break;
-                case 21: // ConstantDynamic (JDK 11+, same shape as the two dynamic tags above)
-                    skip(in, 4);
-                    break;
-                default:
-                    // An unrecognised tag means the walk can no longer stay aligned. Everything read
-                    // before it is still the truth about this class, so the pool is abandoned here and
-                    // its names are kept: discarding the lot is what turns a library that clearly uses
-                    // five others into one the UI reports as having no dependencies.
-                    describeClasses(utf8, classes, classCount, packages);
-                    return;
+                }
             }
         }
         describeClasses(utf8, classes, classCount, packages);
+    }
+
+    /**
+     * The byte count that follows a constant-pool tag, or -1 for a tag this reader will not guess about.
+     * An unknown tag ends the walk of that class rather than corrupting it: everything read before it is
+     * still the truth, which is what keeps a class compiled by a newer javac from looking like a class
+     * that uses nothing.
+     */
+    private static int constantPoolEntrySize(int tag) {
+        switch (tag) {
+            case 3:  // Integer
+            case 4:  // Float
+            case 9:  // Fieldref
+            case 10: // Methodref
+            case 11: // InterfaceMethodref
+            case 12: // NameAndType
+            case 17: // Dynamic
+            case 18: // InvokeDynamic
+            case 21: // ConstantDynamic
+                return 4;
+            case 7:  // Class
+            case 8:  // String
+            case 16: // MethodType
+            case 19: // Module
+            case 20: // Package
+                return 2;
+            case 15: // MethodHandle
+                return 3;
+            default:
+                return -1;
+        }
+    }
+
+    private static int u16be(byte[] data, int pos) {
+        return ((data[pos] & 0xFF) << 8) | (data[pos + 1] & 0xFF);
+    }
+
+    private static long u32be(byte[] data, int pos) {
+        return ((long) (data[pos] & 0xFF) << 24) | ((data[pos + 1] & 0xFF) << 16)
+                | ((data[pos + 2] & 0xFF) << 8) | (data[pos + 3] & 0xFF);
     }
 
     private static void describeClasses(String[] utf8, int[] classes, int classCount,
@@ -727,6 +768,63 @@ public final class JetpackLibsInstaller {
     }
 
     // ------------------------------------------------------------ payload normalisation
+
+    /**
+     * Gives the files of a root-packed AAR an artifact id, which the store needs because a folder name is
+     * the only identity a store entry has. The ZIP's own name is preferred — it is what the user chose —
+     * and the manifest's package is the fallback when the name says nothing.
+     */
+    private static void adoptRootArtifact(File zip, Map<String, Artifact> artifacts, Report report)
+            throws IOException {
+        Artifact root = artifacts.remove(ROOT_ID);
+        if (root == null) return;
+        String name = zip == null || zip.getName() == null ? "" : zip.getName();
+        int dot = name.lastIndexOf('.');
+        if (dot > 0) name = name.substring(0, dot);
+        name = sanitize(name);
+        if (name.isEmpty() || ROOT_ID.equals(name)) {
+            String pack = manifestPackage(new File(root.directory, "AndroidManifest.xml"));
+            name = pack == null ? "library" : sanitize(pack.replace('.', '_'));
+        }
+        if (artifacts.containsKey(name)) name = name + "-root";
+
+        File legacy = root.directory;
+        File target = new File(legacy.getParentFile(), name);
+        if (!target.exists()) {
+            if (!legacy.renameTo(target)) {
+                artifacts.put(ROOT_ID, root);
+                report.warnings.add("the files at the ZIP root could not be renamed to " + name
+                        + " — they stay under the name " + ROOT_ID + ", which still works as one library");
+                return;
+            }
+        } else {
+            // A folder of that name already came from the archive: keep what was packed deliberately and
+            // add only what the root contributed, rather than replacing either side.
+            mergeInto(legacy, target);
+        }
+        deleteRecursively(legacy);
+        artifacts.put(name, new Artifact(name, target));
+        report.warnings.add("the ZIP held its files at the root instead of one folder per artifact, so the"
+                + " archive became a single artifact named " + name
+                + " — pack a folder per library to get more than one out of it");
+    }
+
+    /** Moves files that have no counterpart yet, recursing through subfolders. */
+    private static void mergeInto(File from, File to) throws IOException {
+        File[] children = from.listFiles();
+        if (children == null) return;
+        for (File child : children) {
+            File destination = new File(to, child.getName());
+            if (child.isDirectory()) {
+                if (!destination.isDirectory() && !destination.mkdirs()) {
+                    throw new IOException("cannot create " + destination.getAbsolutePath());
+                }
+                mergeInto(child, destination);
+            } else if (!destination.exists() && !child.renameTo(destination)) {
+                throw new IOException("cannot move " + child.getName() + " into " + to.getAbsolutePath());
+            }
+        }
+    }
 
     /**
      * Re-keys a ZIP that wrapped all of its artifacts in a single folder
@@ -1146,6 +1244,10 @@ public final class JetpackLibsInstaller {
         JsonArray packages = new JsonArray();
         for (String pack : artifact.definedPackages) packages.add(pack.replace('/', '.'));
         info.add("packages", packages);
+        JsonArray direct = new JsonArray();
+        for (String dependency : artifact.directDependencies) direct.add(dependency);
+        info.add("directDependencies", direct);
+        info.add("files", roleFiles(artifact.directory));
         try {
             writeJson(new File(artifact.directory, "jetpack-info.json"), info);
         } catch (IOException ignored) {
@@ -1206,6 +1308,26 @@ public final class JetpackLibsInstaller {
         }
     }
 
+    /**
+     * Every file a store artifact contributes to a build, by absolute path. The store derives ids and
+     * edges from folder contents, so this is the one place a person can read back exactly what was found
+     * — the list a hand-written manifest would have carried, generated from the files instead of from a
+     * description of them, and therefore unable to disagree with them.
+     */
+    private static JsonObject roleFiles(File directory) {
+        JsonObject files = new JsonObject();
+        for (String name : new String[]{"classes.jar", "classes.dex", "config", "proguard.txt",
+                "AndroidManifest.xml", "packages.txt", "dependency-tree.json", "jetpack-info.json"}) {
+            if (new File(directory, name).isFile()) files.addProperty(name,
+                    new File(directory, name).getAbsolutePath());
+        }
+        for (String name : new String[]{"res", "assets", "libs", "jni"}) {
+            if (new File(directory, name).isDirectory()) files.addProperty(name + "/",
+                    new File(directory, name).getAbsolutePath());
+        }
+        return files;
+    }
+
     /** Refreshes the store's own listing from what is on disk, after a delete or a re-scan. */
     private static void writeStoreInventory(File store) {
         JsonArray inventory = new JsonArray();
@@ -1216,6 +1338,8 @@ public final class JetpackLibsInstaller {
             item.addProperty("coordinate", entry.coordinate);
             item.addProperty("edges", entry.edges);
             item.addProperty("dex", entry.hasDex ? "present" : "missing");
+            File directory = new File(store, entry.id);
+            if (directory.isDirectory()) item.add("files", roleFiles(directory));
             inventory.add(item);
         }
         try {
@@ -1242,6 +1366,7 @@ public final class JetpackLibsInstaller {
             JsonArray dependencies = new JsonArray();
             for (String dependency : artifact.directDependencies) dependencies.add(dependency);
             entry.add("directDependencies", dependencies);
+            entry.add("files", roleFiles(artifact.directory));
             inventory.add(entry);
         }
         return inventory;
@@ -1282,37 +1407,6 @@ public final class JetpackLibsInstaller {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         copy(in, out);
         return out.toByteArray();
-    }
-
-    private static byte[] readFully(InputStream in, int length) throws IOException {
-        byte[] bytes = new byte[Math.max(0, length)];
-        int offset = 0;
-        while (offset < bytes.length) {
-            int read = in.read(bytes, offset, bytes.length - offset);
-            if (read < 0) throw new IOException("truncated class file");
-            offset += read;
-        }
-        return bytes;
-    }
-
-    private static int readU2(InputStream in) throws IOException {
-        int high = in.read();
-        int low = in.read();
-        if (high < 0 || low < 0) throw new IOException("truncated class file");
-        return (high << 8) | low;
-    }
-
-    private static long readU4(InputStream in) throws IOException {
-        return ((long) readU2(in) << 16) | readU2(in);
-    }
-
-    private static void skip(InputStream in, int bytes) throws IOException {
-        int left = bytes;
-        while (left > 0) {
-            int read = in.read();
-            if (read < 0) throw new IOException("truncated class file");
-            left--;
-        }
     }
 
     private static void copyDirectory(File source, File target) throws IOException {

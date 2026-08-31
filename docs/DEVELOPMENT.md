@@ -1302,7 +1302,26 @@ zip/
 
 `jetpack-info.json` 因此带上了可用于排障的计数：`classes`（扫过的 class 数）、`references`（引用到的
 包数）、`edges`（判定的依赖边）、`dexOnly`、`notes[]`；在设置页点一行即可看到它与 `dependency-tree.json`
-的原文——“列表显示 0 dep”这类问题不需要靠猜。**Re-scan（重新扫描）**用同一套逻辑重算商店里已有的一切
+的原文——“列表显示 0 dep”这类问题不需要靠猜。
+
+**`0 dep` 的真正原因曾是一个数值陷阱（务必别再犯）**：常量池读取器先取 4 字节 magic，与
+`0xCAFEBABE` 比较。`readU4()` 返回 `long`，而 `0xCAFEBABE` 超出 `int` 的正数范围、本身是**负 int**，
+比较时被符号扩展成 `0xFFFFFFFFCAFEBABE`，于是**每一个 class 都在第一行 return**：`classes` 记到 1409，
+`references` 永远是 0，边永远是 0，构件“安装成功”却什么都不做。教训有两条：
+（1）与 `long` 比较的十六进制字面量必须写 `L` 后缀（`0xCAFEBABEL`），或改用 `int` 读取；
+（2）**只输出“没有”的算法必须能自证**——它的失败不会抛异常，只会让 UI 显示 0，所以要在
+`jetpack-info.json` 里同时记录 `classes`/`references`/`edges` 三个数，任何一环为 0 都能立刻看出位置。
+顺带地，类文件解析不再边读边 `skip()`：`InputStream.skip` 允许只跳过**部分**请求的字节，一旦错位，
+后续每个字节的含义都变了；现在整个 entry 先读进 `byte[]`，用下标推进，并且每次读都查边界。
+
+**ZIP 把 AAR 直接摊平在根目录也支持**（`classes.jar`、`classes.dex`、`res/`、`AndroidManifest.xml` 与
+ZIP 同级，而不是 `<id>/…`）：`artifactIdOf()` 把根级文件归到一个临时 `root` 构件，导入时再用 ZIP 自身的
+文件名（取不到就用 manifest 的 package）改名成一个构件，并在报告里说明“整个包只成为一个构件”。
+
+**生成的路径索引**：`jetpack-store.json`（商店根）与每个构件的 `jetpack-info.json` 都带 `files{}`，逐条列出
+`classes.jar`/`classes.dex`/`config`/`proguard.txt`/`AndroidManifest.xml`/`packages.txt`/
+`dependency-tree.json` 以及 `res/`、`assets/`、`libs/` 的绝对路径。这份“根 JSON”是**由文件生成**的输出，
+不是需要维护的输入：它列出构建真正会去读的那些路径，因而永远不会与实际文件不一致。**Re-scan（重新扫描）**用同一套逻辑重算商店里已有的一切
 （含补齐缺失的 `classes.dex`），所以补了 jar、改了文件夹、或用旧版本导入过的商店都不必重新导入 ZIP。
 
 ---
