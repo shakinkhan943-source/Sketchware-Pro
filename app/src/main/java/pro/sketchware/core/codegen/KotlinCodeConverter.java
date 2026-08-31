@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 
 /**
  * Converts the deterministic Java snippets emitted by Sketchware's legacy block/component
@@ -19,29 +20,58 @@ import java.util.regex.Pattern;
  */
 public final class KotlinCodeConverter {
 
-    private static final Pattern CLASS_THIS = Pattern.compile("\\b([A-Za-z_$][\\w$]*)\\.this\\b");
-    private static final Pattern SIMPLE_CAST = Pattern.compile(
+    /*
+     * Every literal brace in the patterns below is spelled as a one-element character class
+     * ([{] and [}]), or is left inside an existing class. Never \{ and never a bare }.
+     *
+     * Android's java.util.regex is not the desktop implementation: Pattern.compileImpl is a native
+     * ICU4C call (seen on Android 10), and ICU rejects an unescaped '}' outside a character class
+     * with "PatternSyntaxException: Syntax error in regexp pattern near index N" for a pattern the
+     * desktop JVM happily compiles. These patterns are built from this class' static initializer, so
+     * a single '}' there did not just break one conversion: every Kotlin Activity failed with
+     * ExceptionInInitializerError as soon as the editor asked for the generated source. Keep braces
+     * class-quoted, the one spelling both engines agree on.
+     */
+    private static final Pattern CLASS_THIS = pattern("\\b([A-Za-z_$][\\w$]*)\\.this\\b");
+    private static final Pattern SIMPLE_CAST = pattern(
             "\\((int|long|double|float|short|byte|char|boolean)\\)\\s*([A-Za-z_$][\\w$]*(?:\\.[A-Za-z_$][\\w$]*(?:\\([^;{}]*?\\))?)?)");
-    private static final Pattern REFERENCE_CAST = Pattern.compile(
+    private static final Pattern REFERENCE_CAST = pattern(
             "\\(([A-Z][\\w.$]*(?:<[^(){};]+>)?)\\)\\s*([A-Za-z_$][\\w.$]*(?:\\([^;{}]*?\\))?)");
-    private static final Pattern DECIMAL_SUFFIX = Pattern.compile(
+    private static final Pattern DECIMAL_SUFFIX = pattern(
             "(?<![A-Za-z0-9_$])([0-9]+(?:\\.[0-9]+)?)[dD](?![A-Za-z0-9_$])");
-    private static final Pattern FOR_LOOP = Pattern.compile(
-            "^(\\s*)for\\s*\\(\\s*int\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*(.+?)\\s*;\\s*\\2\\s*(<|<=)\\s*(.+?)\\s*;\\s*\\2\\+\\+\\s*\\)\\s*\\{\\s*$");
-    private static final Pattern FOR_EACH = Pattern.compile(
-            "^(\\s*)for\\s*\\(\\s*(?:final\\s+)?(.+?)\\s+([A-Za-z_$][\\w$]*)\\s*:\\s*(.+?)\\s*\\)\\s*\\{\\s*$");
-    private static final Pattern CATCH = Pattern.compile(
+    private static final Pattern FOR_LOOP = pattern(
+            "^(\\s*)for\\s*\\(\\s*int\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*(.+?)\\s*;\\s*\\2\\s*(<|<=)\\s*(.+?)\\s*;\\s*\\2\\+\\+\\s*\\)\\s*[{]\\s*$");
+    private static final Pattern FOR_EACH = pattern(
+            "^(\\s*)for\\s*\\(\\s*(?:final\\s+)?(.+?)\\s+([A-Za-z_$][\\w$]*)\\s*:\\s*(.+?)\\s*\\)\\s*[{]\\s*$");
+    private static final Pattern CATCH = pattern(
             "catch\\s*\\(\\s*([A-Za-z_$][\\w.$]*(?:<[^>]+>)?)\\s+([A-Za-z_$][\\w$]*)\\s*\\)");
-    private static final Pattern METHOD = Pattern.compile(
-            "^(\\s*)((?:(?:public|protected|private|static|final|synchronized|abstract)\\s+)*)([A-Za-z_$][\\w.$<>?, \\[\\]]*)\\s+([A-Za-z_$][\\w$]*)\\s*\\((.*)\\)\\s*(?:throws\\s+[^\\{]+)?\\{\\s*$");
-    private static final Pattern OBJECT_EXPRESSION = Pattern.compile(
-            "new\\s+([A-Za-z_$][\\w.$]*(?:<[^{};()]+>)?)\\s*\\(([^(){}]*)\\)\\s*\\{");
-    private static final Pattern CONSTRUCTOR = Pattern.compile(
+    private static final Pattern METHOD = pattern(
+            "^(\\s*)((?:(?:public|protected|private|static|final|synchronized|abstract)\\s+)*)([A-Za-z_$][\\w.$<>?, \\[\\]]*)\\s+([A-Za-z_$][\\w$]*)\\s*\\((.*)\\)\\s*(?:throws\\s+[^{]+)?[{]\\s*$");
+    private static final Pattern OBJECT_EXPRESSION = pattern(
+            "new\\s+([A-Za-z_$][\\w.$]*(?:<[^{};()]+>)?)\\s*\\(([^(){}]*)\\)\\s*[{]");
+    private static final Pattern CONSTRUCTOR = pattern(
             "\\bnew\\s+([A-Za-z_$][\\w.$]*(?:<[^{};()]+>)?)\\s*\\(");
-    private static final Pattern TYPE_TOKEN = Pattern.compile(
-            "new\\s+TypeToken<(.+?)>\\s*\\(\\s*\\)\\s*\\{\\s*}\\s*\\.getType\\(\\)");
+    private static final Pattern TYPE_TOKEN = pattern(
+            "new\\s+TypeToken<(.+?)>\\s*\\(\\s*\\)\\s*[{]\\s*[}]\\s*\\.getType\\(\\)");
 
     private KotlinCodeConverter() {
+    }
+
+    /**
+     * Compiles one of the conversion patterns and names it when the engine rejects it.
+     *
+     * <p>A {@link PatternSyntaxException} thrown from a static initializer only carries a
+     * character index, which is a very poor bug report for a device-only engine difference. The
+     * failing expression is quoted here instead so the offending constant can be found at once.</p>
+     */
+    private static Pattern pattern(String regex) {
+        try {
+            return Pattern.compile(regex);
+        } catch (PatternSyntaxException invalid) {
+            throw new IllegalStateException(
+                    "Kotlin code conversion pattern is not supported by this Android regex engine: "
+                            + regex, invalid);
+        }
     }
 
     /** Converts one or more executable block statements/expressions. */
@@ -361,12 +391,12 @@ public final class KotlinCodeConverter {
     }
 
     private static String convertArrayInitializers(String code) {
-        return code.replaceAll("new\\s+String\\s*\\[\\s*]\\s*\\{([^{}]*)}", "arrayOf($1)")
-                .replaceAll("new\\s+int\\s*\\[\\s*([^]{}]+)\\s*]", "IntArray($1)")
-                .replaceAll("new\\s+long\\s*\\[\\s*([^]{}]+)\\s*]", "LongArray($1)")
-                .replaceAll("new\\s+double\\s*\\[\\s*([^]{}]+)\\s*]", "DoubleArray($1)")
-                .replaceAll("new\\s+float\\s*\\[\\s*([^]{}]+)\\s*]", "FloatArray($1)")
-                .replaceAll("new\\s+boolean\\s*\\[\\s*([^]{}]+)\\s*]", "BooleanArray($1)");
+        return code.replaceAll("new\\s+String\\s*\\[\\s*]\\s*[{]([^{}]*)[}]", "arrayOf($1)")
+                .replaceAll("new\\s+int\\s*\\[\\s*([^\\]{}]+)\\s*]", "IntArray($1)")
+                .replaceAll("new\\s+long\\s*\\[\\s*([^\\]{}]+)\\s*]", "LongArray($1)")
+                .replaceAll("new\\s+double\\s*\\[\\s*([^\\]{}]+)\\s*]", "DoubleArray($1)")
+                .replaceAll("new\\s+float\\s*\\[\\s*([^\\]{}]+)\\s*]", "FloatArray($1)")
+                .replaceAll("new\\s+boolean\\s*\\[\\s*([^\\]{}]+)\\s*]", "BooleanArray($1)");
     }
 
     private static String transformCodeSegment(String code) {

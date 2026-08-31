@@ -122,6 +122,17 @@ dependencies {
     implementation libs.stax.api
     implementation libs.bundles.kotlin.compiler
     compileOnly libs.kotlin.compiler
+
+    // The Compose compiler plugin classes must live in the app's own dex. kotlinc discovers
+    // plugins through ServiceLoaderLite: it reads META-INF/services/* from every -Xplugin JAR and
+    // then loads the declared registrar class. ART can only load classes from DEX, so a JAR that
+    // only carries .class entries (every JAR in kt_plugins) can supply the descriptor but never the
+    // class - the load fails with "ClassNotFoundException: Unable to find class
+    // androidx.compose.compiler.plugins.kotlin.ComposePluginRegistrar" unless the class is part of
+    // the app itself, which the plugin loader inherits from its parent.
+    // The plugin is still copied into kt_plugins as an asset: kotlinc requires the JAR path to read
+    // the service descriptors and the command line processor options from it.
+    implementation libs.compose.compiler.plugin
     implementation project(':resolver')
     implementation project(':vendor-dx')
     implementation libs.filepicker
@@ -136,10 +147,14 @@ dependencies {
 }
 
 /*
- * The Compose compiler plugin is shipped as plain JAR assets and provisioned
- * into each project's kt_plugins directory at build time. The plugin has a
- * runtime dependency on the matching Kotlin stdlib, so this configuration is
- * intentionally transitive and the refresh task copies both artifacts.
+ * The Compose compiler plugin JAR (together with the Kotlin stdlib JARs it is built against) is
+ * shipped as plain assets and provisioned into each project's kt_plugins directory at build time,
+ * because kotlinc can only read a plugin's META-INF/services descriptors and its -P options from
+ * the JAR path passed through -Xplugin.
+ *
+ * Shipping the plugin as an `implementation` dependency (see the dependencies block) is the other
+ * half of the setup and is not redundant: ART loads classes from DEX only, so the copied JAR alone
+ * can never provide the registrar class itself.
  */
 configurations {
     composeCompilerPlugin {

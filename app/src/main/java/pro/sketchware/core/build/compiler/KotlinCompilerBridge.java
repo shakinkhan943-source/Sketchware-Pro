@@ -42,18 +42,23 @@ public class KotlinCompilerBridge {
      * Ensures the Jetpack Compose compiler plugin and its runtime dependencies are
      * available in the project's kt_plugins folder.
      *
-     * The non-embeddable Compose plugin has a runtime dependency on the matching
-     * Kotlin stdlib. Compiler plugin classloaders can be isolated from kotlinc's
-     * normal runtime classpath, so provisioning only the plugin JAR can make
-     * ServiceLoaderLite report the registrar itself as missing even though the
-     * registrar is present in the JAR. We therefore mirror every JAR shipped in
-     * the APK's kt_plugins asset directory and let KotlinCompilerUtil select only
-     * actual compiler plugins when constructing pluginClasspaths.
+     * kotlinc only accepts a plugin as a JAR path ({@code -Xplugin=<jar>}) because it reads the
+     * plugin's {@code META-INF/services} descriptors and its {@code -P} options from that file.
+     * Copying the JAR is therefore necessary but not sufficient: ART defines classes from DEX only,
+     * so the registrar class cannot come out of the copied JAR's {@code .class} entries and
+     * ServiceLoaderLite reports the registrar as missing even though it is present. The plugin is
+     * packaged with the app as well ({@code implementation libs.compose.compiler.plugin}) so that
+     * the isolated plugin classloader inherits the class from its parent.
+     *
+     * <p>Every JAR of the APK's kt_plugins asset directory is mirrored, so a plugin can never be
+     * shipped beside a stale version of the Kotlin stdlib it was built against; KotlinCompilerUtil
+     * then selects the actual compiler plugins when it builds pluginClasspaths.</p>
      *
      * @return true when any Compose plugin asset was installed/upgraded.
      */
-    public static boolean maybeProvisionComposeCompilerPlugin(ProjectBuilder builder) {
-        if (!projectUsesCompose(builder)) {
+    private static boolean maybeProvisionComposeCompilerPlugin(
+            ProjectBuilder builder, boolean projectUsesCompose) {
+        if (!projectUsesCompose) {
             return false;
         }
         try {
@@ -92,7 +97,20 @@ public class KotlinCompilerBridge {
         }
     }
 
+    /**
+     * Whether this project must be compiled with the Compose compiler plugin.
+     *
+     * <p>{@link pro.sketchware.core.project.BuildConfig#isComposeEnabled} is the authoritative
+     * answer during a build: it is derived from the Compose library flag and from the presence of a
+     * Kotlin Activity, which in this fork is always a Compose Activity. The source scan remains as a
+     * fallback for callers that compile before {@code ProjectFilePaths#initializeMetadata} ran, so a
+     * project can never lose the plugin because a caller did not populate the metadata.</p>
+     */
     private static boolean projectUsesCompose(ProjectBuilder builder) {
+        if (builder.projectFilePaths.buildConfig != null
+                && builder.projectFilePaths.buildConfig.isComposeEnabled) {
+            return true;
+        }
         try {
             for (File sourceFile : KotlinCompilerUtil.getFilesToCompile(builder.projectFilePaths)) {
                 if (sourceFile.isFile() && sourceFileReferencesCompose(sourceFile)) {
@@ -103,6 +121,34 @@ public class KotlinCompilerBridge {
             LogUtil.w(TAG, "Failed to scan sources for Compose usage", e);
         }
         return false;
+    }
+
+    /**
+     * Fails fast when a Compose project has no Compose compiler plugin in its plugin folder.
+     *
+     * <p>Without the plugin the generated Kotlin still looks plausible, and the failure only shows
+     * up later as a Compose runtime error on the device or as an obscure "unresolved @Composable"
+     * message. Naming the missing file before kotlinc starts is the only point where this build
+     * mistake can be explained: the plugin is not a library a project depends on, it is a build-time
+     * component of the app that is provisioned from the APK's assets.</p>
+     */
+    private static void ensureComposeCompilerPluginAvailable(ProjectBuilder builder, boolean projectUsesCompose) {
+        if (!projectUsesCompose) {
+            return;
+        }
+        for (File plugin : KotlinCompilerUtil.getCompilerPlugins(builder.projectFilePaths)) {
+            for (String provider : KotlinCompilerUtil.getPluginServiceProviders(plugin)) {
+                if (provider.contains("androidx.compose.compiler.plugins.")) {
+                    LogUtil.d(TAG, "Using Compose compiler plugin: " + plugin.getName());
+                    return;
+                }
+            }
+        }
+        throw new IllegalStateException("This project uses Jetpack Compose, but the Kotlin Compose"
+                + " compiler plugin (" + COMPOSE_COMPILER_PLUGIN_JAR + ") is not available in "
+                + SketchwarePaths.getProjectKotlinCompilerPluginsPath(builder.projectFilePaths.sc_id)
+                + ". The plugin is copied from the app's assets during the build; install the"
+                + " Sketchware APK built from this source tree and try again.");
     }
 
     private static boolean sourceFileReferencesCompose(File sourceFile) {
@@ -128,7 +174,9 @@ public class KotlinCompilerBridge {
     public static void compileKotlinCodeIfPossible(BuildProgressReceiver receiver,
                                                      ProjectBuilder builder) throws Throwable {
         if (KotlinCompilerUtil.areAnyKtFilesPresent(builder)) {
-            boolean pluginChanged = maybeProvisionComposeCompilerPlugin(builder);
+            boolean usesCompose = projectUsesCompose(builder);
+            boolean pluginChanged = maybeProvisionComposeCompilerPlugin(builder, usesCompose);
+            ensureComposeCompilerPluginAvailable(builder, usesCompose);
             receiver.onProgress("Kotlin is compiling...", 12);
             try {
                 KotlinCompilerEnhanced compiler = new KotlinCompilerEnhanced(builder);

@@ -62,6 +62,24 @@ public class BuiltInLibraryManager {
     }
 
     /**
+     * Removes a previously added built-in library again, without touching the libraries it pulled in.
+     *
+     * <p>Used when the project gets a newer copy of the same library from the Jetpack store: two
+     * versions of one library in a single APK is not a warning, because the DEX merge keeps the first
+     * definition of every type, so whichever copy lost would still be referenced by code compiled
+     * against the other.</p>
+     *
+     * @param libraryName the built-in library's name, e.g. kotlinx-coroutines-android-1.8.1
+     */
+    public void removeLibrary(String libraryName) {
+        if (libraryNames.remove(libraryName)) {
+            libraries.remove(new BuiltInLibrary(libraryName));
+            Log.d(ProjectBuilder.TAG, "Removed built-in library \"" + libraryName
+                    + "\" from project's dependencies");
+        }
+    }
+
+    /**
      * @return {@link BuiltInLibraryManager#libraries}
      */
     public ArrayList<BuiltInLibrary> getLibraries() {

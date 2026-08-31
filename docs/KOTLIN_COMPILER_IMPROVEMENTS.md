@@ -305,6 +305,26 @@ Build with 4 CPU cores → Compare time vs sequential
 ### Issue: "Cache taking too much space"
 **Solution**: Cache is recreated on next build, safe to delete `kotlin_build_cache/`
 
+### Issue: "Kotlin compilation failed: Unable to find class androidx.compose.compiler.plugins.kotlin.ComposePluginRegistrar"
+**Cause**: kotlinc loads every `-Xplugin` JAR into a classloader of its own and then asks that
+loader for the registrar class the JAR declares in `META-INF/services`. ART defines classes from DEX
+only, so a JAR that carries plain `.class` entries — which is exactly what `files/kt_plugins/*.jar`
+is — can announce a plugin but can never provide it.
+**Solution**: the plugin's classes have to be part of the app itself. `app/build.gradle` therefore
+packages `libs.compose.compiler.plugin` with `implementation` (D8 compiles it into the APK's DEX)
+*and* keeps the JAR in the assets so the service descriptors and `-P` options remain readable.
+Both halves are required; `KotlinCompilerUtil.ensurePluginRegistrarsAreLoadable` reports this
+configuration error before the compiler runs instead of leaking the raw stack trace.
+
+### Issue: "ExceptionInInitializerError from KotlinCodeConverter" / "Syntax error in regexp pattern near index N"
+**Cause**: `java.util.regex` on Android is not the desktop implementation — `Pattern.compileImpl` is
+a native ICU4C call, and ICU rejects an unescaped `}` outside a character class that the desktop JVM
+compiles happily (seen on Android 10). The converter builds all of its patterns in a static
+initializer, so one such pattern takes down every Kotlin Activity at once.
+**Solution**: spell a literal brace as the one-element character class `[{]` / `[}]` instead of `\{`
+and, above all, never leave a bare `}` outside a class — see the note above the pattern constants in
+`KotlinCodeConverter`.
+
 ## References
 - Kotlin Compiler Architecture: https://kotlinlang.org/docs/compiler-phases.html
 - Incremental Compilation: https://kotlinlang.org/docs/incremental-compilation.html

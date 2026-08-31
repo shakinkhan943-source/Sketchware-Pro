@@ -78,6 +78,7 @@ import pro.sketchware.util.SystemLogPrinter;
 import pro.sketchware.core.build.BuildProgressReceiver;
 import pro.sketchware.util.library.BuiltInLibraries;
 import pro.sketchware.util.library.ComposeBuiltInLibraries;
+import pro.sketchware.util.library.JetpackLibs;
 import pro.sketchware.core.build.compiler.DexCompiler;
 import pro.sketchware.core.build.compiler.ResourceCompiler;
 import pro.sketchware.core.exception.MissingFileException;
@@ -581,9 +582,26 @@ public class ProjectBuilder {
         return extraPackages + localLibraryManager.getPackageNameLocalLibrary();
     }
 
+    /** Names of the local libraries this project activated, roots and expanded sub-dependencies. */
+    private Set<String> activatedLocalLibraryNames() {
+        Set<String> names = new HashSet<>();
+        if (localLibraryManager == null || localLibraryManager.list == null) {
+            return names;
+        }
+        for (HashMap<String, Object> library : localLibraryManager.list) {
+            if (library == null) continue;
+            Object name = library.get("name");
+            if (name instanceof String) names.add((String) name);
+        }
+        return names;
+    }
+
     /** Returns the selected artifact closure from the separate Compose bundle. */
     public List<ComposeBuiltInLibraries.ComposeArtifact> getSelectedComposeArtifacts() {
-        if (!projectFilePaths.buildConfig.isComposeEnabled) {
+        // Every consumer of this list reads it to place the legacy bundle's jars, resources and DEX on
+        // the build; with no bundle configured there is nothing to place, and asking for the manifest
+        // would throw. An empty list is the honest answer, and the Jetpack store covers the project.
+        if (!projectFilePaths.buildConfig.isComposeEnabled || !ComposeBuiltInLibraries.isBundleAvailable()) {
             return java.util.Collections.emptyList();
         }
         return ComposeBuiltInLibraries.getSelectedArtifacts(projectFilePaths.buildConfig.composeOptionalFeatures);
@@ -1234,7 +1252,12 @@ public class ProjectBuilder {
      * all required library JARs.
      */
     public void buildBuiltInLibraryInformation() {
-        if (projectFilePaths.buildConfig.isComposeEnabled) {
+        /* The legacy ZIP-and-JSON bundle is optional now that the shared Jetpack store exists: an
+           artifact installed there reaches this build as a local library instead. Asking the bundle
+           manager to extract a package nobody selected would abort the build with "no dependency package
+           is configured" for a project that is wired correctly, so the whole legacy path is taken only
+           when a package really is configured. */
+        if (projectFilePaths.buildConfig.isComposeEnabled && ComposeBuiltInLibraries.isBundleAvailable()) {
             ComposeBuiltInLibraries.ensureExtracted();
         }
 
@@ -1279,6 +1302,12 @@ public class ProjectBuilder {
         }
 
         KotlinCompilerBridge.maybeAddKotlinBuiltInLibraryDependenciesIfPossible(this, builtInLibraryManager);
+
+        /* An artifact in the shared Jetpack store can deliberately carry a newer copy of a runtime the
+           app also ships (kotlin-stdlib, kotlinx-coroutines). Only one version of each type may reach the
+           DEX, and the merge keeps the first, so the copy this project activated wins and the built-in
+           steps aside instead of shadowing it. */
+        JetpackLibs.applyRuntimeOverrides(builtInLibraryManager, activatedLocalLibraryNames());
 
         ExtLibSelected.addUsedDependencies(projectFilePaths.buildConfig.constVarComponent, builtInLibraryManager);
     }

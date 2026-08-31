@@ -621,6 +621,26 @@ public class SketchwarePaths {
         return localLibsFallbackDir;
     }
 
+    /**
+     * Shared Jetpack/Compose dependency store: one directory per artifact, holding the contents of
+     * its AAR ({@code classes.jar}, {@code classes.dex}, {@code res/}, {@code AndroidManifest.xml},
+     * {@code proguard.txt}, {@code assets/}) plus the metadata generated for it.
+     *
+     * <p>Deliberately <em>not</em> inside {@code cacheDir}: the system may clear the cache whenever it
+     * likes, which would silently break every Compose project, and the whole point of a store is that
+     * all projects share the one copy on disk while a project only records the artifact names it
+     * activates.</p>
+     */
+    public static File getJetpackLibsDir() {
+        return new File(getLibsPath(), "JetpackLibs");
+    }
+
+    /** App-specific twin of {@link #getJetpackLibsDir()} for storage paths that reject writes. */
+    public static File getJetpackLibsFallbackDir() {
+        File externalFilesDir = SketchApplication.getAppContext().getExternalFilesDir(null);
+        return new File(externalFilesDir, "JetpackLibs");
+    }
+
     public static String getLocalLibraryJarPath(String libraryName) {
         return resolveLocalLibFile(libraryName, "classes.jar").getAbsolutePath();
     }
@@ -633,6 +653,11 @@ public class SketchwarePaths {
         return resolveLocalLibFile(libraryName, "res").getAbsolutePath();
     }
 
+    /**
+     * Looks a library file up in every directory that can hold one, in the order the local library
+     * system already uses: shared storage, its app-specific fallback, then the Jetpack store and its
+     * fallback. A project therefore never has to know where an artifact was installed.
+     */
     private static File resolveLocalLibFile(String libraryName, String fileName) {
         File primaryPath = new File(getLocalLibsDir(), libraryName + File.separator + fileName);
         if (primaryPath.exists()) {
@@ -641,6 +666,14 @@ public class SketchwarePaths {
         File fallbackPath = new File(getLocalLibsFallbackDir(), libraryName + File.separator + fileName);
         if (fallbackPath.exists()) {
             return fallbackPath;
+        }
+        File jetpackPath = new File(getJetpackLibsDir(), libraryName + File.separator + fileName);
+        if (jetpackPath.exists()) {
+            return jetpackPath;
+        }
+        File jetpackFallback = new File(getJetpackLibsFallbackDir(), libraryName + File.separator + fileName);
+        if (jetpackFallback.exists()) {
+            return jetpackFallback;
         }
         return primaryPath;
     }

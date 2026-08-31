@@ -76,8 +76,14 @@ public class LocalLibrary {
                         String version = versionValue != null ? versionValue.toString() : null;
                         String groupId = groupIdValue != null ? groupIdValue.toString() : null;
                         boolean builtIn = Boolean.TRUE.equals(entry.get("builtIn"));
+                        Object folderValue = entry.get("folder");
                         if (artifactId != null && version != null) {
-                            String folderName = artifactId + "-v" + version;
+                            // Dependency trees written by the Maven resolver name folders
+                            // "<artifactId>-v<version>"; a store that already has its own stable
+                            // directory names (JetpackLibs uses the artifact id) records them here so
+                            // the same expansion logic works without renaming anything on disk.
+                            String folderName = folderValue != null && !folderValue.toString().isEmpty()
+                                    ? folderValue.toString() : artifactId + "-v" + version;
                             int depth = 1;
                             Object depthObj = entry.get("depth");
                             if (depthObj instanceof Number) depth = ((Number) depthObj).intValue();

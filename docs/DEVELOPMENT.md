@@ -246,6 +246,7 @@ mock 文件包含虚假的 project_number、firebase_url、api_key 等，足以�
 | `Out of memory` | Gradle 堆内存不足 | `gradle.properties` 中调整 `org.gradle.jvmargs=-Xmx4096m` |
 | `Unsupported class file major version 65` | 当前 JDK、Gradle 缓存或第三方 class 文件版本不兼容 | 清理构建缓存，并改用受支持的 JDK 17+（推荐直接使用仓库自带 Gradle Wrapper） |
 | `Duplicate class javax.inject` | 依赖冲突 | 已在 `build.gradle` 中通过 `exclude` 处理 |
+| `Unable to find class androidx.compose.compiler.plugins.kotlin.ComposePluginRegistrar` | 编译器插件 JAR 只含 `.class`，ART 无法从中加载类 | 插件必须同时作为 `implementation` 依赖打进 APK（见 6.5） |
 
 ---
 
@@ -1066,6 +1067,22 @@ Kotlin 编译流程：
 5. 后续与 Java .class 一起 DEX 化
 ```
 
+### Compose 编译器插件的加载约束
+
+`-Xplugin` 只接受 **JAR 路径**：kotlinc 从该 JAR 的 `META-INF/services/...` 描述符发现插件，再实例化插件类。
+Android 上这两步的宿主完全不同，必须同时满足：
+
+| 环节 | 位置 | 原因 |
+|------|------|------|
+| 服务描述符 | `files/kt_plugins/*.jar`（由 APK assets 在构建时释放） | kotlinc 需要一个真实文件路径来读取插件的 `-P` 选项与注册信息 |
+| 插件**类**本身 | Sketchware APK 自身的 DEX（`implementation libs.compose.compiler.plugin`） | ART 只能从 DEX 定义类；`.class` 条目对 ClassLoader 不可见 |
+
+如果只做第一件事，`ServiceLoaderLite` 会报 `ClassNotFoundException: Unable to find class
+androidx.compose.compiler.plugins.kotlin.ComposePluginRegistrar`——插件 JAR 里明明有该类，但插件类加载器
+只能通过与 kotlinc 相同的父加载器（即 App 的 ClassLoader）拿到它。因此 `app/build.gradle` 中的
+`implementation libs.compose.compiler.plugin` 与 assets 内的 JAR **缺一不可**，升级内嵌 kotlinc 版本时两处需同步
+（插件版本必须与 `kotlinCompiler` 完全一致，且必须使用非 embeddable 变体）。
+
 ## 6.6 ProGuard / R8
 
 ```
@@ -1175,6 +1192,137 @@ resolver/ 子模块
 ├── 独立 Gradle 模块（build.gradle.kts）
 └── 被主模块通过 `implementation project(':resolver')` 引用
 ```
+
+## 6.12 Jetpack Compose 依赖包（用户自选 ZIP + JSON）
+
+设备上无法运行 Gradle，因此 Compose 依赖由用户在项目库管理的 **Jetpack Compose** 页
+（`ComposeLibraryActivity`）中选择 `compose-libs.zip` 与 `compose-libraries.json` 提供，由 `ComposeDependencyManager` 负责拷贝、校验、
+解压与缓存（按两文件的联合哈希缓存，任一文件改动即自动重新解压，无需手动清缓存）。
+
+```
+运行目录：<cacheDir>/compose-dependencies/
+├── source/compose-package.zip|.json     # configure() 时复制的原件
+├── extracted/<hash>/                    # 安全解压结果（拒绝 ../ 与绝对路径）
+└── index/<hash>.json                    # 解析后的清单缓存
+
+构建侧唯一入口：ProjectBuilder.getSelectedComposeArtifacts()
+├── classpath（kotlinc -cp）
+├── AAPT2 资源/asset 合并（ResourceCompiler）
+├── APK 内 jar 资源（ApkBuilder.addResourcesFromJar）
+└── DEX 合并输入（getDexFilesReady）
+```
+
+**清单字段**（每个 `artifacts[]` 条目）：`id`（或 `name`/`coordinate`/`path` 推导）、`coordinate`、
+`packageName`/`package`、`dependencies`，以及 `files{classes|jar, res|resource, assets, proguard,
+dex|dexFile}`；若只给出 `path`/`root`/`directory`，则按 `<root>/classes.jar`、`<root>/res`、
+`dex/<id>.dex` 推导。`features[]` 里的 `roots`（或 `artifacts`）列出用户勾选的“根”构件；
+没有 `features[]` 时整个 ZIP 都参与构建。
+
+**“选了哪些构件”由打包内容决定，而不是只由功能开关决定。** 依赖闭包是必须的：Compose 把一个库拆成很多
+artifact，`ui:ui` 里没有 `Color`（在 `ui-graphics`）、没有 `Dp`（在 `ui-unit`）、没有 `TextStyle`（在
+`ui-text`），`foundation` 里也没有 `Box`/`fillMaxSize`（在 `foundation-layout`），`material3` 运行时还要
+`material-ripple` 与 `material-icons-core`。但**不能假设清单里的 `dependencies` 一定写了这些边**：按 Gradle
+“新增依赖”生成的清单常常只记录需要额外下载的那些非 Compose 依赖（`core`、`emoji2`、`lifecycle`…），
+Compose 构件之间的边被剪掉了，只做闭包展开仍然会漏掉上面每一个 artifact，报错依旧是一堆与真实原因无关的
+`Unresolved reference` / `Cannot access class`。
+
+因此 `ComposeDependencyFeatureResolver.select()` 的规则是：**ZIP 里打包的就是构建需要的集合**，
+`dependencies` 仍然会被沿袭（清单写了真实边时结果更精确），而未勾选的可选功能负责剪枝——
+只有“某个未启用的可选功能独占”的那棵树会被排除（例如 `material-icons-extended`、`animation`、
+`navigation-compose`），凡是同时被必需功能用到、或不属于任何可选功能的构件都会进入
+classpath / 资源 / DEX。这样功能开关仍然能关掉体积最大的那批 dex，又不会因为清单边不全而漏类。
+
+只有当某条 `androidx.compose.*` 依赖在整个包里都找不到时才会**直接失败并点名构件与其请求方**（这些类不可能
+由别处提供）；`lifecycle`、`collection`、`coroutines`、`kotlin-stdlib` 之类的边只记日志，因为它们由 App 自身
+或 `android.jar` 提供。若某构件只声明了 `dex`（或只声明了 `classes.jar`），缺失的那一侧会在对应步骤被跳过——
+但请注意：只有 `classes.jar` 而没有 DEX 的 Compose 构件不会进入 APK，运行时仍会 `NoClassDefFoundError`，
+打包时务必为每个构件生成 DEX。
+
+### 6.12.1 Jetpack 库商店（推荐路径，无需 JSON）
+
+`JetpackLibsInstaller` 提供一条不需要清单文件的现代路径。入口分两处，职责不同：
+
+- **App 设置 → Jetpack 库商店**（同一个 Activity，无 `sc_id`）：只管商店本身——导入 ZIP、重新扫描、
+  查看某个构件的细节、删除。**这里没有启用开关**：启用是对“某个项目的代码要编译什么”的决定，只有项目
+  能做。旧的“选 ZIP + 选 JSON + 使用/移除”界面已删除；若设备上仍残留旧清单包，这里会显示一行说明与
+  一个“移除旧包”按钮（构建仍会尊重旧包，直到用户主动移除）。
+- **项目库管理 → Jetpack Compose**（带 `sc_id`）：同样的导入/扫描区，外加每个构件的启用开关；
+  勾选结果写入项目的 `localLib`，在离开该页时保存（`onPause()` 与返回键都会落盘，避免中途杀进程后
+  “开关像是没生效”）。
+
+ZIP 的目录形如：
+
+```
+zip/
+├── androidx_compose_ui_ui/
+│   ├── classes.jar
+│   ├── classes.dex          # 可选：缺失时用内嵌 D8 自动生成
+│   ├── res/
+│   ├── AndroidManifest.xml
+│   ├── proguard.txt
+│   ├── assets/  libs/*.jar
+│   └── maven-coordinate     # 可选 "group:artifact:version"
+└── ...
+```
+
+- **解压位置**：`/storage/emulated/0/.sketchware/libs/JetpackLibs/<id>/`（写入被 FUSE 拒绝时退回
+  app 专属外部目录的同名子目录）。**不使用 cacheDir**：系统随时可清缓存,而商店里的构件一旦丢失，
+  所有启用了它们的项目都会构建失败。
+- **后台执行**：单线程 `ThreadPoolExecutor`（`allowCoreThreadTimeOut`），队列排空后立刻 `shutdown()`，
+  下次导入再惰性创建；导入可取消。整个流程不占用主线程。
+- **自动清单**：不再需要 `compose-libraries.json`。构件间依赖由**各自 class 文件的常量池**推导
+  （扫描 `CONSTANT_Class` 引用得到被引用的包，再与别的构件 `classes.jar` 里“定义的包”精确匹配），
+  然后压平成 `dependency-tree.json`。这比任何手写清单可靠：漏掉 `ui → ui-graphics` 这类边
+  曾让 19 条报错与真实原因毫无关系。
+- **复用本地库系统**：商店目录就是本地库目录（`config`/`res`/`classes.jar`/`classes.dex`/
+  `AndroidManifest.xml`/`proguard.txt`），因此 classpath、aapt2 资源、DEX 合并、清单合并、ProGuard
+  规则全部沿用既有管线；`LocalLibrariesUtil` 会把商店目录一并列入扫描，
+  `dependency-tree.json` 额外支持 `folder` 字段以保留商店自己的目录名。
+- **一份资源，多项目共享**：项目只在 `localLib` 文件里记录**启用哪些构件名**，不复制文件；
+  启用一个根会带上它的整棵依赖子树（一层展开即可，因为清单已压平），关闭只是不再出现在该项目的列表里。
+- **运行时重复的保护**：默认不安装 ZIP 里的 `kotlin-stdlib` / `kotlinx-coroutines*` /
+  `androidx.annotation`（App 对所有 Kotlin 项目已经内建 `kotlin-stdlib-2.2.0`、
+  `kotlinx-coroutines-android-1.8.1`）。两份 Kotlin 运行时进入同一个 APK 时，DEX 合并按
+  `CollisionPolicy.KEEP_FIRST` 只保留先到的那份，另一份编译出来的代码就会在
+  `kotlin.coroutines.CoroutineContext` 的默认方法转发处炸掉。若 ZIP 里确实带有**更新**的运行时,
+  可以在项目页勾选“使用 ZIP 自带的 Kotlin 运行时”，`JetpackLibs.applyRuntimeOverrides()` 会比较版本,
+  只让更新的那份留下（替换掉内建库,而不是两份并存）。
+
+**商店里的构件必须是“构建能直接用的形状”**，否则一切看起来正常却毫无作用：本地库管线只认
+`<id>/classes.jar` 与 `<id>/classes.dex` 这两个路径（`createLibraryMap()` 只看它们），所以
+`<id>/jars/classes.jar`、被改名成 `classes.jar` 的 AAR、`foo-release.aar` 这类内容都会被
+`JetpackLibsInstaller.normalize()` 就地解包/改名（并记进 `jetpack-info.json` 的 `notes` 与导入报告）。
+`unwrapWrapper()` 还处理“整个 ZIP 被包在一个 `bundle/` 目录里”的情况——按各自的文件夹名重新拆成多个
+构件，而不是让一个 `bundle` 假装是全部 52 个库。
+
+只有 `classes.dex` 而无 `classes.jar` 的构件是**运行时可见、编译期不可见**（没有编译器能读 DEX）：
+它仍会被安装，但依赖边改由 DEX 的 `type_ids` 推导（`readDexPackages()` 只读头部与两个索引表，不解码
+数据区，因此低端机扫 50 个构件也很快），并会明确警告“需要它的 API 请把 classes.jar 放进来”。
+常量池解析现在遇到未知 tag 会保留已读到的结果（而不是让整个类的结果作废），并支持 tag 21（ConstantDynamic）。
+
+`jetpack-info.json` 因此带上了可用于排障的计数：`classes`（扫过的 class 数）、`references`（引用到的
+包数）、`edges`（判定的依赖边）、`dexOnly`、`notes[]`；在设置页点一行即可看到它与 `dependency-tree.json`
+的原文——“列表显示 0 dep”这类问题不需要靠猜。
+
+**`0 dep` 的真正原因曾是一个数值陷阱（务必别再犯）**：常量池读取器先取 4 字节 magic，与
+`0xCAFEBABE` 比较。`readU4()` 返回 `long`，而 `0xCAFEBABE` 超出 `int` 的正数范围、本身是**负 int**，
+比较时被符号扩展成 `0xFFFFFFFFCAFEBABE`，于是**每一个 class 都在第一行 return**：`classes` 记到 1409，
+`references` 永远是 0，边永远是 0，构件“安装成功”却什么都不做。教训有两条：
+（1）与 `long` 比较的十六进制字面量必须写 `L` 后缀（`0xCAFEBABEL`），或改用 `int` 读取；
+（2）**只输出“没有”的算法必须能自证**——它的失败不会抛异常，只会让 UI 显示 0，所以要在
+`jetpack-info.json` 里同时记录 `classes`/`references`/`edges` 三个数，任何一环为 0 都能立刻看出位置。
+顺带地，类文件解析不再边读边 `skip()`：`InputStream.skip` 允许只跳过**部分**请求的字节，一旦错位，
+后续每个字节的含义都变了；现在整个 entry 先读进 `byte[]`，用下标推进，并且每次读都查边界。
+
+**ZIP 把 AAR 直接摊平在根目录也支持**（`classes.jar`、`classes.dex`、`res/`、`AndroidManifest.xml` 与
+ZIP 同级，而不是 `<id>/…`）：`artifactIdOf()` 把根级文件归到一个临时 `root` 构件，导入时再用 ZIP 自身的
+文件名（取不到就用 manifest 的 package）改名成一个构件，并在报告里说明“整个包只成为一个构件”。
+
+**生成的路径索引**：`jetpack-store.json`（商店根）与每个构件的 `jetpack-info.json` 都带 `files{}`，逐条列出
+`classes.jar`/`classes.dex`/`config`/`proguard.txt`/`AndroidManifest.xml`/`packages.txt`/
+`dependency-tree.json` 以及 `res/`、`assets/`、`libs/` 的绝对路径。这份“根 JSON”是**由文件生成**的输出，
+不是需要维护的输入：它列出构建真正会去读的那些路径，因而永远不会与实际文件不一致。**Re-scan（重新扫描）**用同一套逻辑重算商店里已有的一切
+（含补齐缺失的 `classes.dex`），所以补了 jar、改了文件夹、或用旧版本导入过的商店都不必重新导入 ZIP。
 
 ---
 
@@ -1868,6 +2016,28 @@ if (tmpFile.renameTo(new File(targetPath))) {
     // 回退处理
 }
 ```
+
+### 模式 6：正则字面量的跨引擎写法
+
+Android 上的 `java.util.regex` 并不是桌面 JDK 的实现：`Pattern.compileImpl` 是 native 方法，底层由
+ICU4C 负责编译正则（Android 的 libcore 在 `Pattern`/`Matcher` 上始终保留 “Use ICU4C as the regex
+backend” 改动）。两者对**字面量大括号**的要求相反，桌面单元测试永远发现不了：
+
+```java
+// 错误：Android 29 及以下抛 PatternSyntaxException
+//        "Syntax error in regexp pattern near index N"，桌面 JVM 却能正常编译
+Pattern.compile("new\\s+TypeToken<(.+?)>\\s*\\{\\s*}");
+
+// 正确：两个引擎都接受——用单元素字符类包住字面量括号
+Pattern.compile("new\\s+TypeToken<(.+?)>\\s*\\(\\s*\\)\\s*[{]\\s*[}]");
+```
+
+规则：
+
+- 字符类**之外**的字面量 `{` / `}` 一律写成 `[{]` / `[}]`（`\{` 在 ICU 可用，裸 `}` 不行）。
+- 字符类**之内**保持原样（`[^{}]` 安全），但 `]` 必须转义：`[^]{}]` 在 OpenJDK 里是「空字符类 + `{}`」。
+- 静态字段里的 `Pattern.compile` 一旦抛异常，会变成整个类的 `ExceptionInInitializerError`，
+  因此集中用一个 `pattern(...)` 工厂包裹编译调用，出错时把正则本身打进异常信息。
 
 ## 10.6 调试技巧
 
