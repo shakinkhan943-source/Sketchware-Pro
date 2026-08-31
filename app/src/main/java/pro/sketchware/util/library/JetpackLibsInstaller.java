@@ -280,7 +280,7 @@ public final class JetpackLibsInstaller {
         listener.onStage("Normalizing artifact payloads…", 10);
         normalizePayloads(artifacts, report);
         listener.onStage("Reading the packages each artifact defines…", 30);
-        Map<String, String> owners = mapPackagesToArtifacts(artifacts);
+        Map<String, Set<String>> owners = mapPackagesToArtifacts(artifacts);
         listener.onStage("Detecting dependency edges…", 50);
         linkDependencies(artifacts, owners, listener);
 
@@ -497,15 +497,23 @@ public final class JetpackLibsInstaller {
     // ------------------------------------------------------------------ index
 
     /** Records which packages each artifact defines, so a reference can be traced back to its owner. */
-    private static Map<String, String> mapPackagesToArtifacts(Map<String, Artifact> artifacts)
+    /**
+     * Which artifacts define which packages. A package may legitimately have more than one owner — Compose
+     * splits classes across artifacts while keeping them in a shared package ({@code ui} itself defines
+     * {@code androidx.compose.ui.graphics.vector}, and {@code androidx.compose.ui.text} is not owned by
+     * {@code ui-text} alone) — so every owner is recorded and a reference becomes an edge to each of them.
+     * Picking one winner would look tidy and lose the artifact whose classes the reference actually needs,
+     * which is the same failure a missing hand-written dependency edge produces.
+     */
+    private static Map<String, Set<String>> mapPackagesToArtifacts(Map<String, Artifact> artifacts)
             throws IOException {
-        Map<String, String> owners = new HashMap<>();
+        Map<String, Set<String>> owners = new HashMap<>();
         for (Artifact artifact : artifacts.values()) {
             for (File jar : artifact.jars()) {
                 artifact.definedPackages.addAll(packagesOf(jar));
             }
             for (String pack : artifact.definedPackages) {
-                owners.putIfAbsent(pack, artifact.id);
+                owners.computeIfAbsent(pack, key -> new LinkedHashSet<>()).add(artifact.id);
             }
         }
         /* A folder that ships only DEX would otherwise own nothing, and an artifact that owns nothing
@@ -523,7 +531,10 @@ public final class JetpackLibsInstaller {
         }
         for (Artifact artifact : artifacts.values()) {
             if (!artifact.dexOnly) continue;
-            for (String pack : artifact.definedPackages) owners.putIfAbsent(pack, artifact.id);
+            for (String pack : artifact.definedPackages) {
+                if (owners.containsKey(pack)) continue;
+                owners.computeIfAbsent(pack, key -> new LinkedHashSet<>()).add(artifact.id);
+            }
         }
         return owners;
     }
@@ -547,7 +558,7 @@ public final class JetpackLibsInstaller {
      * referenced package that another artifact defines is an edge, and nothing else can be.
      */
     private static void linkDependencies(Map<String, Artifact> artifacts,
-                                         Map<String, String> packageOwners,
+                                         Map<String, Set<String>> packageOwners,
                                          Listener listener) throws IOException {
         int done = 0;
         int total = Math.max(1, artifacts.size());
@@ -566,9 +577,10 @@ public final class JetpackLibsInstaller {
             artifact.referencesFound = references.size();
             for (String reference : references) {
                 if (artifact.definedPackages.contains(reference)) continue;
-                String owner = packageOwners.get(reference);
-                if (owner != null && !owner.equals(artifact.id)) {
-                    artifact.directDependencies.add(owner);
+                Set<String> ownersOfReference = packageOwners.get(reference);
+                if (ownersOfReference == null) continue;
+                for (String owner : ownersOfReference) {
+                    if (!owner.equals(artifact.id)) artifact.directDependencies.add(owner);
                 }
             }
         }
