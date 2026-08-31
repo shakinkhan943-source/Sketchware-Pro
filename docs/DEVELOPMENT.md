@@ -1286,7 +1286,13 @@ zip/
   `CollisionPolicy.KEEP_FIRST` 只保留先到的那份，另一份编译出来的代码就会在
   `kotlin.coroutines.CoroutineContext` 的默认方法转发处炸掉。若 ZIP 里确实带有**更新**的运行时,
   可以在项目页勾选“使用 ZIP 自带的 Kotlin 运行时”，`JetpackLibs.applyRuntimeOverrides()` 会比较版本,
-  只让更新的那份留下（替换掉内建库,而不是两份并存）。
+  并保证每份运行时**只留一份**：ZIP 里的更新则替换掉内建库；否则（版本相同或更旧）内建库胜出、
+  商店里的那份直接从本项目的本地库列表剔除，绝不会两份并存。
+- **Compose 项目始终拿到协程运行时**：`buildBuiltInLibraryInformation()` 对启用 Compose 的项目
+  主动加入内建 `kotlinx-coroutines-android`（连带 `-core-jvm`），因为 `AndroidUiDispatcher` 与
+  `WindowRecomposer` 都住在协程里——即使没勾选覆盖开关、商店里也没有协程构件，APK 也必须有这一份，
+  否则会在 `ComposeView` attach 时以 `NoClassDefFoundError: kotlinx.coroutines.CoroutineDispatcher`
+  收场。商店里有更新版本时仍由上面的 `applyRuntimeOverrides()` 替换。
 
 **商店里的构件必须是“构建能直接用的形状”**，否则一切看起来正常却毫无作用：本地库管线只认
 `<id>/classes.jar` 与 `<id>/classes.dex` 这两个路径（`createLibraryMap()` 只看它们），所以

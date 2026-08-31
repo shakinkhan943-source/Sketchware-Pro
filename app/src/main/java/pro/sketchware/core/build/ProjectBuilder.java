@@ -1303,11 +1303,26 @@ public class ProjectBuilder {
 
         KotlinCompilerBridge.maybeAddKotlinBuiltInLibraryDependenciesIfPossible(this, builtInLibraryManager);
 
+        if (projectFilePaths.buildConfig.isComposeEnabled) {
+            // Compose's AndroidUiDispatcher and window recomposer live in kotlinx-coroutines, and the
+            // app ships that runtime for every Kotlin project — so a Compose project must get it even
+            // when it did not install a runtime copy into the Jetpack store. A newer store copy replaces
+            // this one below in applyRuntimeOverrides().
+            builtInLibraryManager.addLibrary(BuiltInLibraries.JETBRAINS_KOTLINX_COROUTINES_ANDROID);
+        }
+
         /* An artifact in the shared Jetpack store can deliberately carry a newer copy of a runtime the
            app also ships (kotlin-stdlib, kotlinx-coroutines). Only one version of each type may reach the
            DEX, and the merge keeps the first, so the copy this project activated wins and the built-in
-           steps aside instead of shadowing it. */
-        JetpackLibs.applyRuntimeOverrides(builtInLibraryManager, activatedLocalLibraryNames());
+           steps aside instead of shadowing it. When the built-in is the newer one the store copy is
+           dropped from the project's library list instead — two copies of one runtime is how a Compose
+           activity dies inside CoroutineContext. */
+        Set<String> supersededStoreRuntimes = JetpackLibs.applyRuntimeOverrides(
+                builtInLibraryManager, activatedLocalLibraryNames());
+        if (!supersededStoreRuntimes.isEmpty()) {
+            localLibraryManager.list.removeIf(library ->
+                    supersededStoreRuntimes.contains(String.valueOf(library.get("name"))));
+        }
 
         ExtLibSelected.addUsedDependencies(projectFilePaths.buildConfig.constVarComponent, builtInLibraryManager);
     }
