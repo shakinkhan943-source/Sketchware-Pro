@@ -145,7 +145,13 @@ public class ComposeLibraryActivity extends BaseAppCompatActivity {
     @Override
     public void onPause() {
         super.onPause();
-        if (!packageSettingsMode && storeSelectionChanged) applyStoreSelection();
+        if (packageSettingsMode || scId == null) return;
+        // Re-applied even when nothing was toggled: a re-scan can turn an artifact's dependency list from
+        // empty into the closure its classes actually need, and a project holding the old root-only list
+        // would keep failing to compile against exactly the folders that are now correctly recorded.
+        // Rewriting the same selection is cheap and idempotent — it never touches non-store libraries.
+        applyStoreSelection();
+        storeSelectionChanged = false;
     }
 
     /**
