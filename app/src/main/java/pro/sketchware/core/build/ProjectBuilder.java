@@ -598,7 +598,10 @@ public class ProjectBuilder {
 
     /** Returns the selected artifact closure from the separate Compose bundle. */
     public List<ComposeBuiltInLibraries.ComposeArtifact> getSelectedComposeArtifacts() {
-        if (!projectFilePaths.buildConfig.isComposeEnabled) {
+        // Every consumer of this list reads it to place the legacy bundle's jars, resources and DEX on
+        // the build; with no bundle configured there is nothing to place, and asking for the manifest
+        // would throw. An empty list is the honest answer, and the Jetpack store covers the project.
+        if (!projectFilePaths.buildConfig.isComposeEnabled || !ComposeBuiltInLibraries.isBundleAvailable()) {
             return java.util.Collections.emptyList();
         }
         return ComposeBuiltInLibraries.getSelectedArtifacts(projectFilePaths.buildConfig.composeOptionalFeatures);
@@ -1249,7 +1252,12 @@ public class ProjectBuilder {
      * all required library JARs.
      */
     public void buildBuiltInLibraryInformation() {
-        if (projectFilePaths.buildConfig.isComposeEnabled) {
+        /* The legacy ZIP-and-JSON bundle is optional now that the shared Jetpack store exists: an
+           artifact installed there reaches this build as a local library instead. Asking the bundle
+           manager to extract a package nobody selected would abort the build with "no dependency package
+           is configured" for a project that is wired correctly, so the whole legacy path is taken only
+           when a package really is configured. */
+        if (projectFilePaths.buildConfig.isComposeEnabled && ComposeBuiltInLibraries.isBundleAvailable()) {
             ComposeBuiltInLibraries.ensureExtracted();
         }
 

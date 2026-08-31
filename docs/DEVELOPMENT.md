@@ -1240,8 +1240,17 @@ classpath / 资源 / DEX。这样功能开关仍然能关掉体积最大的那�
 
 ### 6.12.1 Jetpack 库商店（推荐路径，无需 JSON）
 
-`JetpackLibsInstaller` 提供一条不需要清单文件的现代路径：在 **项目库管理 → Jetpack Compose**
-（或 App 设置里的同名页）选择一个 ZIP，目录形如：
+`JetpackLibsInstaller` 提供一条不需要清单文件的现代路径。入口分两处，职责不同：
+
+- **App 设置 → Jetpack 库商店**（同一个 Activity，无 `sc_id`）：只管商店本身——导入 ZIP、重新扫描、
+  查看某个构件的细节、删除。**这里没有启用开关**：启用是对“某个项目的代码要编译什么”的决定，只有项目
+  能做。旧的“选 ZIP + 选 JSON + 使用/移除”界面已删除；若设备上仍残留旧清单包，这里会显示一行说明与
+  一个“移除旧包”按钮（构建仍会尊重旧包，直到用户主动移除）。
+- **项目库管理 → Jetpack Compose**（带 `sc_id`）：同样的导入/扫描区，外加每个构件的启用开关；
+  勾选结果写入项目的 `localLib`，在离开该页时保存（`onPause()` 与返回键都会落盘，避免中途杀进程后
+  “开关像是没生效”）。
+
+ZIP 的目录形如：
 
 ```
 zip/
@@ -1278,6 +1287,23 @@ zip/
   `kotlin.coroutines.CoroutineContext` 的默认方法转发处炸掉。若 ZIP 里确实带有**更新**的运行时,
   可以在项目页勾选“使用 ZIP 自带的 Kotlin 运行时”，`JetpackLibs.applyRuntimeOverrides()` 会比较版本,
   只让更新的那份留下（替换掉内建库,而不是两份并存）。
+
+**商店里的构件必须是“构建能直接用的形状”**，否则一切看起来正常却毫无作用：本地库管线只认
+`<id>/classes.jar` 与 `<id>/classes.dex` 这两个路径（`createLibraryMap()` 只看它们），所以
+`<id>/jars/classes.jar`、被改名成 `classes.jar` 的 AAR、`foo-release.aar` 这类内容都会被
+`JetpackLibsInstaller.normalize()` 就地解包/改名（并记进 `jetpack-info.json` 的 `notes` 与导入报告）。
+`unwrapWrapper()` 还处理“整个 ZIP 被包在一个 `bundle/` 目录里”的情况——按各自的文件夹名重新拆成多个
+构件，而不是让一个 `bundle` 假装是全部 52 个库。
+
+只有 `classes.dex` 而无 `classes.jar` 的构件是**运行时可见、编译期不可见**（没有编译器能读 DEX）：
+它仍会被安装，但依赖边改由 DEX 的 `type_ids` 推导（`readDexPackages()` 只读头部与两个索引表，不解码
+数据区，因此低端机扫 50 个构件也很快），并会明确警告“需要它的 API 请把 classes.jar 放进来”。
+常量池解析现在遇到未知 tag 会保留已读到的结果（而不是让整个类的结果作废），并支持 tag 21（ConstantDynamic）。
+
+`jetpack-info.json` 因此带上了可用于排障的计数：`classes`（扫过的 class 数）、`references`（引用到的
+包数）、`edges`（判定的依赖边）、`dexOnly`、`notes[]`；在设置页点一行即可看到它与 `dependency-tree.json`
+的原文——“列表显示 0 dep”这类问题不需要靠猜。**Re-scan（重新扫描）**用同一套逻辑重算商店里已有的一切
+（含补齐缺失的 `classes.dex`），所以补了 jar、改了文件夹、或用旧版本导入过的商店都不必重新导入 ZIP。
 
 ---
 

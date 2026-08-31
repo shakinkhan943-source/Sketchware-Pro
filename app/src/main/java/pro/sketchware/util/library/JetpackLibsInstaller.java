@@ -24,6 +24,7 @@ import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -101,6 +102,8 @@ public final class JetpackLibsInstaller {
 
     /** What an import did, in the numbers a user can act on. */
     public static final class Report {
+        /** True when the work was a re-scan of the store rather than an import. */
+        public boolean rebuild;
         public int artifacts;
         public int dexed;
         public int edges;
@@ -110,7 +113,8 @@ public final class JetpackLibsInstaller {
 
         public String summary() {
             StringBuilder text = new StringBuilder();
-            text.append(artifacts).append(" Jetpack artifacts installed into ")
+            text.append(artifacts).append(rebuild
+                            ? " artifacts re-read in " : " Jetpack artifacts installed into ")
                     .append(directory == null ? "the store" : directory.getName());
             if (edges > 0) text.append(", ").append(edges).append(" dependency edges detected");
             if (dexed > 0) text.append(", ").append(dexed).append(" DEX files generated");
@@ -167,6 +171,142 @@ public final class JetpackLibsInstaller {
         return SketchwarePaths.getJetpackLibsDir();
     }
 
+    /**
+     * Re-derives the generated metadata for the artifacts the store already holds, with no ZIP involved.
+     *
+     * <p>A store installed before the dependency detection was able to read it keeps whatever
+     * {@code dependency-tree.json} it was first given, and an empty list is invisible in the UI but
+     * decisive in a build: activating a root then adds only the root, so the folders its classes
+     * reference never reach the classpath. Folders are also edited by hand more often than any other
+     * part of this feature, and a re-scan is the only way to notice. Anything the store cannot build for
+     * itself (a missing {@code classes.dex}) is generated again here as well.</p>
+     */
+    public static void rescan(Listener listener) {
+        cancelled = false;
+        executor().execute(() -> {
+            try {
+                Report report = doRescan(listener);
+                if (cancelled) {
+                    listener.onFailed("Re-scan cancelled");
+                } else {
+                    listener.onFinished(report);
+                }
+            } catch (Exception failure) {
+                Log.e(TAG, "Jetpack store re-scan failed", failure);
+                listener.onFailed(describe(failure));
+            } finally {
+                shutdownWhenIdle();
+            }
+        });
+    }
+
+    /** Deletes artifacts from the store; the projects that activated them must re-check their list. */
+    public static void uninstall(List<String> ids, Listener listener) {
+        cancelled = false;
+        executor().execute(() -> {
+            try {
+                listener.onFinished(doUninstall(ids));
+            } catch (Exception failure) {
+                Log.e(TAG, "Jetpack store delete failed", failure);
+                listener.onFailed(describe(failure));
+            } finally {
+                shutdownWhenIdle();
+            }
+        });
+    }
+
+    private static Report doUninstall(List<String> ids) throws IOException {
+        Report report = new Report();
+        List<File> roots = new ArrayList<>();
+        roots.add(SketchwarePaths.getJetpackLibsDir());
+        roots.add(SketchwarePaths.getJetpackLibsFallbackDir());
+        for (String id : ids) {
+            // Only ever a single path element: a list row must not be able to delete elsewhere.
+            String safe = id == null ? "" : sanitize(new File(id).getName());
+            if (safe.isEmpty() || ".".equals(safe) || "..".equals(safe)) continue;
+            for (File root : roots) {
+                File directory = new File(root, safe);
+                if (directory.isDirectory()) {
+                    deleteRecursively(directory);
+                    if (!report.names.contains(safe)) report.names.add(safe);
+                }
+            }
+        }
+        report.artifacts = report.names.size();
+        report.directory = getStoreDir();
+        writeStoreInventory(getStoreDir());
+        if (report.names.isEmpty()) {
+            report.warnings.add("nothing was removed — the artifact folder is already gone");
+        } else {
+            report.warnings.add("open the Compose library list of every project that used these"
+                    + " artifacts, so the removed names drop out of its library list");
+        }
+        return report;
+    }
+
+    private static Report doRescan(Listener listener) throws IOException {
+        Report report = new Report();
+        report.rebuild = true;
+        File store = getStoreDir();
+        File[] children = store.listFiles();
+        Map<String, Artifact> artifacts = new LinkedHashMap<>();
+        if (children == null) {
+            throw new IOException("The Jetpack store at " + store.getAbsolutePath()
+                    + " cannot be read — allow all-files access and try again");
+        }
+        List<File> directories = new ArrayList<>();
+        for (File child : children) {
+            if (child.isDirectory() && !child.getName().startsWith(".")) directories.add(child);
+        }
+        directories.sort(Comparator.comparing(File::getName));
+        for (File directory : directories) {
+            Artifact artifact = new Artifact(directory.getName(), directory);
+            if (!artifact.hasClassesJar() && !artifact.hasDex()) {
+                artifact.excluded = true;
+                artifact.notes.add("has no classes.jar and no classes.dex — left untouched");
+            }
+            artifacts.put(artifact.id, artifact);
+        }
+        if (artifacts.isEmpty()) {
+            report.directory = store;
+            report.warnings.add("the store has no artifact folders to read");
+            return report;
+        }
+
+        unwrapWrapper(store, artifacts, report);
+        listener.onStage("Normalizing artifact payloads…", 10);
+        normalizePayloads(artifacts, report);
+        listener.onStage("Reading the packages each artifact defines…", 30);
+        Map<String, String> owners = mapPackagesToArtifacts(artifacts);
+        listener.onStage("Detecting dependency edges…", 50);
+        linkDependencies(artifacts, owners, listener);
+
+        int total = Math.max(1, artifacts.size());
+        int done = 0;
+        for (Artifact artifact : artifacts.values()) {
+            if (cancelled) return report;
+            if (artifact.excluded) continue;
+            listener.onStage("Rebuilding " + artifact.id + "…", 50 + (++done) * 45 / total);
+            readIdentity(artifact);
+            for (String message : artifact.notes) report.warnings.add(artifact.id + ": " + message);
+            writeConfig(artifact);
+            writeDependencyTree(artifact, artifacts);
+            writeInfo(artifact);
+            LocalLibraryImportPackageIndex.rebuildPackages(artifact.directory);
+            if (!artifact.hasDex() && artifact.hasClassesJar()) dex(artifact, report);
+            report.artifacts++;
+            report.edges += artifact.edgeCount;
+            report.names.add(artifact.id);
+        }
+        for (Artifact artifact : artifacts.values()) {
+            if (!artifact.excluded) continue;
+            report.warnings.add(artifact.id + ": " + String.join("; ", artifact.notes));
+        }
+        report.directory = store;
+        writeStoreInventory(store);
+        return report;
+    }
+
     private static ThreadPoolExecutor executor() {
         synchronized (LOCK) {
             if (executor == null || executor.isShutdown()) {
@@ -221,7 +361,11 @@ public final class JetpackLibsInstaller {
                 throw new IOException("No artifact folders found. Expected <id>/classes.jar"
                         + " (and optionally classes.dex, res/, AndroidManifest.xml) inside the ZIP");
             }
+            unwrapWrapper(staging, artifacts, report);
             report.artifacts = artifacts.size();
+
+            listener.onStage("Normalizing artifact payloads…", 32);
+            normalizePayloads(artifacts, report);
 
             listener.onStage("Reading the packages each artifact defines…", 35);
             Map<String, String> packageOwners = mapPackagesToArtifacts(artifacts);
@@ -349,13 +493,29 @@ public final class JetpackLibsInstaller {
             throws IOException {
         Map<String, String> owners = new HashMap<>();
         for (Artifact artifact : artifacts.values()) {
-            List<File> jars = artifact.jars();
-            for (File jar : jars) {
+            for (File jar : artifact.jars()) {
                 artifact.definedPackages.addAll(packagesOf(jar));
             }
             for (String pack : artifact.definedPackages) {
                 owners.putIfAbsent(pack, artifact.id);
             }
+        }
+        /* A folder that ships only DEX would otherwise own nothing, and an artifact that owns nothing
+           cannot be found by anything else — which is how an installed library ends up listed with zero
+           dependencies. A DEX type list is read in a second pass on purpose: it names the classes the
+           artifact references as well as the ones it defines, so a package is attributed to a DEX only
+           when no JAR claims it. */
+        for (Artifact artifact : artifacts.values()) {
+            if (!artifact.definedPackages.isEmpty()) continue;
+            Set<String> fromDex = new LinkedHashSet<>();
+            if (readDexPackages(new File(artifact.directory, "classes.dex"), fromDex)) {
+                artifact.definedPackages.addAll(fromDex);
+                artifact.dexOnly = true;
+            }
+        }
+        for (Artifact artifact : artifacts.values()) {
+            if (!artifact.dexOnly) continue;
+            for (String pack : artifact.definedPackages) owners.putIfAbsent(pack, artifact.id);
         }
         return owners;
     }
@@ -389,8 +549,13 @@ public final class JetpackLibsInstaller {
                     55 + (++done) * 18 / total);
             Set<String> references = new LinkedHashSet<>();
             for (File jar : artifact.jars()) {
-                collectReferences(jar, references);
+                collectReferences(jar, references, artifact);
             }
+            if (artifact.dexOnly) {
+                readDexPackages(new File(artifact.directory, "classes.dex"), references);
+                references.removeAll(artifact.definedPackages);
+            }
+            artifact.referencesFound = references.size();
             for (String reference : references) {
                 if (artifact.definedPackages.contains(reference)) continue;
                 String owner = packageOwners.get(reference);
@@ -401,11 +566,13 @@ public final class JetpackLibsInstaller {
         }
     }
 
-    private static void collectReferences(File jar, Set<String> packages) throws IOException {
+    private static void collectReferences(File jar, Set<String> packages, Artifact artifact)
+            throws IOException {
         if (jar == null || !jar.isFile()) return;
         try (ZipFile archive = new ZipFile(jar)) {
             for (ZipEntry entry : Collections.list(archive.entries())) {
                 if (!entry.getName().endsWith(".class")) continue;
+                if (artifact != null) artifact.classesScanned++;
                 try (InputStream in = archive.getInputStream(entry)) {
                     readReferencedPackages(in, packages);
                 } catch (IOException | RuntimeException ignored) {
@@ -414,6 +581,72 @@ public final class JetpackLibsInstaller {
                 }
             }
         }
+    }
+
+    /**
+     * Reads the type list of a DEX file. Every entry is a field descriptor such as
+     * {@code Landroidx/compose/ui/Foo;}, which is the same internal naming the constant pool uses, so a
+     * folder that ships only DEX can still be wired to the artifacts it needs. Only the header and the
+     * two index tables are touched — no encoded values are decoded, which is what keeps this cheap
+     * enough to run over fifty artifacts on a low-end device.
+     */
+    private static boolean readDexPackages(File dex, Set<String> packages) {
+        if (dex == null || !dex.isFile()) return false;
+        try (java.io.RandomAccessFile file = new java.io.RandomAccessFile(dex, "r")) {
+            byte[] magic = new byte[8];
+            file.seek(0);
+            file.readFully(magic);
+            if (magic[0] != 'd' || magic[1] != 'e' || magic[2] != 'x' || magic[3] != '\n') return false;
+            long length = file.length();
+            if (u32(file, 40, length) != 0x12345678L) return false; // big-endian DEX: not ours to read
+            long stringsSize = u32(file, 56, length);
+            long stringsOff = u32(file, 60, length);
+            long typesSize = u32(file, 64, length);
+            long typesOff = u32(file, 68, length);
+            if (stringsSize <= 0 || typesSize <= 0 || typesSize > 4_000_000) return false;
+            if (stringsOff + stringsSize * 4 > length || typesOff + typesSize * 4 > length) return false;
+            boolean any = false;
+            for (long i = 0; i < typesSize; i++) {
+                long index = u32(file, typesOff + i * 4, length);
+                if (index < 0 || index >= stringsSize) continue;
+                long dataOff = u32(file, stringsOff + index * 4, length);
+                if (dataOff < 0 || dataOff >= length) continue;
+                String descriptor = readCString(file, dataOff, length);
+                if (descriptor.length() < 3 || descriptor.charAt(0) != 'L'
+                        || descriptor.charAt(descriptor.length() - 1) != ';') {
+                    continue;
+                }
+                String internal = descriptor.substring(1, descriptor.length() - 1);
+                int slash = internal.lastIndexOf('/');
+                if (slash <= 0) continue;
+                packages.add(internal.substring(0, slash));
+                any = true;
+            }
+            return any;
+        } catch (IOException | RuntimeException failure) {
+            Log.d(TAG, "Cannot read DEX types of " + dex + ": " + describe(failure));
+            return false;
+        }
+    }
+
+    /** A DEX header field, or -1 when the file is shorter than the offset it asks for. */
+    private static long u32(java.io.RandomAccessFile file, long offset, long length) throws IOException {
+        if (offset < 0 || offset + 4 > length) return -1;
+        file.seek(offset);
+        return (file.readUnsignedByte()) | (file.readUnsignedByte() << 8)
+                | (file.readUnsignedByte() << 16) | ((long) file.readUnsignedByte() << 24);
+    }
+
+    /** Reads a MUTF-8 string; its ulebe128 length is skipped because the terminator is authoritative. */
+    private static String readCString(java.io.RandomAccessFile file, long offset, long length)
+            throws IOException {
+        int limit = (int) Math.min(length - offset, 4096);
+        byte[] buffer = new byte[Math.max(0, limit)];
+        file.seek(offset);
+        file.readFully(buffer);
+        int end = 0;
+        while (end < buffer.length && buffer[end] != 0) end++;
+        return new String(buffer, 0, end, StandardCharsets.UTF_8);
     }
 
     /**
@@ -467,16 +700,254 @@ public final class JetpackLibsInstaller {
                 case 15: // MethodHandle
                     skip(in, 3);
                     break;
+                case 21: // ConstantDynamic (JDK 11+, same shape as the two dynamic tags above)
+                    skip(in, 4);
+                    break;
                 default:
-                    throw new IOException("unsupported constant pool tag " + tag);
+                    // An unrecognised tag means the walk can no longer stay aligned. Everything read
+                    // before it is still the truth about this class, so the pool is abandoned here and
+                    // its names are kept: discarding the lot is what turns a library that clearly uses
+                    // five others into one the UI reports as having no dependencies.
+                    describeClasses(utf8, classes, classCount, packages);
+                    return;
             }
         }
+        describeClasses(utf8, classes, classCount, packages);
+    }
+
+    private static void describeClasses(String[] utf8, int[] classes, int classCount,
+                                        Set<String> packages) {
         for (int i = 0; i < classCount; i++) {
             String name = classes[i] < utf8.length ? utf8[classes[i]] : null;
             if (name == null || name.isEmpty() || name.charAt(0) == '[') continue;
             int lastSlash = name.lastIndexOf('/');
             if (lastSlash <= 0) continue;
             packages.add(name.substring(0, lastSlash));
+        }
+    }
+
+    // ------------------------------------------------------------ payload normalisation
+
+    /**
+     * Re-keys a ZIP that wrapped all of its artifacts in a single folder
+     * ({@code bundle/androidx_compose_ui_ui_android/classes.jar}). The folder names are the manifest here,
+     * so a wrapper directory must not become the only library — without this, everything would collapse
+     * into one artifact whose classes.jar was renamed from inside it, which installs, lists no
+     * dependencies and changes nothing about a build.
+     */
+    private static void unwrapWrapper(File base, Map<String, Artifact> artifacts, Report report) {
+        if (artifacts.size() != 1) return;
+        Map.Entry<String, Artifact> only = artifacts.entrySet().iterator().next();
+        File wrapper = only.getValue().directory;
+        File[] children = wrapper.listFiles();
+        if (children == null) return;
+        List<File> payloads = new ArrayList<>();
+        for (File child : children) {
+            if (!child.isDirectory() || child.getName().startsWith(".")) continue;
+            if (findDeep(child, ".jar", 1, true) != null || findDeep(child, ".aar", 1, true) != null
+                    || new File(child, "classes.dex").isFile()) {
+                payloads.add(child);
+            }
+        }
+        if (payloads.size() < 2) return;
+        int moved = 0;
+        for (File payload : payloads) {
+            String id = sanitize(payload.getName());
+            File target = new File(base, id);
+            int suffix = 1;
+            while (target.exists()) target = new File(base, id + "-" + (++suffix));
+            if (!payload.renameTo(target)) {
+                report.warnings.add("cannot re-key " + payload.getName() + " out of " + only.getKey()
+                        + " — the wrapper stays as one library, which will not compile against anything");
+                break;
+            }
+            artifacts.put(target.getName(), new Artifact(target.getName(), target));
+            moved++;
+        }
+        if (moved > 0) {
+            artifacts.remove(only.getKey());
+            deleteRecursively(wrapper);
+            report.warnings.add("the ZIP wrapped " + moved + " artifacts inside " + only.getKey()
+                    + "/ — each folder became its own library, named after the folder");
+        }
+    }
+
+    /**
+     * Puts every artifact folder into the shape the build reads, and records what had to be repaired.
+     *
+     * <p>A store directory is only useful if its classes sit at {@code <id>/classes.jar} and its DEX at
+     * {@code <id>/classes.dex} — those exact paths are what the local library system hands to the
+     * compiler, to AAPT2 and to the DEX merge. ZIPs arrive in other shapes all the time: an AAR that was
+     * renamed instead of unpacked, a {@code jars/} or {@code classes/} subfolder, a jar still carrying
+     * its artifact name. Each is one file move away from working, and each silently produces a library
+     * that installs, lists zero dependencies and changes nothing when it is switched on — the worst
+     * possible failure, because it looks like success.</p>
+     */
+    private static void normalizePayloads(Map<String, Artifact> artifacts, Report report) {
+        for (Artifact artifact : artifacts.values()) {
+            if (artifact.excluded) continue;
+            try {
+                normalize(artifact);
+            } catch (IOException | RuntimeException failure) {
+                String note = "could not inspect the folder (" + describe(failure) + ")";
+                artifact.notes.add(note);
+                report.warnings.add(artifact.id + ": " + note);
+            }
+        }
+    }
+
+    private static void normalize(Artifact artifact) throws IOException {
+        File jar = artifact.classesJar();
+        if (jar.isFile() && isAar(jar)) {
+            // A renamed AAR: the real classes are one ZIP level deeper.
+            File aar = new File(artifact.directory, "library.aar");
+            if (!jar.renameTo(aar)) throw new IOException("cannot set aside " + jar.getName());
+            unpackAar(artifact, aar, true);
+            artifact.notes.add("classes.jar was an AAR — unpacked it in place");
+        } else if (!jar.isFile()) {
+            File aar = findDeep(artifact.directory, ".aar", 3, true);
+            if (aar != null) {
+                unpackAar(artifact, aar, false);
+                artifact.notes.add("unpacked " + relativeTo(artifact, aar));
+                if (artifact.hasClassesJar() && !deleteQuietly(aar)) {
+                    note(artifact, "left the AAR at " + relativeTo(artifact, aar)
+                            + " because it could not be deleted — its classes are installed once, from"
+                            + " classes.jar, so the duplicate costs space only");
+                }
+            }
+        }
+        if (!artifact.hasClassesJar()) {
+            // A jar under another name is still the artifact's API, and the compiler only ever looks at
+            // classes.jar, so the name — not the content — is what is broken here.
+            File stray = findDeep(artifact.directory, ".jar", 2, false);
+            if (stray != null && stray.renameTo(jar)) {
+                artifact.notes.add("renamed " + relativeTo(artifact, stray) + " to classes.jar");
+            }
+            if (!artifact.hasClassesJar()) {
+                // Nothing but a secondary jar: moving it (not copying — a DEX generated from both copies
+                // would merge the same types twice) is the only way its API reaches the compiler.
+                File only = findDeep(artifact.directory, ".jar", 2, true);
+                if (only != null && only.renameTo(jar)) {
+                    artifact.notes.add("moved " + relativeTo(artifact, jar)
+                            + " out of libs/ to classes.jar so the compiler can see it");
+                }
+            }
+        }
+        File dex = new File(artifact.directory, "classes.dex");
+        if (!dex.isFile()) {
+            File strayDex = findDeep(artifact.directory, ".dex", 3, false);
+            if (strayDex != null && strayDex.renameTo(dex)) {
+                artifact.notes.add("renamed " + relativeTo(artifact, strayDex) + " to classes.dex");
+            }
+        }
+        if (!artifact.hasClassesJar() && artifact.hasDex()) {
+            artifact.dexOnly = true;
+            note(artifact, "ships classes.dex only: its code will run, but no compiler can read a DEX,"
+                    + " so project code cannot compile against it — put the artifact's classes.jar in the"
+                    + " folder and re-scan if you need its API");
+        }
+        if (!artifact.hasClassesJar() && !artifact.hasDex()) {
+            note(artifact, "no classes found — an AAR must be unpacked, and a JAR must be named"
+                    + " classes.jar (both checked recursively)");
+        }
+    }
+
+    private static boolean deleteQuietly(File file) {
+        return file == null || !file.isFile() || file.delete();
+    }
+
+    private static void note(Artifact artifact, String message) {
+        artifact.notes.add(message);
+    }
+
+    /** Copies an AAR's parts into the artifact folder, keeping whatever the ZIP already provided. */
+    private static void unpackAar(Artifact artifact, File aar, boolean replaceClasses) throws IOException {
+        try (ZipFile archive = new ZipFile(aar)) {
+            for (ZipEntry entry : Collections.list(archive.entries())) {
+                String path = entry.getName();
+                if (entry.isDirectory() || isNoise(path)) continue;
+                String target = aarRoleOf(path);
+                if (target == null) continue;
+                File output = new File(artifact.directory, target);
+                boolean overwrite = replaceClasses && target.equals("classes.jar");
+                if (!overwrite && output.isFile()) continue;
+                File parent = output.getParentFile();
+                if (parent != null && !parent.isDirectory() && !parent.mkdirs()) {
+                    throw new IOException("cannot create " + parent.getAbsolutePath());
+                }
+                try (InputStream in = archive.getInputStream(entry);
+                     OutputStream out = new FileOutputStream(output)) {
+                    copy(in, out);
+                }
+            }
+        }
+    }
+
+    /** Maps an AAR entry onto the local library layout; anything the build cannot use is dropped. */
+    private static String aarRoleOf(String path) {
+        String lower = path.toLowerCase();
+        if (lower.equals("classes.jar")) return "classes.jar";
+        if (lower.equals("androidmanifest.xml")) return "AndroidManifest.xml";
+        if (lower.equals("proguard.txt") || lower.equals("proguard-rules.pro")
+                || lower.equals("consumer-rules.pro") || lower.endsWith("proguard.pro")) {
+            return "proguard.txt";
+        }
+        if (lower.startsWith("res/") || lower.startsWith("assets/") || lower.startsWith("libs/")) {
+            return path;
+        }
+        return null;
+    }
+
+    /** True when the "jar" is really an AAR: only an AAR carries a nested classes.jar. */
+    private static boolean isAar(File candidate) {
+        if (candidate == null || !candidate.isFile()) return false;
+        try (ZipFile archive = new ZipFile(candidate)) {
+            return archive.getEntry("classes.jar") != null;
+        } catch (IOException failure) {
+            return false;
+        }
+    }
+
+    /**
+     * The first file ending in {@code suffix} below {@code directory}, up to {@code depth} levels deep.
+     * Resource and metadata folders are skipped because they legitimately contain files of the same
+     * suffix that must never be moved: {@code libs/} holds an AAR's secondary jars, and promoting one
+     * would silently drop the rest of them from the build.
+     */
+    private static File findDeep(File directory, String suffix, int depth, boolean allowLibs) {
+        if (directory == null || depth < 0) return null;
+        File[] children = directory.listFiles();
+        if (children == null) return null;
+        List<File> sorted = new ArrayList<>();
+        Collections.addAll(sorted, children);
+        sorted.sort(Comparator.comparing(File::getName));
+        for (File child : sorted) {
+            if (!child.isFile() || !child.getName().toLowerCase().endsWith(suffix)) continue;
+            File parent = child.getParentFile();
+            if (!allowLibs && parent != null && "libs".equals(parent.getName().toLowerCase())) continue;
+            return child;
+        }
+        for (File child : sorted) {
+            if (!child.isDirectory()) continue;
+            String name = child.getName().toLowerCase();
+            if (name.equals("res") || name.equals("assets") || name.equals("jni")
+                    || name.equals("meta-inf") || name.startsWith(".")
+                    || (name.equals("libs") && !allowLibs)) {
+                continue;
+            }
+            File found = findDeep(child, suffix, depth - 1, allowLibs);
+            if (found != null) return found;
+        }
+        return null;
+    }
+
+    private static String relativeTo(Artifact artifact, File file) {
+        try {
+            String base = artifact.directory.getCanonicalPath() + File.separator;
+            String full = file.getCanonicalPath();
+            return full.startsWith(base) ? full.substring(base.length()) : file.getName();
+        } catch (IOException failure) {
+            return file.getName();
         }
     }
 
@@ -653,6 +1124,12 @@ public final class JetpackLibsInstaller {
         info.addProperty("source", "jetpack-zip");
         info.addProperty("importedAt", System.currentTimeMillis());
         info.addProperty("edges", artifact.edgeCount);
+        info.addProperty("classes", artifact.classesScanned);
+        info.addProperty("references", artifact.referencesFound);
+        info.addProperty("dexOnly", artifact.dexOnly);
+        JsonArray notes = new JsonArray();
+        for (String message : artifact.notes) notes.add(message);
+        info.add("notes", notes);
         JsonArray packages = new JsonArray();
         for (String pack : artifact.definedPackages) packages.add(pack.replace('/', '.'));
         info.add("packages", packages);
@@ -713,6 +1190,25 @@ public final class JetpackLibsInstaller {
         }
         if (!report.names.isEmpty()) {
             writeJson(new File(store, "jetpack-store.json"), buildInventory(artifacts));
+        }
+    }
+
+    /** Refreshes the store's own listing from what is on disk, after a delete or a re-scan. */
+    private static void writeStoreInventory(File store) {
+        JsonArray inventory = new JsonArray();
+        for (JetpackLibs.Entry entry : JetpackLibs.installed()) {
+            JsonObject item = new JsonObject();
+            item.addProperty("id", entry.id);
+            item.addProperty("version", entry.version);
+            item.addProperty("coordinate", entry.coordinate);
+            item.addProperty("edges", entry.edges);
+            item.addProperty("dex", entry.hasDex ? "present" : "missing");
+            inventory.add(item);
+        }
+        try {
+            writeJson(new File(store, "jetpack-store.json"), inventory);
+        } catch (IOException ignored) {
+            // The listing is a convenience; the store itself is the folders on disk.
         }
     }
 
@@ -847,7 +1343,12 @@ public final class JetpackLibsInstaller {
         String version;
         String coordinate;
         int edgeCount;
+        int classesScanned;
+        int referencesFound;
+        boolean dexOnly;
         boolean excluded;
+        /** What had to be repaired or could not be read, in the words a user can act on. */
+        final List<String> notes = new ArrayList<>();
 
         Artifact(String id, File directory) {
             this.id = id;

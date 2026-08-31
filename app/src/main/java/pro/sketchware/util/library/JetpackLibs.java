@@ -46,9 +46,11 @@ public final class JetpackLibs {
         public final boolean hasResources;
         public final boolean hasProguard;
         public final long sizeBytes;
+        /** Why this artifact could not be read fully, or {@code null} when nothing needed explaining. */
+        public final String note;
 
         Entry(String id, String artifactId, String version, String coordinate, int edges,
-              boolean hasDex, boolean hasResources, boolean hasProguard, long sizeBytes) {
+              boolean hasDex, boolean hasResources, boolean hasProguard, long sizeBytes, String note) {
             this.id = id;
             this.artifactId = artifactId;
             this.version = version;
@@ -58,6 +60,7 @@ public final class JetpackLibs {
             this.hasResources = hasResources;
             this.hasProguard = hasProguard;
             this.sizeBytes = sizeBytes;
+            this.note = note;
         }
 
         /** A one-line description for the library manager and build log. */
@@ -69,6 +72,7 @@ public final class JetpackLibs {
             text.append("  ·  ").append(edges).append(" deps");
             if (!hasDex) text.append("  ·  no DEX!");
             if (hasResources) text.append("  ·  res");
+            if (note != null) text.append("\n").append(note);
             return text.toString();
         }
     }
@@ -95,6 +99,17 @@ public final class JetpackLibs {
         }
         Collections.sort(entries, (left, right) -> left.id.compareTo(right.id));
         return entries;
+    }
+
+    /** The directory a store artifact lives in, whichever root holds it; {@code null} when absent. */
+    public static File directoryOf(String id) {
+        if (id == null) return null;
+        for (File root : new File[]{SketchwarePaths.getJetpackLibsDir(),
+                SketchwarePaths.getJetpackLibsFallbackDir()}) {
+            File candidate = new File(root, id);
+            if (candidate.isDirectory()) return candidate;
+        }
+        return null;
     }
 
     public static Set<String> installedIds() {
@@ -212,12 +227,14 @@ public final class JetpackLibs {
         String coordinate = null;
         int edges = 0;
         File info = new File(directory, INFO_FILE);
+        JsonObject infoObject = null;
         if (info.isFile()) {
             try {
                 JsonElement parsed = JsonParser.parseString(
                         pro.sketchware.util.FileUtil.readFile(info.getAbsolutePath()));
                 if (parsed.isJsonObject()) {
                     JsonObject object = parsed.getAsJsonObject();
+                    infoObject = object;
                     artifactId = string(object, "artifactId");
                     version = string(object, "version");
                     coordinate = string(object, "coordinate");
@@ -249,10 +266,27 @@ public final class JetpackLibs {
         for (String name : new String[]{"classes.jar", "classes.dex", "proguard.txt", "config"}) {
             size += new File(directory, name).length();
         }
+        String note = null;
+        if (infoObject != null) {
+            // Nothing in this method may hide an installed artifact: a broken metadata file is worth
+            // reporting, but a library that still compiles must stay listed and switchable.
+            try {
+                JsonElement notes = infoObject.get("notes");
+                if (notes != null && notes.isJsonArray() && notes.getAsJsonArray().size() > 0) {
+                    StringBuilder text = new StringBuilder();
+                    for (JsonElement element : notes.getAsJsonArray()) {
+                        if (text.length() > 0) text.append(" ");
+                        text.append(element.getAsString());
+                    }
+                    note = text.toString();
+                }
+            } catch (RuntimeException ignored) {
+            }
+        }
         return new Entry(directory.getName(), artifactId, version == null ? "0" : version, coordinate,
                 edges, new File(directory, "classes.dex").isFile(),
                 new File(directory, "res").isDirectory(),
-                new File(directory, "proguard.txt").isFile(), size);
+                new File(directory, "proguard.txt").isFile(), size, note);
     }
 
     private static String string(JsonObject object, String key) {
