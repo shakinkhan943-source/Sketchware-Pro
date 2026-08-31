@@ -372,7 +372,7 @@ public final class JetpackLibsInstaller {
             normalizePayloads(artifacts, report);
 
             listener.onStage("Reading the packages each artifact defines…", 35);
-            Map<String, String> packageOwners = mapPackagesToArtifacts(artifacts);
+            Map<String, Set<String>> packageOwners = mapPackagesToArtifacts(artifacts);
 
             listener.onStage("Detecting dependency edges…", 55);
             linkDependencies(artifacts, packageOwners, listener);
