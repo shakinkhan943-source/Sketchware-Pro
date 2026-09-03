@@ -94,6 +94,7 @@ android {
         exclude group: "org.jetbrains.kotlin", module: "kotlin-scripting-common"
         exclude group: "org.jetbrains.kotlin", module: "kotlin-scripting-jvm"
         exclude group: "org.jetbrains.kotlin", module: "kotlin-script-runtime"
+        exclude group: 'io.github.itsaky', module: 'nb-javac-android'
     }
 }
 
