@@ -53,6 +53,30 @@ public class KotlinCompilerUtil {
     }
 
     /**
+     * Returns the directories that contain this project's Java sources.
+     *
+     * <p>The Kotlin compiler no longer accepts {@code .java} files in its source argument list since
+     * Kotlin 2.4 removed {@code -Xcompile-java}. Java sources are read from {@code -Xjava-source-roots}
+     * instead, so Kotlin can resolve mixed Java/Kotlin members while Sketchware's separate ECJ pass
+     * compiles the actual Java bytecode. The root list mirrors the order used by
+     * {@link #getFilesToCompile(ProjectFilePaths)} so generated sources (for example {@code R.java})
+     * win over any user source with the same name.</p>
+     */
+    public static String[] getJavaSourceRoots(ProjectFilePaths workspace) {
+        List<String> roots = new ArrayList<>();
+        addExistingDirectory(roots, workspace.javaFilesPath);
+        addExistingDirectory(roots, workspace.rJavaDirectoryPath);
+        addExistingDirectory(roots, SketchwarePaths.getProjectJavaPath(workspace.sc_id));
+        return roots.toArray(new String[0]);
+    }
+
+    private static void addExistingDirectory(List<String> roots, String path) {
+        if (path != null && new File(path).isDirectory()) {
+            roots.add(path);
+        }
+    }
+
+    /**
      * Returns the JARs of the project's {@code kt_plugins} folder that really are Kotlin compiler
      * plugins, sorted by name so a build is reproducible.
      *

@@ -27,11 +27,12 @@ class KotlinCompiler(
     fun compile() {
         val timeMillis = System.currentTimeMillis()
 
-        val filesToCompile = getFilesToCompile(workspace).apply {
-            if (!areAnyKtFilesPresent(workspace)) {
-                LogUtil.d(TAG, "No kotlin source files found, skipping kotlinc")
-                return
-            }
+        val filesToCompile = getFilesToCompile(workspace)
+            .filter { it.isFile && it.extension.equals("kt", ignoreCase = true) }
+
+        if (filesToCompile.isEmpty()) {
+            LogUtil.d(TAG, "No kotlin source files found, skipping kotlinc")
+            return
         }
 
         val mKotlinHome = File(KotlinCompilerBridge.getKotlinHome(workspace)).apply { mkdirs() }
@@ -43,7 +44,7 @@ class KotlinCompiler(
             add("-cp")
             add(builder.getClasspath())
 
-            // Sources (.java & .kt)
+            // Kotlin sources only. Java sources go through ProjectBuilder#compileJavaCode (ECJ).
             addAll(filesToCompile.map { it.absolutePath })
         }
 
@@ -52,7 +53,14 @@ class KotlinCompiler(
         val plugins = getCompilerPlugins(workspace).map(File::getAbsolutePath).toTypedArray()
 
         val args = K2JVMCompilerArguments().apply {
-            compileJava = false
+            /*
+             * Kotlin 2.4 removed the K2JVMCompilerArguments#compileJava (old -Xcompile-java) option.
+             * Sketchware does not compile Java through kotlinc: Java is still compiled by the
+             * separate ECJ pass in ProjectBuilder#compileJavaCode. The Java source roots are passed
+             * through the replacement -Xjava-source-roots option so kotlinc can still resolve
+             * mixed Java/Kotlin members while compiling only .kt files.
+             */
+            javaSourceRoots = getJavaSourceRoots(workspace)
             includeRuntime = false
             noJdk = true
             noReflect = true
