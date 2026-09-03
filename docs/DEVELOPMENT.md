@@ -45,7 +45,7 @@ Sketchware Pro 是一款运行在 Android 设备上的**可视化 Android 应用
 | **最低 API** | Android 8.0（API 26）|
 | **编译 SDK** | API 36 |
 | **目标 SDK** | API 28（不上架 Google Play，故未升级）|
-| **构建工具** | Gradle 8.13、AGP 8.12.0 |
+| **构建工具** | Gradle 8.14.4、AGP 8.12.0 |
 | **UI 框架** | AndroidX、Material Design、ViewBinding |
 | **代码编辑器** | Sora Editor |
 | **图片加载** | Coil + Glide |
@@ -54,7 +54,7 @@ Sketchware Pro 是一款运行在 Android 设备上的**可视化 Android 应用
 | **Firebase** | 应用本体依赖：BOM 34.3.0；生成项目模板：BOM 33.7.0（Auth / Realtime Database / Storage / FCM / Crashlytics）|
 | **签名** | kellinwood ZipSigner（内嵌）|
 | **Java 编译** | ECJ（Eclipse Compiler for Java）|
-| **Kotlin 编译** | kotlin-compiler（内嵌）|
+| **Kotlin 编译** | kotlin-compiler 2.4.10（内嵌 kotlinc-for-sketchware）|
 | **DEX** | 内嵌 D8（代码编译）+ DexMerger（库合并）|
 | **资源编译** | AAPT2（sdklib）|
 | **混淆** | R8（内嵌）|
@@ -1281,7 +1281,7 @@ zip/
 - **一份资源，多项目共享**：项目只在 `localLib` 文件里记录**启用哪些构件名**，不复制文件；
   启用一个根会带上它的整棵依赖子树（一层展开即可，因为清单已压平），关闭只是不再出现在该项目的列表里。
 - **运行时重复的保护**：默认不安装 ZIP 里的 `kotlin-stdlib` / `kotlinx-coroutines*` /
-  `androidx.annotation`（App 对所有 Kotlin 项目已经内建 `kotlin-stdlib-2.2.0`、
+  `androidx.annotation`（App 对所有 Kotlin 项目已经内建 `kotlin-stdlib-2.4.10`、
   `kotlinx-coroutines-android-1.8.1`）。两份 Kotlin 运行时进入同一个 APK 时，DEX 合并按
   `CollisionPolicy.KEEP_FIRST` 只保留先到的那份，另一份编译出来的代码就会在
   `kotlin.coroutines.CoroutineContext` 的默认方法转发处炸掉。若 ZIP 里确实带有**更新**的运行时,

@@ -461,7 +461,7 @@ new BuiltInLibrary(FIREBASE_MEASUREMENT_CONNECTOR, List.of(PLAY_SERVICES_BASEMEN
 - `androidx.browser` — 已捆绑
 - `kotlinx-coroutines-android` — 已捆绑 1.8.1
 - `kotlinx-coroutines-core-jvm` — 已捆绑 1.8.1
-- `kotlin-stdlib` — 已捆绑 2.2.0
+- `kotlin-stdlib` — 已捆绑 2.4.10
 - `play-services-basement`, `play-services-tasks` — 已在升级计划中
 
 **推荐方案**：使用 **firebase-auth 23.1.0**（与 BOM 33.7.0 一致）
