@@ -45,7 +45,7 @@ Sketchware Pro 是一款运行在 Android 设备上的**可视化 Android 应用
 | **最低 API** | Android 8.0（API 26）|
 | **编译 SDK** | API 36 |
 | **目标 SDK** | API 28（不上架 Google Play，故未升级）|
-| **构建工具** | Gradle 8.13、AGP 8.12.0 |
+| **构建工具** | Gradle 8.14.4、AGP 8.12.0 |
 | **UI 框架** | AndroidX、Material Design、ViewBinding |
 | **代码编辑器** | Sora Editor |
 | **图片加载** | Coil + Glide |
