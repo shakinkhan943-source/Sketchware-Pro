@@ -26,7 +26,7 @@ Welcome to Sketchware Pro! Here you'll find the source code of many classes in S
 4. Build and run the `app` module on a device or emulator (minSdk 26).
 
 > [!NOTE]
-> The project uses **Gradle 8.13** with **AGP 8.12.0** and **Kotlin 2.1.21**. Java source/target compatibility is set to **Java 17**.
+> The project uses **Gradle 8.13** with **AGP 8.12.0** and **Kotlin 2.4.10**. Java source/target compatibility is set to **Java 17**.
 
 ### Source Code Map
 

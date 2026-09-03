@@ -33,7 +33,7 @@ public class KotlinCompilerBridge {
     private static final String TAG = "KotlinCompilerBridge";
 
     /** Filename of the bundled Kotlin Compose compiler plugin. */
-    private static final String COMPOSE_COMPILER_PLUGIN_JAR = "kotlin-compose-compiler-plugin-2.1.21.jar";
+    private static final String COMPOSE_COMPILER_PLUGIN_JAR = "kotlin-compose-compiler-plugin-2.4.10.jar";
 
     /** Directory containing the Compose compiler plugin and its runtime dependencies. */
     private static final String COMPOSE_COMPILER_PLUGIN_ASSET_DIR = "libs/kt_plugins";

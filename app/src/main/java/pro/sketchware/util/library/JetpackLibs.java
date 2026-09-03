@@ -179,7 +179,7 @@ public final class JetpackLibs {
 
     /**
      * Whether a store entry's artifact id refers to the given built-in artifact. An id packed without a
-     * {@code maven-coordinate} file keeps its trailing version ({@code kotlin-stdlib-2.1.21}), which
+     * {@code maven-coordinate} file keeps its trailing version ({@code kotlin-stdlib-2.4.10}), which
      * would otherwise fail to match the version-less built-in name.
      */
     private static boolean sameArtifact(String builtInArtifact, String entryArtifactId) {
