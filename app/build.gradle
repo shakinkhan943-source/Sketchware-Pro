@@ -94,7 +94,10 @@ android {
         exclude group: "org.jetbrains.kotlin", module: "kotlin-scripting-common"
         exclude group: "org.jetbrains.kotlin", module: "kotlin-scripting-jvm"
         exclude group: "org.jetbrains.kotlin", module: "kotlin-script-runtime"
-        exclude group: 'io.github.itsaky', module: 'nb-javac-android'
+        // javax.xml.stream is provided by com.github.Cosmic-IDE.kotlinc-android:jaxp, which
+        // kotlinc-android and javac-android both require. Keep the newer Android JAXP provider and
+        // never let the legacy javax.xml.stream:stax-api classes reach the APK.
+        exclude group: "javax.xml.stream", module: "stax-api"
     }
 }
 
@@ -122,7 +125,8 @@ dependencies {
     implementation libs.markwon
     implementation libs.bundles.networking
     implementation libs.ecj
-    implementation libs.stax.api
+    // javax.xml.stream comes from the com.github.Cosmic-IDE.kotlinc-android:jaxp dependency that
+    // kotlinc-android/javac-android require on Android; do not also add javax.xml.stream:stax-api.
     implementation libs.bundles.kotlin.compiler
     compileOnly libs.kotlin.compiler
 

@@ -141,7 +141,12 @@ class KotlinCompilerEnhanced(
          * or Swing classes such as javax.swing.Icon.
          */
         val args = K2JVMCompilerArguments().apply {
-            compileJava = false
+            /*
+             * Kotlin 2.4 removed the old -Xcompile-java option. The Java sources are supplied through
+             * the replacement -Xjava-source-roots option so kotlinc can resolve Java members in mixed
+             * projects; ProjectBuilder#compileJavaCode still compiles the Java bytecode with ECJ.
+             */
+            javaSourceRoots = getJavaSourceRoots(workspace)
             includeRuntime = false
             noJdk = true
             noReflect = true

@@ -26,17 +26,15 @@ kotlincForSketchware = "2.4.0"
 kotlinCompiler = "2.4.10"
 lottie = "6.6.7"
 material = "1.14.0"
-nbJavacAndroid = "17.0.0.3"
 okhttp = "4.12.0"
 okio = "3.16.0"
 preference = "1.2.1"
 proguardCore = "9.0.2"
 protobufJava = "3.19.2"
-r8 = "8.11.18"
+r8 = "9.1.31"
 recyclerview = "1.4.0"
 scpkixJdk15on = "1.47.0.2"
 sdklib = "25.3.0"
-staxApi = "1.0-2"
 swiperefreshlayout = "1.1.0"
 viewpager = "1.1.0"
 woodstoxCore = "7.1.1"
@@ -99,8 +97,6 @@ kotlinc-for1-sketchware = { module = "com.github.PranavPurwar:kotlinc-android", 
 # -embeddable plugin (which references org.jetbrains.kotlin.com.intellij.*) fails.
 compose-compiler-plugin = { module = "org.jetbrains.kotlin:kotlin-compose-compiler-plugin", version.ref = "kotlinCompiler" }
 
-nb-javac-android = { module = "io.github.itsaky:nb-javac-android", version.ref = "nbJavacAndroid" }
-
 okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
 okio = { module = "com.squareup.okio:okio", version.ref = "okio" }
 
@@ -112,8 +108,6 @@ r8 = { module = "com.android.tools:r8", version.ref = "r8" }
 scpkix-jdk15on = { module = "com.madgag:scpkix-jdk15on", version.ref = "scpkixJdk15on" }
 
 sdklib = { module = "com.android.tools:sdklib", version.ref = "sdklib" }
-
-stax-api = { module = "javax.xml.stream:stax-api", version.ref = "staxApi" }
 
 woodstox-core = { module = "com.fasterxml.woodstox:woodstox-core", version.ref = "woodstoxCore" }
 
@@ -128,6 +122,6 @@ coil = ["coil", "coil-kt-coil-svg"]
 networking = ["okhttp", "okio"]
 bundletool = ["bundletool", "protobuf-java"]
 shrinker = ["r8", "proguard-core"]
-kotlin_compiler = ["kotlinc-for1-sketchware", "nb-javac-android", "woodstox-core"]
+kotlin_compiler = ["kotlinc-for1-sketchware", "woodstox-core"]
 editor_and_lang = ["editor", "language-java", "language-textmate"]
 firebase = ["firebase-analytics", "firebase-crashlytics", "firebase-messaging"]
