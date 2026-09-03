@@ -32,6 +32,7 @@ import dev.pranav.filepicker.FilePickerOptions;
 import pro.sketchware.R;
 import pro.sketchware.activities.base.BaseAppCompatActivity;
 import pro.sketchware.beans.ProjectLibraryBean;
+import pro.sketchware.core.project.ProjectDataManager;
 import pro.sketchware.databinding.ItemComposeDependencyBinding;
 import pro.sketchware.databinding.ManageLibraryComposeBinding;
 import pro.sketchware.util.Helper;
@@ -120,11 +121,7 @@ public class ComposeLibraryActivity extends BaseAppCompatActivity {
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
-                composeLibraryBean.useYn = binding.composeSwitch.isChecked()
-                        ? ProjectLibraryBean.LIB_USE_Y
-                        : ProjectLibraryBean.LIB_USE_N;
-                new ComposeBuiltInLibraryManager(composeLibraryBean)
-                        .setOptionalFeatureIds(new ArrayList<>(selectedOptionalFeatures));
+                persistComposeState();
                 if (storeSelectionChanged) {
                     applyStoreSelection();
                 }
@@ -138,6 +135,18 @@ public class ComposeLibraryActivity extends BaseAppCompatActivity {
     }
 
     /**
+     * Copies the switch and optional-feature choices onto the Compose library bean so a caller that
+     * saves the bean persists exactly what the user sees on screen.
+     */
+    private void persistComposeState() {
+        composeLibraryBean.useYn = binding.composeSwitch.isChecked()
+                ? ProjectLibraryBean.LIB_USE_Y
+                : ProjectLibraryBean.LIB_USE_N;
+        new ComposeBuiltInLibraryManager(composeLibraryBean)
+                .setOptionalFeatureIds(new ArrayList<>(selectedOptionalFeatures));
+    }
+
+    /**
      * Persists the activation when this screen is left by any route, not only by the back arrow: a
      * project's library list is a file, and losing a selection because the app was swiped away mid-import
      * would look exactly like a switch that does nothing.
@@ -146,6 +155,11 @@ public class ComposeLibraryActivity extends BaseAppCompatActivity {
     public void onPause() {
         super.onPause();
         if (packageSettingsMode || scId == null) return;
+        // The enable flag is written to the project the same way the store selection is: leaving the
+        // screen without pressing the back arrow (home button, app switch, activity destruction) must not
+        // silently re-disable Compose the next time the screen is opened.
+        persistComposeState();
+        ProjectDataManager.getLibraryManager(scId).setCompose(composeLibraryBean);
         // Re-applied even when nothing was toggled: a re-scan can turn an artifact's dependency list from
         // empty into the closure its classes actually need, and a project holding the old root-only list
         // would keep failing to compile against exactly the folders that are now correctly recorded.

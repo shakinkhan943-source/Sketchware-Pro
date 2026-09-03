@@ -121,19 +121,26 @@ public final class JetpackLibs {
     }
 
     /**
-     * Removes built-in libraries that an activated store artifact supersedes with a newer copy of the
-     * same library, so a project carries exactly one version of each runtime piece.
+     * Makes sure a project carries exactly one copy of every runtime library (kotlin-stdlib,
+     * kotlinx-coroutines) the app also ships as a built-in.
      *
-     * @param activatedLocalLibraries library names the project selected (roots and expanded
-     *        sub-dependencies alike), because an installed-but-unused artifact must not replace anything
+     * <p>An activated store artifact can deliberately provide another copy of such a runtime. Two
+     * copies in one APK is not a warning: the DEX merge keeps the first definition of every type, and
+     * code compiled against the copy that lost blows up inside {@code kotlin.coroutines.CoroutineContext}
+     * the moment a {@code ComposeView} attaches to a window. The newer copy wins — when the store's copy
+     * is newer the built-in steps aside, otherwise the store's copy must step aside instead.</p>
+     *
+     * @return ids of activated store artifacts that must be dropped because the built-in copy is the
+     *         same or newer; the caller removes them from the project's library list before dexing
      */
-    public static void applyRuntimeOverrides(BuiltInLibraryManager manager,
-                                             Collection<String> activatedLocalLibraries) {
+    public static Set<String> applyRuntimeOverrides(BuiltInLibraryManager manager,
+                                                    Collection<String> activatedLocalLibraries) {
+        Set<String> storeCopiesToDrop = new HashSet<>();
         if (manager == null || activatedLocalLibraries == null || activatedLocalLibraries.isEmpty()) {
-            return;
+            return storeCopiesToDrop;
         }
         List<Entry> installed = installed();
-        if (installed.isEmpty()) return;
+        if (installed.isEmpty()) return storeCopiesToDrop;
 
         List<String> names = new ArrayList<>();
         for (pro.sketchware.core.project.BuiltInLibrary library : manager.getLibraries()) {
@@ -145,14 +152,22 @@ public final class JetpackLibs {
             if (artifact == null) continue;
             for (Entry entry : installed) {
                 if (!activatedLocalLibraries.contains(entry.id)) continue;
-                if (!artifact.equals(entry.artifactId)) continue;
-                if (compareVersions(entry.version, builtInVersion) <= 0) continue;
-                manager.removeLibrary(builtInName);
-                Log.d(TAG, "Using " + entry.id + " (" + entry.version + ") from the Jetpack store"
-                        + " instead of the built-in " + builtInName);
+                if (!sameArtifact(artifact, entry.artifactId)) continue;
+                if (compareVersions(entry.version, builtInVersion) > 0) {
+                    manager.removeLibrary(builtInName);
+                    Log.d(TAG, "Using " + entry.id + " (" + entry.version + ") from the Jetpack store"
+                            + " instead of the built-in " + builtInName);
+                } else {
+                    // The built-in is the same or newer, so it wins. The store's copy must not reach the
+                    // DEX at all — leaving both is what crashes a Compose activity inside CoroutineContext.
+                    storeCopiesToDrop.add(entry.id);
+                    Log.d(TAG, "Keeping built-in " + builtInName + " (" + builtInVersion
+                            + ") instead of the Jetpack store's " + entry.id + " (" + entry.version + ")");
+                }
                 break;
             }
         }
+        return storeCopiesToDrop;
     }
 
     /** {@code kotlinx-coroutines-android-1.8.1} → {@code kotlinx-coroutines-android}. */
@@ -160,6 +175,18 @@ public final class JetpackLibs {
         String version = versionOfBuiltInName(name);
         if (version == null) return null;
         return name.substring(0, name.length() - version.length() - 1);
+    }
+
+    /**
+     * Whether a store entry's artifact id refers to the given built-in artifact. An id packed without a
+     * {@code maven-coordinate} file keeps its trailing version ({@code kotlin-stdlib-2.1.21}), which
+     * would otherwise fail to match the version-less built-in name.
+     */
+    private static boolean sameArtifact(String builtInArtifact, String entryArtifactId) {
+        if (entryArtifactId == null) return false;
+        if (builtInArtifact.equals(entryArtifactId)) return true;
+        String stripped = artifactOfBuiltInName(entryArtifactId);
+        return stripped != null && builtInArtifact.equals(stripped);
     }
 
     /** The trailing {@code -<digits…>} of a built-in library name, or {@code null}. */
