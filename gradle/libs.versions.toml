@@ -22,7 +22,7 @@ glide = "5.0.4"
 gson = "2.13.1"
 insetter = "0.6.1"
 javaparserSymbolSolver = "3.25.3"
-kotlincForSketchware = "v2.4.10"
+kotlincForSketchware = "2.4.0"
 kotlinCompiler = "2.4.10"
 lottie = "6.6.7"
 material = "1.14.0"
@@ -89,7 +89,7 @@ ecj = { module = "org.eclipse.jdt:ecj", version.ref = "ecj" }
 gson = { module = "com.google.code.gson:gson", version.ref = "gson" }
 
 kotlin-compiler = { module = "org.jetbrains.kotlin:kotlin-compiler", version.ref = "kotlinCompiler" }
-kotlinc-for1-sketchware = { module = "com.github.shakinkhan943-source:kotlinc-for-sketchware", version.ref = "kotlincForSketchware" }
+kotlinc-for1-sketchware = { module = "com.github.PranavPurwar:kotlinc-android", version.ref = "kotlincForSketchware" }
 
 # Kotlin Compose compiler plugin, bundled as an APK asset and auto-provisioned
 # into each project's kt_plugins folder so kotlinc compiles @Composable code.
