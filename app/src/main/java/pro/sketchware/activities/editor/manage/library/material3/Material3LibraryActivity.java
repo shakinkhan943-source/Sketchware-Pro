@@ -12,6 +12,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 import java.util.Objects;
 
+import pro.sketchware.core.project.ProjectType;
 import pro.sketchware.util.Helper;
 import pro.sketchware.R;
 import pro.sketchware.databinding.ManageLibraryMaterial3Binding;
@@ -29,6 +30,12 @@ public class Material3LibraryActivity extends BaseAppCompatActivity {
         setContentView(binding.getRoot());
         setSupportActionBar(binding.toolbar);
         enableEdgeToEdgeNoContrast();
+        String projectType = getIntent().getStringExtra("project_type");
+        if (ProjectType.COMPOSE.equals(ProjectType.normalize(projectType))) {
+            // XML Material3 is a Java/XML UI system. A Compose project must not edit it.
+            finish();
+            return;
+        }
         initialize();
     }
 

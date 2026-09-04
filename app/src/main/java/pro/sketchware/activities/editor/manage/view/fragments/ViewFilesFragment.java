@@ -164,7 +164,11 @@ public class ViewFilesFragment extends BaseFragment {
                 }
             }
             if (!isMainActivityFile) {
-                activitiesFiles.add(0, new ProjectFileBean(0, "main"));
+                ProjectFileBean defaultMain = new ProjectFileBean(0, "main");
+                if ("compose".equals(((ManageViewActivity) requireActivity()).getProjectType())) {
+                    defaultMain.setLanguage(ProjectFileBean.LANGUAGE_KOTLIN);
+                }
+                activitiesFiles.add(0, defaultMain);
             }
         }
     }
@@ -350,6 +354,8 @@ public class ViewFilesFragment extends BaseFragment {
                             Intent intent = new Intent(getContext(), AddViewActivity.class);
                             intent.putExtra("project_file", projectFileBean);
                             intent.putExtra("request_code", REQUEST_CODE_ADD_VIEW_ACTIVITY);
+                            ManageViewActivity parent = (ManageViewActivity) requireActivity();
+                            intent.putExtra("project_type", parent.getProjectType());
                             addViewLauncher.launch(intent);
                         }
                     }

@@ -273,6 +273,11 @@ public class ProjectBuilder {
      * @throws SAXException if parsing layout XML fails
      */
     public void generateViewBinding() throws IOException, SAXException {
+        // Compose projects own their UI in Kotlin source and must not generate the XML ViewBinding
+        // pipeline (or the AndroidX databinding dependencies it carries).
+        if (projectFilePaths.buildConfig.isComposeProject()) {
+            return;
+        }
         if (settings.getValue(ProjectSettings.SETTING_ENABLE_VIEWBINDING, ProjectSettings.SETTING_GENERIC_VALUE_FALSE)
                 .equals(ProjectSettings.SETTING_GENERIC_VALUE_FALSE)) {
             return;
@@ -621,6 +626,23 @@ public class ProjectBuilder {
     public void compileJavaCode() throws SimpleException, IOException {
         long savedTimeMillis = System.currentTimeMillis();
 
+        // Feature-aware build: only the Java pipeline runs when the project actually contains Java
+        // sources. Compose projects compile Kotlin + R.java, and Kotlin-only projects should not
+        // pay for an ECJ pass just because they happen to share the generated source directory.
+        if (!hasAnyJavaSources()) {
+            File classesDir = new File(projectFilePaths.compiledClassesPath);
+            boolean hasStaleClasses = classesDir.exists()
+                    && !FileUtil.listFilesRecursively(classesDir, ".class").isEmpty();
+            if (!hasStaleClasses) {
+                classFilesChanged = false;
+                Log.d(TAG, "No Java source files present, skipping ECJ compilation");
+                if (progressReceiver != null) {
+                    progressReceiver.onProgress("Java compilation skipped (no Java sources)", 13);
+                }
+                return;
+            }
+        }
+
         IncrementalBuildCache cache = preloadedBuildCache != null
                 ? preloadedBuildCache
                 : new IncrementalBuildCache(projectFilePaths.binDirectoryPath);
@@ -856,6 +878,25 @@ public class ProjectBuilder {
         dirs.add(SketchwarePaths.getProjectBroadcastPath(projectFilePaths.sc_id));
         dirs.add(SketchwarePaths.getProjectServicePath(projectFilePaths.sc_id));
         return dirs;
+    }
+
+    /** @return true when the project contains at least one .java source in the build tree. */
+    private boolean hasAnyJavaSources() {
+        if (FileUtil.isExistFile(projectFilePaths.javaFilesPath)
+                && !FileUtil.listFilesRecursively(new File(projectFilePaths.javaFilesPath), ".java").isEmpty()) {
+            return true;
+        }
+        if (FileUtil.isExistFile(projectFilePaths.rJavaDirectoryPath)
+                && !FileUtil.listFilesRecursively(new File(projectFilePaths.rJavaDirectoryPath), ".java").isEmpty()) {
+            return true;
+        }
+        for (String customDir : getCustomJavaDirectories()) {
+            if (FileUtil.isExistFile(customDir)
+                    && !FileUtil.listFilesRecursively(new File(customDir), ".java").isEmpty()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private boolean isCustomJavaSourcePath(String absolutePath) {
@@ -1261,7 +1302,11 @@ public class ProjectBuilder {
             ComposeBuiltInLibraries.ensureExtracted();
         }
 
-        if (projectFilePaths.buildConfig.isAppCompatEnabled) {
+        // The AppCompat + Material component stack is the XML UI system. Compose projects own their
+        // UI in the Compose runtime and must not pull in the unused XML UI libraries just because a
+        // stray flag is set.
+        if (projectFilePaths.buildConfig.isAppCompatEnabled
+                && !projectFilePaths.buildConfig.isComposeProject()) {
             builtInLibraryManager.addLibrary(BuiltInLibraries.ANDROIDX_APPCOMPAT);
             builtInLibraryManager.addLibrary(BuiltInLibraries.ANDROIDX_COORDINATORLAYOUT);
             builtInLibraryManager.addLibrary(BuiltInLibraries.MATERIAL);

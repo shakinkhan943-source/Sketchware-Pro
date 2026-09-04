@@ -89,7 +89,9 @@ public class GradleFileGenerator {
                 .append("implementation fileTree(dir: 'libs', include: ['*.jar'])\r\n");
 
         List<BuiltInLibraries.BuiltInLibrary> excludedLibraries = ExcludeBuiltInLibrariesConfig.getExcludedLibraries(metadata.sc_id);
-        if (isLibraryNotExcluded(BuiltInLibraries.ANDROIDX_APPCOMPAT, excludedLibraries) && metadata.isAppCompatEnabled) {
+        if (isLibraryNotExcluded(BuiltInLibraries.ANDROIDX_APPCOMPAT, excludedLibraries)
+                && metadata.isAppCompatEnabled
+                && !metadata.isComposeProject()) {
             content.append(dependency("androidx.appcompat", "appcompat", BuiltInLibraries.ANDROIDX_APPCOMPAT));
             content.append(dependency("com.google.android.material", "material", BuiltInLibraries.MATERIAL));
         }

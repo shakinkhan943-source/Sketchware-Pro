@@ -577,7 +577,7 @@ public class ManifestGenerator {
             applicationTag.addAttribute("android", "usesCleartextTraffic", "true");
         }
         applicationTag.addAttribute("android", "forceDarkAllowed", "false");
-        AndroidManifestInjector.injectApplicationAttributes(applicationTag, buildConfig.sc_id);
+        AndroidManifestInjector.injectApplicationAttributes(applicationTag, buildConfig.sc_id, buildConfig.isComposeProject());
 
         boolean hasDebugActivity = false;
         for (ProjectFileBean projectFileBean : projectFiles) {
@@ -592,7 +592,12 @@ public class ManifestGenerator {
                     activityTag.addAttribute("android", "supportsPictureInPicture", "true");
                 }
                 if (!AndroidManifestInjector.isActivityThemeUsed(buildConfig.sc_id, projectFileBean.getJavaName())) {
-                    if (buildConfig.isAppCompatEnabled) {
+                    if (buildConfig.isComposeProject()) {
+                        // Compose owns its UI in Kotlin source; only give the Activity a platform
+                        // window theme rather than pulling in the generated XML theme resources.
+                        activityTag.addAttribute("android", "theme",
+                                "@android:style/Theme.Material.NoActionBar");
+                    } else if (buildConfig.isAppCompatEnabled) {
                         if (projectFileBean.hasActivityOption(ProjectFileBean.OPTION_ACTIVITY_FULLSCREEN)) {
                             activityTag.addAttribute("android", "theme", "@style/AppTheme.FullScreen");
                         }
@@ -644,7 +649,9 @@ public class ManifestGenerator {
             XmlBuilder activityTag = new XmlBuilder("activity");
             activityTag.addAttribute("android", "name", ".DebugActivity");
             activityTag.addAttribute("android", "screenOrientation", "portrait");
-            activityTag.addAttribute("android", "theme", "@style/AppTheme.DebugActivity");
+            activityTag.addAttribute("android", "theme", buildConfig.isComposeProject()
+                    ? "@android:style/Theme.Material.NoActionBar"
+                    : "@style/AppTheme.DebugActivity");
             applicationTag.addChildNode(activityTag);
         }
         if (buildConfig.isAdMobEnabled) {

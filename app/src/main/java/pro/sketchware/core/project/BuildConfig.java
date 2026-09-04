@@ -195,11 +195,29 @@ public class BuildConfig {
      */
     public boolean isHttp3Used = false;
 
+    /** Project mode: one of {@link ProjectType#JAVA_XML} or {@link ProjectType#COMPOSE}. */
+    public String projectType = ProjectType.JAVA_XML;
+
+    /**
+     * True once {@code projectType} has been resolved from the project's stored metadata (or its
+     * legacy fallbacks). Until then {@link #projectType} only holds the {@link ProjectType#JAVA_XML}
+     * placeholder, so legacy callers that run before metadata resolution can still inspect the
+     * source model directly.
+     */
+    public boolean projectTypeResolved = false;
+
     /** True when the project has Jetpack Compose enabled. */
     public boolean isComposeEnabled = false;
 
     /** Optional Compose feature IDs selected by the user. */
     public ArrayList<String> composeOptionalFeatures = new ArrayList<>();
+
+    /** Theme colors shared by the generated UI. Java/XML uses them through {@code colors.xml}; Compose uses them through generated {@code SketchwareTheme.kt}. */
+    public int themeColorPrimary = 0xFF6200EE;
+    public int themeColorPrimaryDark = 0xFF3700B3;
+    public int themeColorAccent = 0xFF03DAC5;
+    public int themeControlHighlight = 0xFFE8EAF6;
+    public int themeControlNormal = 0xFFBDBDBD;
 
     /**
      * If at least 1 TextToSpeech Component ({@link pro.sketchware.beans.ComponentBean#COMPONENT_TYPE_TEXT_TO_SPEECH})
@@ -260,6 +278,16 @@ public class BuildConfig {
      */
     public HashMap<String, ActivityConfig> activityPermissions = new HashMap<>();
     public ConstVarComponent constVarComponent = new ConstVarComponent();
+
+    /** @return true when this project is a Kotlin + Jetpack Compose project. */
+    public boolean isComposeProject() {
+        return ProjectType.COMPOSE.equals(projectType);
+    }
+
+    /** @return true when this project is a traditional Java/XML project. */
+    public boolean isJavaXmlProject() {
+        return !isComposeProject();
+    }
 
     public boolean hasPermissions() {
         return permissions == 0;

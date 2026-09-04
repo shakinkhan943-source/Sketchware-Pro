@@ -18,6 +18,9 @@ import pro.sketchware.util.io.SharedPrefsHelper;
 public class ProjectListManager {
     public static SharedPrefsHelper sharedPrefsHelper;
 
+    /** Re-entrancy guard: project data managers read this class while the migration runs. */
+    private static final ThreadLocal<Boolean> ensuringProjectType = ThreadLocal.withInitial(() -> Boolean.FALSE);
+
     private static String decryptProjectJson(EncryptedFileUtil fileUtil, String projectMetadataPath) throws IOException {
         byte[] fileBytes = fileUtil.readFileBytes(projectMetadataPath);
         if (fileBytes == null && new File(projectMetadataPath).length() > 0L) {
@@ -48,6 +51,7 @@ public class ProjectListManager {
                     String projectMetadataPath = projectDirectory.getAbsolutePath() + File.separator + projectFileName;
                     HashMap<String, Object> parsedProject = GsonMapHelper.fromJson(decryptProjectJson(fileUtil, projectMetadataPath));
                     if (MapValueHelper.getString(parsedProject, "sc_id").equals(projectDirectory.getName())) {
+                        ensureProjectType(parsedProject, projectDirectory.getName(), projectMetadataPath, fileUtil);
                         projects.add(parsedProject);
                     }
                 }
@@ -110,6 +114,68 @@ public class ProjectListManager {
         }
     }
 
+    /**
+     * Ensures the project list metadata carries the {@link ProjectType#METADATA_KEY} tag.
+     *
+     * <p>Old projects were created before the Java/XML vs Compose split. They default to
+     * {@link ProjectType#JAVA_XML} and receive an explicit tag so the rest of the app can rely on a
+     * constant metadata shape. A legacy project that already enabled the Compose library is kept as
+     * a Compose project instead of being silently downgraded.</p>
+     */
+    private static void ensureProjectType(HashMap<String, Object> project, String projectId,
+                                          String projectMetadataPath, EncryptedFileUtil fileUtil) {
+        if (Boolean.TRUE.equals(ensuringProjectType.get())) {
+            return;
+        }
+        ensuringProjectType.set(Boolean.TRUE);
+        try {
+            Object stored = project.get(ProjectType.METADATA_KEY);
+            if (stored instanceof String) {
+                String normalized = ProjectType.normalize((String) stored);
+                if (!normalized.equals(stored)) {
+                    project.put(ProjectType.METADATA_KEY, normalized);
+                    persistProjectType(project, projectMetadataPath, fileUtil);
+                }
+                return;
+            }
+
+            String resolved = ProjectType.JAVA_XML;
+            try {
+                if (pro.sketchware.beans.ProjectLibraryBean.LIB_USE_Y.equals(
+                        ProjectDataManager.getLibraryManager(projectId).getCompose().useYn)) {
+                    resolved = ProjectType.COMPOSE;
+                }
+            } catch (RuntimeException e) {
+                LogUtil.w("ProjectListManager", "Failed to read legacy Compose flag for project " + projectId, e);
+            }
+            if (!ProjectType.COMPOSE.equals(resolved)) {
+                try {
+                    for (var activity : ProjectDataManager.getFileManager(projectId).getActivities()) {
+                        if (activity != null && activity.isComposeActivity()) {
+                            resolved = ProjectType.COMPOSE;
+                            break;
+                        }
+                    }
+                } catch (RuntimeException e) {
+                    LogUtil.w("ProjectListManager", "Failed to read legacy project files for " + projectId, e);
+                }
+            }
+            project.put(ProjectType.METADATA_KEY, resolved);
+            persistProjectType(project, projectMetadataPath, fileUtil);
+        } finally {
+            ensuringProjectType.set(Boolean.FALSE);
+        }
+    }
+
+    private static void persistProjectType(HashMap<String, Object> project, String projectMetadataPath,
+                                           EncryptedFileUtil fileUtil) {
+        try {
+            fileUtil.writeBytes(projectMetadataPath, encryptProjectJson(fileUtil, GsonMapHelper.toJson(project), projectMetadataPath));
+        } catch (IOException | RuntimeException e) {
+            LogUtil.e("ProjectListManager", "Failed to persist project type migration for " + projectMetadataPath, e);
+        }
+    }
+
     public static String getNextProjectId() {
         int nextId = 601;
         for (HashMap<String, Object> project : listProjects()) {
@@ -132,7 +198,11 @@ public class ProjectListManager {
         try {
             HashMap<String, Object> parsedProject = GsonMapHelper.fromJson(decryptProjectJson(fileUtil, projectMetadataPath));
             try {
-                return !MapValueHelper.getString(parsedProject, "sc_id").equals(projectId) ? null : parsedProject;
+                if (!MapValueHelper.getString(parsedProject, "sc_id").equals(projectId)) {
+                    return null;
+                }
+                ensureProjectType(parsedProject, projectId, projectMetadataPath, fileUtil);
+                return parsedProject;
             } catch (RuntimeException e) {
                 LogUtil.e("ProjectListManager", "Failed to validate project metadata for " + projectId + " from " + projectMetadataPath, e);
                 return parsedProject;
@@ -156,6 +226,10 @@ public class ProjectListManager {
                     }
                     if (projectData.containsKey("custom_icon")) {
                         existingProject.put("custom_icon", projectData.get("custom_icon"));
+                    }
+                    if (projectData.containsKey(ProjectType.METADATA_KEY)) {
+                        existingProject.put(ProjectType.METADATA_KEY,
+                                ProjectType.normalize(String.valueOf(projectData.get(ProjectType.METADATA_KEY))));
                     }
                     existingProject.put("my_sc_pkg_name", projectData.get("my_sc_pkg_name"));
                     existingProject.put("my_ws_name", projectData.get("my_ws_name"));

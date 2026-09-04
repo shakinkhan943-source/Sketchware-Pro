@@ -94,7 +94,16 @@ public class AndroidManifestInjector {
     }
 
     public static void injectApplicationAttributes(XmlBuilder applicationTag, String sc_id) {
-        applyApplicationAttributeInjections(applicationTag, sc_id);
+        injectApplicationAttributes(applicationTag, sc_id, false);
+    }
+
+    /**
+     * Injects application-level manifest attributes. Compose projects do not use the generated XML
+     * theme system, so their default window theme is a platform NoActionBar theme instead of
+     * {@code @style/AppTheme}. A user-supplied manifest theme still wins.
+     */
+    public static void injectApplicationAttributes(XmlBuilder applicationTag, String sc_id, boolean composeProject) {
+        applyApplicationAttributeInjections(applicationTag, sc_id, composeProject);
     }
 
     public static boolean injectActivityAttributes(XmlBuilder activityTag, String sc_id, String actName) {
@@ -256,7 +265,7 @@ public class AndroidManifestInjector {
         return returnValue.toString();
     }
 
-    private static void applyApplicationAttributeInjections(XmlBuilder applicationTag, String sc_id) {
+    private static void applyApplicationAttributeInjections(XmlBuilder applicationTag, String sc_id, boolean composeProject) {
         ArrayList<HashMap<String, Object>> attributes = readAndroidManifestAttributeInjections(sc_id);
 
         boolean themeInjected = false;
@@ -284,7 +293,9 @@ public class AndroidManifestInjector {
         }
 
         if (!themeInjected) {
-            applicationTag.addAttributeValue("android:theme=\"@style/AppTheme\"");
+            applicationTag.addAttributeValue(composeProject
+                    ? "android:theme=\"@android:style/Theme.Material.NoActionBar\""
+                    : "android:theme=\"@style/AppTheme\"");
         }
     }
 
