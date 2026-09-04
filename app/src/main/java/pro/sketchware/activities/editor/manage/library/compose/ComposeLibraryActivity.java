@@ -33,6 +33,8 @@ import pro.sketchware.R;
 import pro.sketchware.activities.base.BaseAppCompatActivity;
 import pro.sketchware.beans.ProjectLibraryBean;
 import pro.sketchware.core.project.ProjectDataManager;
+import pro.sketchware.core.project.ProjectListManager;
+import pro.sketchware.core.project.ProjectType;
 import pro.sketchware.databinding.ItemComposeDependencyBinding;
 import pro.sketchware.databinding.ManageLibraryComposeBinding;
 import pro.sketchware.util.Helper;
@@ -89,11 +91,20 @@ public class ComposeLibraryActivity extends BaseAppCompatActivity {
         composeLibraryBean = getIntent().getParcelableExtra("compose");
         scId = getIntent().getStringExtra("sc_id");
         packageSettingsMode = composeLibraryBean == null;
+        // Jetpack Compose is a Compose-project-only UI system. If this screen is somehow opened for a
+        // Java/XML project, close it instead of letting an unused UI system be activated.
+        if (scId != null && !ProjectType.COMPOSE.equals(resolveProjectType())) {
+            Toast.makeText(this, R.string.design_library_compose_not_available_java_xml, Toast.LENGTH_SHORT).show();
+            finish();
+            return;
+        }
         if (packageSettingsMode) {
             setupStoreSettings();
             return;
         }
 
+        // The project type is the source of truth: Compose projects always carry the Compose switch.
+        composeLibraryBean.useYn = ProjectLibraryBean.LIB_USE_Y;
         selectedOptionalFeatures.addAll(
                 new ComposeBuiltInLibraryManager(composeLibraryBean).getOptionalFeatureIds());
 
@@ -134,14 +145,31 @@ public class ComposeLibraryActivity extends BaseAppCompatActivity {
         });
     }
 
+    private String resolveProjectType() {
+        var metadata = ProjectListManager.getProjectById(scId);
+        if (metadata != null) {
+            Object value = metadata.get(ProjectType.METADATA_KEY);
+            if (value instanceof String valueString) {
+                return ProjectType.normalize(valueString);
+            }
+        }
+        if (composeLibraryBean != null && ProjectLibraryBean.LIB_USE_Y.equals(composeLibraryBean.useYn)) {
+            return ProjectType.COMPOSE;
+        }
+        return ProjectType.DEFAULT;
+    }
+
     /**
      * Copies the switch and optional-feature choices onto the Compose library bean so a caller that
      * saves the bean persists exactly what the user sees on screen.
      */
     private void persistComposeState() {
-        composeLibraryBean.useYn = binding.composeSwitch.isChecked()
+        // The project type decides the UI system; a Compose project cannot un-select Compose here.
+        composeLibraryBean.useYn = scId != null
                 ? ProjectLibraryBean.LIB_USE_Y
-                : ProjectLibraryBean.LIB_USE_N;
+                : (binding.composeSwitch.isChecked()
+                ? ProjectLibraryBean.LIB_USE_Y
+                : ProjectLibraryBean.LIB_USE_N);
         new ComposeBuiltInLibraryManager(composeLibraryBean)
                 .setOptionalFeatureIds(new ArrayList<>(selectedOptionalFeatures));
     }

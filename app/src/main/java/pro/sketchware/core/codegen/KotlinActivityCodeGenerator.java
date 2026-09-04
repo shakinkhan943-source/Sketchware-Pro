@@ -101,7 +101,7 @@ public final class KotlinActivityCodeGenerator {
                 .append("super.onCreate(_savedInstanceState);")
                 .append(ActivityCodeGenerator.EOL)
                 .append("setContent {").append(ActivityCodeGenerator.EOL)
-                .append("MaterialTheme {").append(ActivityCodeGenerator.EOL)
+                .append("SketchwareTheme {").append(ActivityCodeGenerator.EOL)
                 .append(projectFile.getActivityName()).append("Screen()").append(ActivityCodeGenerator.EOL)
                 .append("}").append(ActivityCodeGenerator.EOL)
                 .append("}").append(ActivityCodeGenerator.EOL);

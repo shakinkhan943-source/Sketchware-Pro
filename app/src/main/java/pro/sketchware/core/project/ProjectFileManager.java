@@ -65,6 +65,26 @@ public class ProjectFileManager {
     activities = new ArrayList<>();
     customViews = new ArrayList<>();
     addFile(0, "main");
+
+    // Compose-first projects start with a Kotlin main Activity. Java/XML projects keep the
+    // default Java main Activity so legacy behavior remains unchanged.
+    if (ProjectType.COMPOSE.equals(getStoredProjectType())) {
+      ProjectFileBean main = activities.isEmpty() ? null : activities.get(0);
+      if (main != null) {
+        main.setLanguage(ProjectFileBean.LANGUAGE_KOTLIN);
+      }
+    }
+  }
+
+  private String getStoredProjectType() {
+    java.util.HashMap<String, Object> metadata = ProjectListManager.getProjectById(projectId);
+    if (metadata != null) {
+      Object value = metadata.get(ProjectType.METADATA_KEY);
+      if (value instanceof String) {
+        return ProjectType.normalize((String) value);
+      }
+    }
+    return ProjectType.DEFAULT;
   }
 
   private String decryptFileToString(String filePath) throws IOException {
@@ -125,7 +145,11 @@ public class ProjectFileManager {
   public void parseFileData(BufferedReader reader) throws IOException {
     ArrayList<ProjectFileBean> parsedActivities = new ArrayList<>();
     ArrayList<ProjectFileBean> parsedCustomViews = new ArrayList<>();
-    parsedActivities.add(new ProjectFileBean(0, "main"));
+    ProjectFileBean defaultMain = new ProjectFileBean(0, "main");
+    if (ProjectType.COMPOSE.equals(getStoredProjectType())) {
+      defaultMain.setLanguage(ProjectFileBean.LANGUAGE_KOTLIN);
+    }
+    parsedActivities.add(defaultMain);
     StringBuilder contentBuffer = new StringBuilder();
     String sectionName = "";
     while (true) {

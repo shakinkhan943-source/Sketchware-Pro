@@ -23,6 +23,8 @@ import java.util.ArrayList;
 import pro.sketchware.core.project.ProjectDataStore;
 import pro.sketchware.core.project.ProjectFileManager;
 import pro.sketchware.core.project.ProjectDataManager;
+import pro.sketchware.core.project.ProjectListManager;
+import pro.sketchware.core.project.ProjectType;
 import pro.sketchware.util.UIHelper;
 import pro.sketchware.activities.editor.manage.view.PresetLayoutFactory;
 import pro.sketchware.core.project.SketchwarePaths;
@@ -82,6 +84,20 @@ public class ViewSelectorActivity extends BaseAppCompatActivity {
             }
         }
         return screenNames;
+    }
+
+    private String getProjectType() {
+        var metadata = ProjectListManager.getProjectById(sc_id);
+        Object value = metadata == null ? null : metadata.get(ProjectType.METADATA_KEY);
+        if (value instanceof String valueString) {
+            return ProjectType.normalize(valueString);
+        }
+        // Legacy projects created before project-type metadata had the Compose library flag.
+        if (pro.sketchware.beans.ProjectLibraryBean.LIB_USE_Y.equals(
+                ProjectDataManager.getLibraryManager(sc_id).getCompose().useYn)) {
+            return ProjectType.COMPOSE;
+        }
+        return ProjectType.DEFAULT;
     }
 
     private void enableComposeFor(ProjectFileBean file) {
@@ -266,6 +282,7 @@ public class ViewSelectorActivity extends BaseAppCompatActivity {
                     Intent intent = new Intent(getApplicationContext(), AddViewActivity.class);
                     intent.putStringArrayListExtra("screen_names", getScreenNames());
                     intent.putExtra("request_code", 264);
+                    intent.putExtra("project_type", getProjectType());
                     addActivityLauncher.launch(intent);
                 } else if (selectedTab == TAB_CUSTOM_VIEW) {
                     Intent intent = new Intent(getApplicationContext(), AddCustomViewActivity.class);
@@ -483,6 +500,7 @@ public class ViewSelectorActivity extends BaseAppCompatActivity {
                         Intent intent = new Intent(getApplicationContext(), AddViewActivity.class);
                         intent.putExtra("project_file", ProjectDataManager.getFileManager(sc_id).getActivities().get(pos));
                         intent.putExtra("request_code", 265);
+                        intent.putExtra("project_type", getProjectType());
                         editActivityLauncher.launch(intent);
                     }
                 });

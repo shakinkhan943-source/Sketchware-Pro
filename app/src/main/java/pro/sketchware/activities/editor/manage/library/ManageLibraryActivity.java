@@ -14,6 +14,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.view.View;
 import android.widget.LinearLayout;
+import android.widget.Toast;
 
 import androidx.annotation.Nullable;
 import androidx.appcompat.widget.Toolbar;
@@ -38,6 +39,9 @@ import java.util.List;
 import pro.sketchware.core.async.BackgroundTasks;
 import pro.sketchware.core.project.ProjectDataManager;
 import pro.sketchware.core.async.TaskHost;
+import pro.sketchware.core.project.ProjectListManager;
+import pro.sketchware.core.project.ProjectType;
+import pro.sketchware.util.SketchToast;
 import pro.sketchware.util.UIHelper;
 
 import pro.sketchware.activities.editor.ManageNativelibsActivity;
@@ -198,13 +202,25 @@ public class ManageLibraryActivity extends BaseAppCompatActivity implements View
     }
 
     private void toMaterial3Activity() {
+        if (ProjectType.COMPOSE.equals(getStoredProjectType())) {
+            // XML Material3 and Jetpack Compose are different UI systems; never open the XML
+            // Material3 editor for a Compose project.
+            SketchToast.toast(this, R.string.design_library_material3_not_available_compose, Toast.LENGTH_SHORT);
+            return;
+        }
         Intent intent = new Intent(getApplicationContext(), Material3LibraryActivity.class);
         intent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
         intent.putExtra("compat", compatLibraryBean);
+        intent.putExtra("project_type", getStoredProjectType());
         material3Launcher.launch(intent);
     }
 
     private void toComposeActivity() {
+        if (!ProjectType.COMPOSE.equals(getStoredProjectType())) {
+            // Java/XML projects own an XML UI system; the Jetpack Compose editor is not available.
+            SketchToast.toast(this, R.string.design_library_compose_not_available_java_xml, Toast.LENGTH_SHORT);
+            return;
+        }
         Intent intent = new Intent(getApplicationContext(), ComposeLibraryActivity.class);
         intent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
         intent.putExtra("sc_id", sc_id);
@@ -220,6 +236,22 @@ public class ManageLibraryActivity extends BaseAppCompatActivity implements View
     }
 
     private void saveLibraryConfiguration() {
+        boolean composeProject = ProjectType.COMPOSE.equals(getStoredProjectType());
+        if (composeProject) {
+            composeLibraryBean.useYn = ProjectLibraryBean.LIB_USE_Y;
+            // XML Material3 lives in the AppCompat bean's configuration and belongs to the Java/XML
+            // UI system. It must never leak into a Compose project's generated files.
+            if (compatLibraryBean != null) {
+                compatLibraryBean.useYn = ProjectLibraryBean.LIB_USE_N;
+                if (compatLibraryBean.configurations != null) {
+                    compatLibraryBean.configurations.remove("material3");
+                    compatLibraryBean.configurations.remove("dynamic_colors");
+                    compatLibraryBean.configurations.remove("theme");
+                }
+            }
+        } else {
+            composeLibraryBean.useYn = ProjectLibraryBean.LIB_USE_N;
+        }
         ProjectDataManager.getLibraryManager(sc_id).setCompat(compatLibraryBean);
         ProjectDataManager.getLibraryManager(sc_id).setFirebaseDB(firebaseLibraryBean);
         ProjectDataManager.getLibraryManager(sc_id).setAdmob(admobLibraryBean);
@@ -309,7 +341,9 @@ public class ManageLibraryActivity extends BaseAppCompatActivity implements View
                         ProjectLibraryBean libraryBean = result.getData().getParcelableExtra("firebase");
                         if (libraryBean == null) return;
                         initializeLibrary(libraryBean);
-                        if (libraryBean.useYn.equals("Y") && !compatLibraryBean.useYn.equals("Y")) {
+                        if (!ProjectType.COMPOSE.equals(getStoredProjectType())
+                                && libraryBean.useYn.equals("Y")
+                                && !compatLibraryBean.useYn.equals("Y")) {
                             libraryBean = compatLibraryBean;
                             libraryBean.useYn = "Y";
                             initializeLibrary(libraryBean);
@@ -420,10 +454,22 @@ public class ManageLibraryActivity extends BaseAppCompatActivity implements View
             originalComposeUseYn = savedInstanceState.getString("originalComposeUseYn");
         }
 
+        // A Compose project owns the Compose UI system; its switch must always read as ON even before
+        // the user leaves this screen (and even when a brand-new project has not stored the bean yet).
+        if (ProjectType.COMPOSE.equals(getStoredProjectType())) {
+            composeLibraryBean.useYn = ProjectLibraryBean.LIB_USE_Y;
+        }
+
         LibraryCategoryView basicCategory = addCategoryItem(null);
-        addLibraryItem(compatLibraryBean, basicCategory);
-        addCustomLibraryItem(ProjectLibraryBean.PROJECT_LIB_TYPE_MATERIAL3, basicCategory);
-        addCustomLibraryItem(ProjectLibraryBean.PROJECT_LIB_TYPE_COMPOSE, basicCategory);
+        boolean composeProject = ProjectType.COMPOSE.equals(getStoredProjectType());
+        if (composeProject) {
+            // Compose-first projects own their UI system in the Compose runtime. The XML AppCompat /
+            // Material component libraries would add an unused XML UI system to the build.
+            addCustomLibraryItem(ProjectLibraryBean.PROJECT_LIB_TYPE_COMPOSE, basicCategory);
+        } else {
+            addLibraryItem(compatLibraryBean, basicCategory);
+            addCustomLibraryItem(ProjectLibraryBean.PROJECT_LIB_TYPE_MATERIAL3, basicCategory);
+        }
         addLibraryItem(firebaseLibraryBean, basicCategory);
         addLibraryItem(admobLibraryBean, basicCategory);
         addLibraryItem(googleMapLibraryBean, basicCategory, false);
@@ -458,6 +504,20 @@ public class ManageLibraryActivity extends BaseAppCompatActivity implements View
         outState.putString("originalGoogleMapUseYn", originalGoogleMapUseYn);
         outState.putString("originalComposeUseYn", originalComposeUseYn);
         super.onSaveInstanceState(outState);
+    }
+
+    private String getStoredProjectType() {
+        java.util.HashMap<String, Object> metadata = ProjectListManager.getProjectById(sc_id);
+        if (metadata != null) {
+            Object value = metadata.get(ProjectType.METADATA_KEY);
+            if (value instanceof String) {
+                return ProjectType.normalize((String) value);
+            }
+        }
+        if (composeLibraryBean != null && ProjectLibraryBean.LIB_USE_Y.equals(composeLibraryBean.useYn)) {
+            return ProjectType.COMPOSE;
+        }
+        return ProjectType.DEFAULT;
     }
 
     private void showFirebaseNeedCompatDialog() {

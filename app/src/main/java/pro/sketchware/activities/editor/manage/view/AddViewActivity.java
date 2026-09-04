@@ -46,6 +46,7 @@ public class AddViewActivity extends BaseAppCompatActivity {
     private ActivityNameValidator nameValidator;
     private boolean featureStatusBar, featureToolbar, featureFab, featureDrawer;
     private boolean composeSelected;
+    private boolean composeProject;
     private int requestCode;
     private ProjectFileBean projectFileBean;
     private String presetName;
@@ -180,8 +181,16 @@ public class AddViewActivity extends BaseAppCompatActivity {
         return binding.languageSelector.getCheckedButtonId() == R.id.select_kotlin;
     }
 
-    /** Kotlin files are Compose Activities, never one of the XML-backed fragment variants. */
+    /** Kotlin files are Compose Activities in Compose projects; Java/XML projects use Java screens. */
     private void updateLanguageUi() {
+        // The design (visual) editor can only generate Java + XML or Kotlin + Compose sources.
+        // Java/XML projects still accept Kotlin source files through the Java/Kotlin manager, but
+        // the visual Activity generator in this mode is Java/XML only.
+        View javaButton = binding.languageSelector.findViewById(R.id.select_java);
+        View kotlinButton = binding.languageSelector.findViewById(R.id.select_kotlin);
+        if (javaButton != null) javaButton.setEnabled(!composeProject);
+        if (kotlinButton != null) kotlinButton.setEnabled(composeProject);
+
         composeSelected = isKotlinSelected();
         binding.composeActivityHint.setVisibility(composeSelected ? View.VISIBLE : View.GONE);
         binding.addViewTypeSelectorLayout.setAlpha(composeSelected ? 0.5f : 1f);
@@ -225,6 +234,7 @@ public class AddViewActivity extends BaseAppCompatActivity {
         screenNames = intent.getStringArrayListExtra("screen_names");
         requestCode = intent.getIntExtra("request_code", REQUEST_CODE_ADD);
         projectFileBean = intent.getParcelableExtra("project_file");
+        composeProject = "compose".equals(intent.getStringExtra("project_type"));
         if (projectFileBean != null) {
             binding.toolbar.setTitle(String.format(Helper.getResString(R.string.view_title_edit), projectFileBean.fileName));
         }
@@ -351,9 +361,10 @@ public class AddViewActivity extends BaseAppCompatActivity {
             }
         } else {
             try {
-                // Set language selection based on existing bean
-                int lang = projectFileBean.language;
-                if (lang == ProjectFileBean.LANGUAGE_KOTLIN) {
+                // Set language selection based on the project mode. Compose projects are Kotlin-only;
+                // Java/XML projects keep the Java visual editor (Kotlin sources go through the
+                // Java/Kotlin manager).
+                if (composeProject) {
                     binding.languageSelector.check(R.id.select_kotlin);
                 } else {
                     binding.languageSelector.check(R.id.select_java);
@@ -376,7 +387,7 @@ public class AddViewActivity extends BaseAppCompatActivity {
         featureStatusBar = true;
         nameValidator = new ActivityNameValidator(getApplicationContext(), binding.tiName, BlockConstants.RESERVED_KEYWORDS, screenNames);
         try {
-            binding.languageSelector.check(R.id.select_java);
+            binding.languageSelector.check(composeProject ? R.id.select_kotlin : R.id.select_java);
         } catch (Exception e) {
         }
     }

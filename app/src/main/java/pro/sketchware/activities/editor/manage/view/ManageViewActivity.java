@@ -27,6 +27,7 @@ import androidx.viewpager.widget.ViewPager;
 
 import pro.sketchware.beans.EventBean;
 import pro.sketchware.beans.ProjectFileBean;
+import pro.sketchware.beans.ProjectLibraryBean;
 import pro.sketchware.beans.ViewBean;
 import pro.sketchware.activities.base.BaseAppCompatActivity;
 import com.google.android.material.appbar.MaterialToolbar;
@@ -36,7 +37,9 @@ import com.google.android.material.tabs.TabLayout;
 
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Iterator;
+import java.util.List;
 
 import pro.sketchware.core.async.BackgroundTasks;
 import pro.sketchware.core.exception.SketchwareException;
@@ -46,6 +49,8 @@ import pro.sketchware.core.project.ProjectDataStore;
 import pro.sketchware.core.project.ProjectDataManager;
 import pro.sketchware.core.async.TaskHost;
 import pro.sketchware.util.UIHelper;
+import pro.sketchware.core.project.ProjectListManager;
+import pro.sketchware.core.project.ProjectType;
 import pro.sketchware.core.project.SketchwarePaths;
 import pro.sketchware.activities.editor.manage.view.fragments.CustomViewFilesFragment;
 import pro.sketchware.R;
@@ -147,7 +152,14 @@ public class ManageViewActivity extends BaseAppCompatActivity implements OnClick
         }
 
         activitiesFragment.setSelectionMode(selecting);
-        customViewsFragment.setSelectionMode(selecting);
+        if (customViewsFragment != null) {
+            customViewsFragment.setSelectionMode(selecting);
+        }
+    }
+
+    /** Compose projects own their UI in Kotlin and do not expose the XML custom-view system. */
+    private boolean hasCustomViewSystem() {
+        return !ProjectType.COMPOSE.equals(getProjectType());
     }
 
     @Override
@@ -156,11 +168,37 @@ public class ManageViewActivity extends BaseAppCompatActivity implements OnClick
     }
 
     public void addCustomView(String viewName) {
+        if (customViewsFragment == null) return;
         customViewsFragment.addCustomView(viewName);
         customViewsFragment.updateEmptyState();
     }
 
+    /** Returns the stored project type used to configure the visual Activity editor. */
+    public String getProjectType() {
+        HashMap<String, Object> metadata = ProjectListManager.getProjectById(sc_id);
+        if (metadata != null && metadata.containsKey(ProjectType.METADATA_KEY)) {
+            return ProjectType.normalize(String.valueOf(metadata.get(ProjectType.METADATA_KEY)));
+        }
+        // Legacy projects created before project-type metadata used the Compose library flag.
+        ProjectLibraryBean compose = ProjectDataManager.getLibraryManager(sc_id).getCompose();
+        if (compose != null && ProjectLibraryBean.LIB_USE_Y.equals(compose.useYn)) {
+            return ProjectType.COMPOSE;
+        }
+        List<ProjectFileBean> activities = activitiesFragment != null
+                ? activitiesFragment.getActivitiesFiles()
+                : ProjectDataManager.getFileManager(sc_id).getActivities();
+        if (activities != null) {
+            for (ProjectFileBean activity : activities) {
+                if (activity != null && activity.isComposeActivity()) {
+                    return ProjectType.COMPOSE;
+                }
+            }
+        }
+        return ProjectType.DEFAULT;
+    }
+
     public void removeCustomView(String viewName) {
+        if (customViewsFragment == null) return;
         customViewsFragment.removeCustomView(viewName);
         customViewsFragment.updateEmptyState();
     }
@@ -169,22 +207,22 @@ public class ManageViewActivity extends BaseAppCompatActivity implements OnClick
         ArrayList<String> projectLayoutFiles = new ArrayList<>();
         projectLayoutFiles.add("debug");
         ArrayList<ProjectFileBean> activitiesFiles = activitiesFragment.getActivitiesFiles();
-        ArrayList<ProjectFileBean> customViewsFiles = customViewsFragment.getProjectFiles();
-
         for (ProjectFileBean projectFileBean : activitiesFiles) {
             projectLayoutFiles.add(projectFileBean.fileName);
         }
-
-        for (ProjectFileBean projectFileBean : customViewsFiles) {
-            projectLayoutFiles.add(projectFileBean.fileName);
+        if (customViewsFragment != null) {
+            for (ProjectFileBean projectFileBean : customViewsFragment.getProjectFiles()) {
+                projectLayoutFiles.add(projectFileBean.fileName);
+            }
         }
-
         return projectLayoutFiles;
     }
 
     public final void saveAndSyncFiles() {
         ProjectDataManager.getFileManager(sc_id).setActivities(activitiesFragment.getActivitiesFiles());
-        ProjectDataManager.getFileManager(sc_id).setCustomViews(customViewsFragment.getProjectFiles());
+        ProjectDataManager.getFileManager(sc_id).setCustomViews(customViewsFragment != null
+                ? customViewsFragment.getProjectFiles()
+                : new ArrayList<>());
         ProjectDataManager.getFileManager(sc_id).saveToBackup();
         ProjectDataManager.getFileManager(sc_id).refreshNameLists();
         ProjectDataManager.getProjectDataManager(sc_id).syncWithFileManager(ProjectDataManager.getFileManager(sc_id));
@@ -202,10 +240,12 @@ public class ManageViewActivity extends BaseAppCompatActivity implements OnClick
             } else if (viewId == R.id.btn_delete) {
                 if (selecting) {
                     activitiesFragment.removeSelectedFiles();
-                    customViewsFragment.removeSelectedFiles();
+                    if (customViewsFragment != null) {
+                        customViewsFragment.removeSelectedFiles();
+                        customViewsFragment.updateEmptyState();
+                    }
                     setSelectionMode(false);
                     activitiesFragment.updateGuideVisibility();
-                    customViewsFragment.updateEmptyState();
                     SketchToast.toast(getApplicationContext(), Helper.getResString(R.string.common_message_complete_delete), SketchToast.TOAST_WARNING).show();
                     fab.show();
                 }
@@ -213,10 +253,14 @@ public class ManageViewActivity extends BaseAppCompatActivity implements OnClick
                 setSelectionMode(false);
 
                 boolean isActivitiesTab = viewPager.getCurrentItem() == 0;
+                if (!isActivitiesTab && customViewsFragment == null) {
+                    return;
+                }
                 Intent intent = new Intent(this, isActivitiesTab ? AddViewActivity.class : AddCustomViewActivity.class);
                 intent.putStringArrayListExtra("screen_names", getProjectLayoutFiles());
                 if (isActivitiesTab) {
                     intent.putExtra("request_code", REQUEST_CODE_ADD_ACTIVITY);
+                    intent.putExtra("project_type", getProjectType());
                 }
                 launchedForActivity = isActivitiesTab;
                 addViewLauncher.launch(intent);
@@ -268,6 +312,7 @@ public class ManageViewActivity extends BaseAppCompatActivity implements OnClick
                                 addPresetViews(projectFileBean, data.getParcelableArrayListExtra("preset_views"));
                             }
                         } else {
+                            if (customViewsFragment == null) return;
                             projectFileBean = data.getParcelableExtra("project_file");
                             if (projectFileBean == null) return;
                             customViewsFragment.addProjectFile(projectFileBean);
@@ -402,7 +447,7 @@ public class ManageViewActivity extends BaseAppCompatActivity implements OnClick
 
         @Override
         public int getCount() {
-            return TAB_COUNT;
+            return hasCustomViewSystem() ? TAB_COUNT : 1;
         }
 
         @Override

@@ -7,6 +7,7 @@ import pro.sketchware.core.sync.JavaSyncManager;
 import pro.sketchware.core.sync.JavaSyncStore;
 import pro.sketchware.core.project.BlockConstants;
 import pro.sketchware.core.project.BuildConfig;
+import pro.sketchware.core.project.ProjectType;
 import pro.sketchware.core.codegen.ComponentCodeGenerator;
 import pro.sketchware.core.codegen.ComponentTemplates;
 import pro.sketchware.util.io.EncryptedFileUtil;
@@ -253,6 +254,8 @@ public class ProjectFilePaths {
         sc_id = MapValueHelper.getString(metadata, "sc_id");
         material3LibraryManager = new Material3LibraryManager(sc_id);
         buildConfig.sc_id = sc_id;
+        buildConfig.projectType = ProjectType.fromMetadata(metadata);
+        buildConfig.projectTypeResolved = true;
         projectMyscPath = myscFolderPath.endsWith(File.separator) ? myscFolderPath : myscFolderPath + File.separator;
         packageName = MapValueHelper.getString(metadata, "my_sc_pkg_name");
         projectName = MapValueHelper.getString(metadata, "my_ws_name");
@@ -374,8 +377,10 @@ public class ProjectFilePaths {
      * Generates top-level build.gradle, build.gradle for module ':app' and settings.gradle files.
      */
     public void generateGradleFiles() {
+        boolean viewBindingEnabled = !buildConfig.isComposeProject()
+                && projectSettings.getValue(ProjectSettings.SETTING_ENABLE_VIEWBINDING, ProjectSettings.SETTING_GENERIC_VALUE_FALSE).equals(ProjectSettings.SETTING_GENERIC_VALUE_TRUE);
         fileUtil.writeText(appDirectoryPath + File.separator + "build.gradle",
-                ComponentCodeGenerator.getBuildGradleString(VAR_DEFAULT_TARGET_SDK_VERSION, VAR_DEFAULT_MIN_SDK_VERSION, projectSettings.getValue(ProjectSettings.SETTING_TARGET_SDK_VERSION, String.valueOf(VAR_DEFAULT_TARGET_SDK_VERSION)), buildConfig, projectSettings.getValue(ProjectSettings.SETTING_ENABLE_VIEWBINDING, ProjectSettings.SETTING_GENERIC_VALUE_FALSE).equals(ProjectSettings.SETTING_GENERIC_VALUE_TRUE)));
+                ComponentCodeGenerator.getBuildGradleString(VAR_DEFAULT_TARGET_SDK_VERSION, VAR_DEFAULT_MIN_SDK_VERSION, projectSettings.getValue(ProjectSettings.SETTING_TARGET_SDK_VERSION, String.valueOf(VAR_DEFAULT_TARGET_SDK_VERSION)), buildConfig, viewBindingEnabled));
         fileUtil.writeText(projectMyscPath + File.separator + "settings.gradle", ComponentCodeGenerator.getSettingsGradle());
         fileUtil.writeText(projectMyscPath + File.separator + "build.gradle", ComponentCodeGenerator.getTopLevelBuildGradle("8.12.0", "4.4.3"));
 
@@ -587,6 +592,14 @@ public class ProjectFilePaths {
         buildConfig.versionName = versionName;
         buildConfig.sc_id = sc_id;
         buildConfig.isDebugBuild = exportingType == ExportType.DEBUG_APP;
+        boolean hasComposeActivity = hasComposeActivity(projectFileManager);
+        buildConfig.projectType = ProjectType.resolve(metadata, compose, hasComposeActivity);
+        buildConfig.projectTypeResolved = true;
+        buildConfig.themeColorPrimary = colorPrimary;
+        buildConfig.themeColorPrimaryDark = colorPrimaryDark;
+        buildConfig.themeColorAccent = colorAccent;
+        buildConfig.themeControlHighlight = colorControlHighlight;
+        buildConfig.themeControlNormal = colorControlNormal;
         isAndroidStudioExport = exportingType == ExportType.ANDROID_STUDIO;
         generateDataBindingClasses = !(exportingType == ExportType.DEBUG_APP || exportingType == ExportType.ANDROID_STUDIO);
         if (firebase.useYn.equals(ProjectLibraryBean.LIB_USE_Y)) {
@@ -603,30 +616,25 @@ public class ProjectFilePaths {
             buildConfig.addPermission(BuildConfig.PERMISSION_ACCESS_NETWORK_STATE);
             buildConfig.setupAdmob(adMob);
         }
-        boolean hasComposeActivity = false;
-        if (projectFileManager != null) {
-            for (ProjectFileBean activity : projectFileManager.getActivities()) {
-                if (activity.isComposeActivity()) {
-                    hasComposeActivity = true;
-                    break;
-                }
-            }
-        }
-        // Older projects can contain Kotlin Activities from before the Compose library flag was
-        // persisted. The source model is authoritative, so infer the dependency here as well.
-        if (hasComposeActivity || (compose != null
-                && compose.useYn.equals(ProjectLibraryBean.LIB_USE_Y))) {
+        // The project type is the first decision for the build. Only Compose projects receive
+        // Compose dependencies; Java/XML projects never do, even when a stray Kotlin source or
+        // Compose library flag exists in a legacy project.
+        if (buildConfig.isComposeProject()) {
             buildConfig.isComposeEnabled = true;
-            if (compose != null && hasComposeActivity) compose.useYn = ProjectLibraryBean.LIB_USE_Y;
-            Object optionalFeatures = compose == null || compose.configurations == null ? null
-                    : compose.configurations.get("compose_optional_features");
-            if (optionalFeatures instanceof List<?>) {
-                for (Object featureId : (List<?>) optionalFeatures) {
-                    if (featureId instanceof String && !((String) featureId).isEmpty()) {
-                        buildConfig.composeOptionalFeatures.add((String) featureId);
+            if (compose != null) {
+                compose.useYn = ProjectLibraryBean.LIB_USE_Y;
+                Object optionalFeatures = compose.configurations == null ? null
+                        : compose.configurations.get("compose_optional_features");
+                if (optionalFeatures instanceof List<?>) {
+                    for (Object featureId : (List<?>) optionalFeatures) {
+                        if (featureId instanceof String && !((String) featureId).isEmpty()) {
+                            buildConfig.composeOptionalFeatures.add((String) featureId);
+                        }
                     }
                 }
             }
+        } else {
+            buildConfig.isComposeEnabled = false;
         }
         if (googleMaps.useYn.equals(ProjectLibraryBean.LIB_USE_Y)) {
             buildConfig.isMapUsed = true;
@@ -841,6 +849,25 @@ public class ProjectFilePaths {
             } else {
                 FileUtil.deleteFile(generatedSourceDirectory + activity.getActivityName() + ".kt");
             }
+        }
+        // The theme system is owned by one UI system only: Compose keeps it in Color.kt/Theme.kt
+        // while Java/XML keeps it in colors.xml/styles.xml. Remove the unused system's generated
+        // files so a mode change never leaves both systems behind.
+        if (buildConfig.isComposeProject()) {
+            FileUtil.deleteFile(valuesFilesPath + File.separator + "styles.xml");
+            FileUtil.deleteFile(valuesFilesPath + File.separator + "colors.xml");
+            // Compose projects do not own XML layouts. Remove any XML custom-view resources a legacy
+            // file list may still leave behind so the build tree cannot accidentally package them.
+            for (ProjectFileBean customView : projectFileManager.getCustomViews()) {
+                if (customView != null) {
+                    FileUtil.deleteFile(layoutFilesPath + File.separator + customView.getXmlName());
+                }
+            }
+        } else {
+            String generatedSourceDirectory = javaFilesPath + File.separator + packageNameAsFolders
+                    + File.separator;
+            FileUtil.deleteFile(generatedSourceDirectory + "Color.kt");
+            FileUtil.deleteFile(generatedSourceDirectory + "Theme.kt");
         }
         if (buildConfig.isFileProviderUsed) {
             XmlBuilder pathsTag = new XmlBuilder("paths");
@@ -1106,23 +1133,27 @@ public class ProjectFilePaths {
                 }
             }
 
-            ArrayList<ProjectFileBean> customViewFiles = projectFileManager.getCustomViews();
-            for (ProjectFileBean customViewFile : customViewFiles) {
-                String xmlName = customViewFile.getXmlName();
-                LayoutGenerator layoutGenerator = new LayoutGenerator(buildConfig, customViewFile);
-                layoutGenerator.setViews(ProjectDataStore.getSortedRootViews(projectDataManager.getViews(xmlName)));
-                var ogFile = new File(layoutDir + xmlName);
-                if (!layoutFiles.contains(ogFile)) {
-                    srcCodeBeans.add(new SrcCodeBean(xmlName, CommandBlock.applyCommands(xmlName, layoutGenerator.toXmlString())));
+            // The XML custom-view system belongs to Java/XML projects. Compose projects own their UI in
+            // Kotlin source and must never generate XML layouts into the build tree.
+            if (!buildConfig.isComposeProject()) {
+                ArrayList<ProjectFileBean> customViewFiles = projectFileManager.getCustomViews();
+                for (ProjectFileBean customViewFile : customViewFiles) {
+                    String xmlName = customViewFile.getXmlName();
+                    LayoutGenerator layoutGenerator = new LayoutGenerator(buildConfig, customViewFile);
+                    layoutGenerator.setViews(ProjectDataStore.getSortedRootViews(projectDataManager.getViews(xmlName)));
+                    var ogFile = new File(layoutDir + xmlName);
+                    if (!layoutFiles.contains(ogFile)) {
+                        srcCodeBeans.add(new SrcCodeBean(xmlName, CommandBlock.applyCommands(xmlName, layoutGenerator.toXmlString())));
 
-                    if (isViewBindingEnable()) {
-                        var privFile = new File(context.getCacheDir(), xmlName);
-                        FileUtil.writeFile(privFile.getAbsolutePath(), CommandBlock.applyCommands(xmlName, layoutGenerator.toXmlString()));
-                        var code = viewBindingBuilder.generateBindingForLayout(privFile);
-                        srcCodeBeans.add(new SrcCodeBean(
-                                ViewBindingBuilder.generateFileNameForLayout(xmlName.replace(".xml", "")) + ".java",
-                                code
-                        ));
+                        if (isViewBindingEnable()) {
+                            var privFile = new File(context.getCacheDir(), xmlName);
+                            FileUtil.writeFile(privFile.getAbsolutePath(), CommandBlock.applyCommands(xmlName, layoutGenerator.toXmlString()));
+                            var code = viewBindingBuilder.generateBindingForLayout(privFile);
+                            srcCodeBeans.add(new SrcCodeBean(
+                                    ViewBindingBuilder.generateFileNameForLayout(xmlName.replace(".xml", "")) + ".java",
+                                    code
+                            ));
+                        }
                     }
                 }
             }
@@ -1130,10 +1161,12 @@ public class ProjectFilePaths {
             ManifestGenerator manifestGenerator = new ManifestGenerator(buildConfig, projectFileManager.getActivities(), builtInLibraryManager);
             manifestGenerator.setProjectFilePaths(this);
 
-            // Make generated classes viewable
+            // Make generated classes viewable. XML Material3 is a Java/XML UI concept; Compose
+            // projects must not receive it even if a legacy compat bean still carries Material3 flags.
+            boolean material3Enabled = buildConfig.isJavaXmlProject() && material3LibraryManager.isMaterial3Enabled();
             if (!javaFiles.contains(new File(javaDir + "SketchwareUtil.java"))) {
                 srcCodeBeans.add(new SrcCodeBean("SketchwareUtil.java",
-                        ComponentTemplates.getSketchwareUtilCode(packageName, material3LibraryManager.isMaterial3Enabled())));
+                        ComponentTemplates.getSketchwareUtilCode(packageName, material3Enabled)));
             }
 
             if (!javaFiles.contains(new File(javaDir + "FileUtil.java"))) {
@@ -1170,9 +1203,19 @@ public class ProjectFilePaths {
 
             String generatedManifest = finalizeGeneratedManifest(manifestGenerator.generateManifest());
             srcCodeBeans.add(new SrcCodeBean("AndroidManifest.xml", generatedManifest));
-            srcCodeBeans.add(new SrcCodeBean("styles.xml", getXMLStyle()));
-            srcCodeBeans.add(new SrcCodeBean("colors.xml", getXMLColor()));
             srcCodeBeans.add(new SrcCodeBean("strings.xml", getXMLString()));
+            if (buildConfig.isComposeProject()) {
+                // Compose keeps its theme/colors in Kotlin source, not in the XML values system.
+                if (!javaFiles.contains(new File(javaDir + "Color.kt"))) {
+                    srcCodeBeans.add(new SrcCodeBean("Color.kt", getComposeColorCode()));
+                }
+                if (!javaFiles.contains(new File(javaDir + "Theme.kt"))) {
+                    srcCodeBeans.add(new SrcCodeBean("Theme.kt", getComposeThemeCode()));
+                }
+            } else {
+                srcCodeBeans.add(new SrcCodeBean("styles.xml", getXMLStyle()));
+                srcCodeBeans.add(new SrcCodeBean("colors.xml", getXMLColor()));
+            }
             Log.d("ProjectFilePaths", "generateSourceCodeBeans: activitiesToGenerate=" + activitiesToGenerate.size()
                     + ", cache=" + codegenCacheDecision
                     + ", cachedActivitiesLoaded=" + cachedActivitiesLoaded
@@ -1191,7 +1234,17 @@ public class ProjectFilePaths {
     }
 
     private boolean isViewBindingEnable() {
-        return generateDataBindingClasses && projectSettings.getValue(ProjectSettings.SETTING_ENABLE_VIEWBINDING, ProjectSettings.SETTING_GENERIC_VALUE_FALSE).equals(ProjectSettings.SETTING_GENERIC_VALUE_TRUE);
+        return !buildConfig.isComposeProject()
+                && generateDataBindingClasses
+                && projectSettings.getValue(ProjectSettings.SETTING_ENABLE_VIEWBINDING, ProjectSettings.SETTING_GENERIC_VALUE_FALSE).equals(ProjectSettings.SETTING_GENERIC_VALUE_TRUE);
+    }
+
+    private static boolean hasComposeActivity(ProjectFileManager projectFileManager) {
+        if (projectFileManager == null) return false;
+        for (ProjectFileBean activity : projectFileManager.getActivities()) {
+            if (activity.isComposeActivity()) return true;
+        }
+        return false;
     }
 
     /**
@@ -1209,7 +1262,9 @@ public class ProjectFilePaths {
             boolean isXmlFile = filename.endsWith(".xml");
             boolean isManifestFile = filename.equals("AndroidManifest.xml");
             ArrayList<ProjectFileBean> projectFiles = new ArrayList<>(projectFileManager.getActivities());
-            projectFiles.addAll(new ArrayList<>(projectFileManager.getCustomViews()));
+            if (!buildConfig.isComposeProject()) {
+                projectFiles.addAll(new ArrayList<>(projectFileManager.getCustomViews()));
+            }
             if (isXmlFile) {
                 /*
                  Generating every java file is necessary to make command blocks for xml work
@@ -1265,7 +1320,9 @@ public class ProjectFilePaths {
 
     private void prepareXmlCommands(ProjectFileManager projectFileManager, ProjectDataStore projectDataManager) {
         ArrayList<ProjectFileBean> projectFiles = new ArrayList<>(projectFileManager.getActivities());
-        projectFiles.addAll(new ArrayList<>(projectFileManager.getCustomViews()));
+        if (!buildConfig.isComposeProject()) {
+            projectFiles.addAll(new ArrayList<>(projectFileManager.getCustomViews()));
+        }
         String commandFilePath = SketchwarePaths.getProjectCommandPath(sc_id);
         boolean newXMLCommand = Boolean.parseBoolean(projectSettings.getValue(ProjectSettings.SETTING_NEW_XML_COMMAND, ProjectSettings.SETTING_GENERIC_VALUE_FALSE));
         if (newXMLCommand && FileUtil.isExistFile(commandFilePath)) {
@@ -1284,6 +1341,89 @@ public class ProjectFilePaths {
                 }
             }
         }
+    }
+
+    /**
+     * Generates Compose color values for a Kotlin + Compose project.
+     *
+     * <p>This is the Compose counterpart of {@code colors.xml}: it stores the project palette as
+     * Kotlin {@code ColorScheme} values so the Compose UI never has to read the Java/XML resource
+     * system.</p>
+     */
+    private String getComposeColorCode() {
+        String primary = composeColor(colorPrimary);
+        String primaryDark = composeColor(colorPrimaryDark);
+        String accent = composeColor(colorAccent);
+        String container = composeColor(colorControlHighlight);
+        String onBackground = composeColor(colorControlNormal);
+
+        return """
+                package %s;
+
+                import androidx.compose.material3.darkColorScheme;
+                import androidx.compose.material3.lightColorScheme;
+                import androidx.compose.ui.graphics.Color;
+
+                val SketchwareLightColors = lightColorScheme(
+                    primary = Color(%s),
+                    onPrimary = Color(0xFFFFFFFF),
+                    primaryContainer = Color(%s),
+                    onPrimaryContainer = Color(0xFF000000),
+                    secondary = Color(%s),
+                    onSecondary = Color(0xFFFFFFFF),
+                    secondaryContainer = Color(%s),
+                    onSecondaryContainer = Color(0xFF000000),
+                    background = Color(%s),
+                    onBackground = Color(%s),
+                    surface = Color(0xFFFFFFFF),
+                    onSurface = Color(0xFF000000)
+                )
+
+                val SketchwareDarkColors = darkColorScheme(
+                    primary = Color(%s),
+                    onPrimary = Color(0xFF000000),
+                    primaryContainer = Color(%s),
+                    onPrimaryContainer = Color(0xFFFFFFFF),
+                    secondary = Color(%s),
+                    onSecondary = Color(0xFF000000),
+                    secondaryContainer = Color(%s),
+                    onSecondaryContainer = Color(0xFFFFFFFF),
+                    background = Color(0xFF121212),
+                    onBackground = Color(0xFFEEEEEE),
+                    surface = Color(0xFF1E1E1E),
+                    onSurface = Color(0xFFEEEEEE)
+                )
+                """.formatted(packageName, primary, primaryDark, accent, container,
+                container, onBackground, primary, primaryDark, accent, container);
+    }
+
+    /**
+     * Generates the Compose {@code MaterialTheme} wrapper for Kotlin + Compose projects.
+     *
+     * <p>This is the Compose counterpart of {@code styles.xml}: it applies the palette from
+     * {@link #getComposeColorCode()} through {@code MaterialTheme}. Compose projects do not inflate
+     * the Java/XML theme resources.</p>
+     */
+    private String getComposeThemeCode() {
+        return """
+                package %s;
+
+                import androidx.compose.foundation.isSystemInDarkTheme;
+                import androidx.compose.material3.MaterialTheme;
+                import androidx.compose.runtime.Composable;
+
+                @Composable
+                fun SketchwareTheme(content: @Composable () -> Unit) {
+                    MaterialTheme(
+                        colorScheme = if (isSystemInDarkTheme()) SketchwareDarkColors else SketchwareLightColors,
+                        content = content
+                    )
+                }
+                """.formatted(packageName);
+    }
+
+    private static String composeColor(int argb) {
+        return String.format("0x%08X", argb & 0xFFFFFFFFL);
     }
 
     public String getXMLString() {
@@ -1546,6 +1686,7 @@ public class ProjectFilePaths {
 
         key.append(isAndroidStudioExport ? '1' : '0');
         appendTextInfo(key, packageName);
+        appendTextInfo(key, buildConfig.projectType);
 
         try {
             Context ctx = SketchApplication.getAppContext();

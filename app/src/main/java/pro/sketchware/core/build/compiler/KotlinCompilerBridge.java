@@ -11,6 +11,7 @@ import java.util.Locale;
 import pro.sketchware.core.build.ProjectBuilder;
 import pro.sketchware.core.build.ProjectFilePaths;
 import pro.sketchware.core.build.BuildProgressReceiver;
+import pro.sketchware.core.project.ProjectType;
 import pro.sketchware.core.project.SketchwarePaths;
 import pro.sketchware.util.library.BuiltInLibraries;
 import pro.sketchware.util.library.BuiltInLibraryManager;
@@ -100,16 +101,21 @@ public class KotlinCompilerBridge {
     /**
      * Whether this project must be compiled with the Compose compiler plugin.
      *
-     * <p>{@link pro.sketchware.core.project.BuildConfig#isComposeEnabled} is the authoritative
-     * answer during a build: it is derived from the Compose library flag and from the presence of a
-     * Kotlin Activity, which in this fork is always a Compose Activity. The source scan remains as a
-     * fallback for callers that compile before {@code ProjectFilePaths#initializeMetadata} ran, so a
-     * project can never lose the plugin because a caller did not populate the metadata.</p>
+     * <p>{@link pro.sketchware.core.project.BuildConfig#isComposeProject()} is the authoritative
+     * answer during a build. A Java/XML project never gets the Compose compiler plugin, even when a
+     * stale Compose library flag or a stray Kotlin source file with Compose imports exists. The
+     * legacy source scan remains only as a fallback for callers that compile before
+     * {@code ProjectFilePaths#initializeMetadata} ran or that work with an older metadata file that
+     * has no project-type key at all.</p>
      */
     private static boolean projectUsesCompose(ProjectBuilder builder) {
-        if (builder.projectFilePaths.buildConfig != null
-                && builder.projectFilePaths.buildConfig.isComposeEnabled) {
-            return true;
+        if (builder.projectFilePaths.buildConfig != null) {
+            if (builder.projectFilePaths.buildConfig.projectTypeResolved) {
+                return builder.projectFilePaths.buildConfig.isComposeProject();
+            }
+            if (builder.projectFilePaths.buildConfig.isComposeEnabled) {
+                return true;
+            }
         }
         try {
             for (File sourceFile : KotlinCompilerUtil.getFilesToCompile(builder.projectFilePaths)) {

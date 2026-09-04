@@ -22,7 +22,7 @@ public class Material3LibraryManager {
     public Material3LibraryManager(String sc_id) {
         isEditingState = false;
         appCombatLibraryBean = ProjectDataManager.getLibraryManager(sc_id).getCompat();
-        isAppCompatEnabled = appCombatLibraryBean.isEnabled();
+        isAppCompatEnabled = appCombatLibraryBean != null && appCombatLibraryBean.isEnabled();
         context = getContext();
     }
 
@@ -30,14 +30,14 @@ public class Material3LibraryManager {
         this.context = context;
         isEditingState = false;
         appCombatLibraryBean = ProjectDataManager.getLibraryManager(sc_id).getCompat();
-        isAppCompatEnabled = appCombatLibraryBean.isEnabled();
+        isAppCompatEnabled = appCombatLibraryBean != null && appCombatLibraryBean.isEnabled();
     }
 
     public Material3LibraryManager(ProjectLibraryBean projectLibraryBean) {
         context = getContext();
         isEditingState = true;
         appCombatLibraryBean = projectLibraryBean;
-        isAppCompatEnabled = projectLibraryBean.isEnabled();
+        isAppCompatEnabled = projectLibraryBean != null && projectLibraryBean.isEnabled();
     }
 
     public boolean isAppCompatEnabled() {
@@ -57,7 +57,8 @@ public class Material3LibraryManager {
     }
 
     private String safeGetString(String key) {
-        if (appCombatLibraryBean.configurations != null &&
+        if (appCombatLibraryBean != null &&
+                appCombatLibraryBean.configurations != null &&
                 appCombatLibraryBean.configurations.containsKey(key) &&
                 appCombatLibraryBean.configurations.get(key) instanceof String keyValue) {
             return keyValue;
@@ -66,7 +67,8 @@ public class Material3LibraryManager {
     }
 
     private boolean safeGetBoolean(String key) {
-        if (appCombatLibraryBean.configurations != null &&
+        if (appCombatLibraryBean != null &&
+                appCombatLibraryBean.configurations != null &&
                 appCombatLibraryBean.configurations.containsKey(key) &&
                 appCombatLibraryBean.configurations.get(key) instanceof Boolean keyValue) {
             return keyValue;

@@ -42,6 +42,7 @@ import pro.sketchware.util.DeviceUtil;
 import pro.sketchware.util.SketchToast;
 import pro.sketchware.core.async.TaskHost;
 import pro.sketchware.core.validation.VariableNameValidator;
+import pro.sketchware.core.project.ProjectDataManager;
 import pro.sketchware.core.project.ProjectListManager;
 import pro.sketchware.util.UIHelper;
 import pro.sketchware.util.format.DateTimeUtil;
@@ -50,6 +51,7 @@ import pro.sketchware.util.ViewUtil;
 import pro.sketchware.core.project.SketchwarePaths;
 import pro.sketchware.util.MapValueHelper;
 import pro.sketchware.core.project.ProjectSettings;
+import pro.sketchware.core.project.ProjectType;
 import pro.sketchware.util.Helper;
 import pro.sketchware.util.ProjectFile;
 import pro.sketchware.activities.settings.ConfigActivity;
@@ -81,6 +83,7 @@ public class MyProjectSettingActivity extends BaseAppCompatActivity implements V
     private boolean isIconAdaptive;
     private Bitmap icon;
     private String sc_id;
+    private String projectType = ProjectType.JAVA_XML;
 
     private ThemePresetAdapter themePresetAdapter;
 
@@ -180,6 +183,10 @@ public class MyProjectSettingActivity extends BaseAppCompatActivity implements V
                 binding.appIcon.setImageURI(FileProvider.getUriForFile(getApplicationContext(), getApplicationContext().getPackageName() + ".provider", getCustomIcon()));
             }
 
+            projectType = ProjectType.resolve(metadata,
+                    ProjectDataManager.getLibraryManager(sc_id).getCompose(), false);
+            applyStoredProjectTypeToUi();
+
             for (int i = 0; i < themeColorKeys.length; i++) {
                 projectThemeColors[i] = MapValueHelper.get(metadata, themeColorKeys[i], projectThemeColors[i]);
             }
@@ -213,6 +220,7 @@ public class MyProjectSettingActivity extends BaseAppCompatActivity implements V
                 binding.appIcon.setImageURI(FileProvider.getUriForFile(getApplicationContext(), getApplicationContext().getPackageName() + ".provider", getCustomIcon()));
             }
         }
+        applyStoredProjectTypeToUi();
         syncThemeColors();
     }
 
@@ -354,6 +362,31 @@ public class MyProjectSettingActivity extends BaseAppCompatActivity implements V
         for (int i = 0; i < projectThemeColors.length; i++) {
             ((ThemeColorView) binding.layoutThemeColors.getChildAt(i)).color.setBackgroundColor(projectThemeColors[i]);
         }
+    }
+
+    private void applyStoredProjectTypeToUi() {
+        if (ProjectType.COMPOSE.equals(projectType)) {
+            binding.projectTypeCompose.setChecked(true);
+        } else {
+            binding.projectTypeJavaXml.setChecked(true);
+        }
+        // Project type is a creation-time decision. Changing an existing project's UI system while
+        // preserving its source files is a migration concern and is not handled here.
+        if (updatingExistingProject) {
+            binding.projectTypeSelector.setEnabled(false);
+        } else {
+            binding.projectTypeSelector.setEnabled(true);
+        }
+    }
+
+    private String getSelectedProjectType() {
+        if (updatingExistingProject) {
+            return projectType;
+        }
+        if (binding.projectTypeCompose.isChecked()) {
+            return ProjectType.COMPOSE;
+        }
+        return ProjectType.JAVA_XML;
     }
 
     private void parseVersion(String toParse) {
@@ -516,6 +549,7 @@ public class MyProjectSettingActivity extends BaseAppCompatActivity implements V
             data.put("my_sc_pkg_name", Helper.getText(activity.binding.etPackageName));
             data.put("my_ws_name", Helper.getText(activity.binding.etProjectName));
             data.put("my_app_name", Helper.getText(activity.binding.etAppName));
+            data.put(ProjectType.METADATA_KEY, activity.getSelectedProjectType());
             if (activity.updatingExistingProject) {
                 data.put("custom_icon", activity.projectHasCustomIcon);
                 data.put("isIconAdaptive", activity.isIconAdaptive);
@@ -543,7 +577,10 @@ public class MyProjectSettingActivity extends BaseAppCompatActivity implements V
                 new EncryptedFileUtil().deleteDirectoryByPath(SketchwarePaths.getDataPath(activity.sc_id));
                 ProjectSettings projectSettings = new ProjectSettings(activity.sc_id);
                 projectSettings.setValue(ProjectSettings.SETTING_NEW_XML_COMMAND, ProjectSettings.SETTING_GENERIC_VALUE_TRUE);
-                projectSettings.setValue(ProjectSettings.SETTING_ENABLE_VIEWBINDING, ProjectSettings.SETTING_GENERIC_VALUE_TRUE);
+                projectSettings.setValue(ProjectSettings.SETTING_ENABLE_VIEWBINDING,
+                        ProjectType.COMPOSE.equals(activity.getSelectedProjectType())
+                                ? ProjectSettings.SETTING_GENERIC_VALUE_FALSE
+                                : ProjectSettings.SETTING_GENERIC_VALUE_TRUE);
 
             }
             try {
