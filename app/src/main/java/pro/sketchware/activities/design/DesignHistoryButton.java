@@ -2,7 +2,6 @@ package pro.sketchware.activities.design;
 
 import android.content.Context;
 import android.util.AttributeSet;
-import android.view.View;
 
 import androidx.annotation.Nullable;
 import androidx.appcompat.widget.AppCompatImageButton;
@@ -31,21 +30,21 @@ public class DesignHistoryButton extends AppCompatImageButton {
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
-        refreshState();
+        refreshVisualState();
     }
 
     @Override
     public boolean performClick() {
         ViewEditorFragment editor = findEditorFragment();
         if (editor == null) {
-            refreshState();
+            refreshVisualState();
             return false;
         }
 
         boolean redo = "redo".equals(getTag());
         boolean available = redo ? editor.canRedo() : editor.canUndo();
         if (!available) {
-            refreshState();
+            refreshVisualState();
             return false;
         }
 
@@ -54,21 +53,19 @@ public class DesignHistoryButton extends AppCompatImageButton {
         } else {
             editor.performUndo();
         }
-        refreshState();
-        return super.performClick();
+        refreshVisualState();
+        return true;
     }
 
-    private void refreshState() {
+    private void refreshVisualState() {
         ViewEditorFragment editor = findEditorFragment();
         if (editor == null) {
-            setEnabled(false);
-            setAlpha(0.45f);
+            setAlpha(0.55f);
             return;
         }
 
         boolean redo = "redo".equals(getTag());
-        setEnabled(redo ? editor.canRedo() : editor.canUndo());
-        setAlpha(isEnabled() ? 1f : 0.45f);
+        setAlpha((redo ? editor.canRedo() : editor.canUndo()) ? 1f : 0.45f);
     }
 
     @Nullable
@@ -77,17 +74,16 @@ public class DesignHistoryButton extends AppCompatImageButton {
         if (!(context instanceof FragmentActivity)) {
             return null;
         }
-        return findIn((FragmentActivity) context, ((FragmentActivity) context)
-                .getSupportFragmentManager().getFragments());
+        return findIn(((FragmentActivity) context).getSupportFragmentManager().getFragments());
     }
 
     @Nullable
-    private static ViewEditorFragment findIn(FragmentActivity activity, List<Fragment> fragments) {
+    private static ViewEditorFragment findIn(List<Fragment> fragments) {
         for (Fragment fragment : fragments) {
             if (fragment instanceof ViewEditorFragment) {
                 return (ViewEditorFragment) fragment;
             }
-            ViewEditorFragment nested = findIn(activity, fragment.getChildFragmentManager().getFragments());
+            ViewEditorFragment nested = findIn(fragment.getChildFragmentManager().getFragments());
             if (nested != null) {
                 return nested;
             }
