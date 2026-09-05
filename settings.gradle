@@ -1,3 +1,81 @@
+// ---------------------------------------------------------------------------
+// Build toolchain: replace AGP's bundled D8/R8 with the pinned R8 9.x line
+// ---------------------------------------------------------------------------
+// This repo compiles its Kotlin sources with Kotlin 2.4.10 (the
+// kotlin-gradle-plugin dependency in the root build.gradle). Kotlin 2.4
+// stamps every `@kotlin.Metadata`-annotated class with metadata version
+// 2.4.0. The D8/R8 bundled with AGP 8.13.0 is 8.13.6, which predates that
+// format: while rewriting the Kotlin metadata of the external libraries it
+// dexes, `:app:mergeExtDexDebug` aborts with
+//
+//     WARNING: D8: Unexpected error during rewriting of Kotlin metadata for class ...
+//     com.android.tools.r8.internal.<...>: Should never be called
+//
+// (which becomes a hard failure for the affected dex archive).
+//
+// https://developer.android.com/build/kotlin-support lists, for Kotlin 2.4, a
+// minimum AGP of 8.5.2 (8.13.0 is fine, so no AGP/Gradle bump is needed) and a
+// required R8/D8 of 9.1.29. No AGP 8.x bundles that: the whole 8.x line ships
+// R8 8.13.x at most. The officially supported way to bridge the gap is to
+// override the bundled compiler, documented at
+// https://r8.googlesource.com/r8/+/refs/heads/main/README.md#replacing-r8-in-android-gradle-plugin
+// — the `pluginManagement { buildscript { ... } }` block below. It puts the
+// chosen R8 on the settings-level buildscript classpath, which is the parent
+// of every project's buildscript classpath (including the one AGP itself is
+// loaded from), so `com.android.tools.r8.*` resolves from the override and the
+// older transitive copy bundled by AGP is shadowed in every module (:app,
+// :resolver and :vendor-dx all dex through it). The root build.gradle repeats
+// the same classpath entry right where AGP is declared, so the override also
+// holds through the classic "newest version wins" conflict resolution.
+//
+// The version is deliberately NOT re-pinned here: it is read from the existing
+// `r8` entry in gradle/libs.versions.toml. That entry already drives the R8
+// that ships *inside* the APK (libs.bundles.shrinker), because DexCompiler and
+// R8Compiler call the com.android.tools.r8 APIs on-device to dex and minify
+// user projects. One pin, one R8: the compiler that builds this APK and the
+// compiler that runs inside it can never drift apart, and D8's metadata
+// rewriter always understands the Kotlin version that compiled the app.
+// Bumping the catalog entry is therefore all it takes to roll this override —
+// and the checks below fail the build at configuration time, with a readable
+// message, instead of mid-dexing, if the pin ever drops below the floor that
+// Kotlin 2.4.0 metadata requires.
+pluginManagement {
+    buildscript {
+        repositories {
+            // com.android.tools:r8 is published to Google's Maven repository.
+            google()
+            mavenCentral()
+        }
+        dependencies {
+            def r8Pin = (new File(rootDir, "gradle/libs.versions.toml").text =~ /(?m)^\s*r8\s*=\s*"([^"]+)"/)
+            if (!r8Pin.find()) {
+                throw new GradleException(
+                    "gradle/libs.versions.toml must keep an `r8 = \"<version>\"` entry in [versions]: " +
+                            "it drives both the on-device shrinker bundle and the build-time D8/R8 " +
+                            "override configured here (see the comment above the pluginManagement block).")
+            }
+            def r8Version = r8Pin.group(1)
+
+            // Kotlin 2.4.0 metadata floor: https://developer.android.com/build/kotlin-support
+            def numeric = r8Version.findAll(/\d+/).collect { it.toInteger() }
+            def parts = (0..2).collect { it < numeric.size() ? numeric[it] : 0 }
+            if (parts[0] < 9 || (parts[0] == 9 && (parts[1] < 1 || (parts[1] == 1 && parts[2] < 29)))) {
+                throw new GradleException(
+                    "com.android.tools:r8 is pinned to $r8Version in gradle/libs.versions.toml, but " +
+                            "Kotlin 2.4 requires D8/R8 >= 9.1.29 " +
+                            "(https://developer.android.com/build/kotlin-support). Bump the r8 entry; " +
+                            "do not silence the D8 metadata error with -dontwarn or by downgrading Kotlin.")
+            }
+
+            // The root build.gradle puts the same artifact on AGP's own buildscript
+            // classpath; this shared property is what keeps the two in lockstep
+            // without duplicating a version literal.
+            gradle.ext.set("buildTimeR8Version", r8Version)
+            classpath "com.android.tools:r8:${r8Version}"
+        }
+    }
+}
+
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {

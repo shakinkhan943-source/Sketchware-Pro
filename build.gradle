@@ -5,6 +5,32 @@ buildscript {
         mavenCentral()
     }
     dependencies {
+        // --- Build-time D8/R8 override (full explanation in settings.gradle) ---
+        // AGP 8.13.0 bundles D8/R8 8.13.6, whose Kotlin-metadata reader predates
+        // Kotlin 2.4; while dexing external libraries in :app:mergeExtDexDebug it
+        // dies with "Unexpected error during rewriting of Kotlin metadata ...
+        // Should never be called". Kotlin 2.4 requires D8/R8 >= 9.1.29
+        // (https://developer.android.com/build/kotlin-support); AGP >= 8.5.2 with
+        // the bundled compiler overridden is the combination Google lists as
+        // supported, so AGP and Gradle stay as they are and only D8/R8 is replaced.
+        //
+        // The version comes from settings.gradle, which read it from the `r8` entry
+        // in gradle/libs.versions.toml and put the artifact on the settings-level
+        // buildscript classpath. Declaring it again here, BEFORE AGP on the very
+        // classpath AGP is loaded from, makes Gradle's newest-wins conflict
+        // resolution evict AGP's transitive com.android.tools:r8:8.13.6 from this
+        // classpath too — both documented override paths then agree on one version,
+        // whichever classloader the dex tasks resolve com.android.tools.r8.* through.
+        // This is a real D8/R8 upgrade, not a warning suppression: -dontwarn and
+        // Kotlin/library downgrades must never be used to hide metadata-rewrite errors.
+        if (!gradle.ext.has("buildTimeR8Version")) {
+            throw new GradleException(
+                "buildTimeR8Version is unset: the pluginManagement { buildscript { ... } } block in " +
+                        "settings.gradle must run before this buildscript block. It is the D8/R8 " +
+                        "override that lets Kotlin 2.4 metadata be dexed - do not remove it.")
+        }
+        def buildTimeR8Version = gradle.ext.get("buildTimeR8Version")
+        classpath "com.android.tools:r8:${buildTimeR8Version}"
         classpath 'com.android.tools.build:gradle:8.13.0'
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.10"
         // NOTE: Do not place your application dependencies here; they belong
