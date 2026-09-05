@@ -1,45 +1,44 @@
 <resources>
-    <color name="color_accent">#ff008dcd</color>
+    <color name="color_accent">#FFC9BEFF</color>
 
-    <color name="color_text_onSurface">#E2E2E5</color>
-    <color name="color_text_onSurfaceVariant">#C1C7CE</color>
+    <color name="color_text_onSurface">#FFE5E1EA</color>
+    <color name="color_text_onSurfaceVariant">#FFC9C5D0</color>
 
-    <!--  input layout  -->
-    <color name="inputLayoutBackgroundColor">#2e2e2e</color>
-    <color name="inputLayoutStrokeColor">#505050</color>
+    <!-- input layout -->
+    <color name="inputLayoutBackgroundColor">#FF191A20</color>
+    <color name="inputLayoutStrokeColor">#FF45454E</color>
 
-    <!--  main layouts  -->
-    <color name="backgroundColor">#1C1C1C</color>
-    <color name="backgroundOpenColor">#252729</color>
-    <color name="dialogBackgroundColor">#2E2E2E</color>
+    <!-- main layouts -->
+    <color name="backgroundColor">#FF0E0F13</color>
+    <color name="backgroundOpenColor">#FF141519</color>
+    <color name="dialogBackgroundColor">#FF23242A</color>
 
-    <!--  views  -->
-    <color name="cardStrokeColor">#2E2E2E</color>
+    <!-- views -->
+    <color name="cardStrokeColor">#FF45454E</color>
 
     <!-- editor preview -->
-    <color name="editor_statusbar_bg">#ff006b9e</color>
-    <color name="editor_toolbar_bg">#ff008dcd</color>
-    <color name="editor_default_border">#ff57beee</color>
-    <color name="editor_tab_indicator">#ffffc107</color>
-    <color name="editor_tab_text">#ff57beee</color>
+    <color name="editor_statusbar_bg">#FF090A0D</color>
+    <color name="editor_toolbar_bg">#FF191A20</color>
+    <color name="editor_default_border">#FFC9BEFF</color>
+    <color name="editor_tab_indicator">#FFC9BEFF</color>
+    <color name="editor_tab_text">#FFC9BEFF</color>
 
     <!-- logic editor palette -->
-    <color name="palette_variable">#ffee7d16</color>
-    <color name="palette_list">#ffcc5b22</color>
-    <color name="palette_component">#ff2ca5e2</color>
-    <color name="palette_more_block">#ff8a55d7</color>
+    <color name="palette_variable">#FFFFB95E</color>
+    <color name="palette_list">#FFFF9D6E</color>
+    <color name="palette_component">#FF8CCBFF</color>
+    <color name="palette_more_block">#FFD0B8FF</color>
 
-    <color name="view_property_background_color">#292929</color>
-    <color name="view_property_tab_active">#525252</color>
-    <color name="view_property_tab_deactive">#60525252</color>
-    <color name="view_property_tab_active_text">#ff000000</color>
-    <color name="view_property_tab_deactive_text">#ffffffff</color>
-    <color name="view_property_grid_background">#60525252</color>
-    <color name="view_property_spinner_filter">#ffffffff</color>
+    <color name="view_property_background_color">#FF191A20</color>
+    <color name="view_property_tab_active">#FF403580</color>
+    <color name="view_property_tab_deactive">#FF2D2E34</color>
+    <color name="view_property_tab_active_text">#FFFFFFFF</color>
+    <color name="view_property_tab_deactive_text">#FFE5E1EA</color>
+    <color name="view_property_grid_background">#FF23242A</color>
+    <color name="view_property_spinner_filter">#FFE5E1EA</color>
 
     <color name="splash_bg_color">@color/md_theme_dark_background</color>
     <color name="splash_content_color">@color/md_theme_dark_on_background</color>
 
-    <color name="color_error_bg">#261008</color>
-
+    <color name="color_error_bg">#FF261008</color>
 </resources>
