@@ -288,7 +288,6 @@ public class ProjectsFragment extends PermissionFragment {
         if (binding == null) return;
         binding.emptyContainer.setVisibility(projectsList.isEmpty() ? View.VISIBLE : View.GONE);
     }
-    }
 
     private void addProject(String sc_id) {
         executorService.execute(() -> {
