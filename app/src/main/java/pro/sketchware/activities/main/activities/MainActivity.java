@@ -22,7 +22,7 @@ import androidx.activity.OnBackPressedCallback;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.ActionBarDrawerToggle;
 import androidx.core.app.ActivityCompat;
-import androidx.core.app.splashscreen.SplashScreen;
+import androidx.core.splashscreen.SplashScreen;
 import androidx.drawerlayout.widget.DrawerLayout;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentManager;
@@ -68,8 +68,7 @@ public class MainActivity extends BasePermissionAppCompatActivity {
     private Snackbar storageAccessDenied;
     private MainBinding binding;
     private final OnBackPressedCallback closeDrawer = new OnBackPressedCallback(true) {
-        @Override
-        public void handleOnBackPressed() {
+        @Override public void handleOnBackPressed() {
             setEnabled(false);
             binding.drawerLayout.closeDrawers();
         }
@@ -82,21 +81,17 @@ public class MainActivity extends BasePermissionAppCompatActivity {
     private static boolean isFirebaseInitialized(Context context) {
         try {
             return FirebaseApp.getApps(context) != null && !FirebaseApp.getApps(context).isEmpty();
-        } catch (IllegalStateException e) {
-            return false;
-        }
+        } catch (IllegalStateException e) { return false; }
     }
 
-    @Override
-    public void onStoragePermissionGranted(int requestCode) {
+    @Override public void onStoragePermissionGranted(int requestCode) {
         if (requestCode == 9501) {
             allFilesAccessCheck();
             if (activeFragment instanceof ProjectsFragment) projectsFragment.refreshProjectsList();
         }
     }
 
-    @Override
-    public void onOpenSettings(int requestCode) {
+    @Override public void onOpenSettings(int requestCode) {
         Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
         intent.setData(Uri.parse("package:" + getApplicationContext().getPackageName()));
         startActivity(intent);
@@ -109,14 +104,11 @@ public class MainActivity extends BasePermissionAppCompatActivity {
         if (activeFragment instanceof ProjectsFragment) projectsFragment.refreshProjectsList();
     }
 
-    @Override
-    public void onActivityResult(int requestCode, int resultCode, Intent data) {
+    @Override public void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (resultCode == RESULT_OK) {
             switch (requestCode) {
-                case 111:
-                    invalidateOptionsMenu();
-                    break;
+                case 111: invalidateOptionsMenu(); break;
                 case 113:
                     if (data != null && data.getBooleanExtra("not_show_popup_anymore", false)) sharedPrefs.put("U1I2", (Object) false);
                     break;
@@ -129,8 +121,7 @@ public class MainActivity extends BasePermissionAppCompatActivity {
         }
     }
 
-    @Override
-    public void onConfigurationChanged(@NonNull Configuration newConfig) {
+    @Override public void onConfigurationChanged(@NonNull Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
         drawerToggle.onConfigurationChanged(newConfig);
     }
@@ -149,21 +140,15 @@ public class MainActivity extends BasePermissionAppCompatActivity {
                         intent.putExtra("crash_file", latestCrash.getAbsolutePath());
                         startActivity(intent);
                     })
-                    .setNegativeButton(R.string.common_word_cancel, null)
-                    .show();
-        } catch (Exception e) {
-            Log.e("MainActivity", "Failed to check previous crash", e);
-        }
+                    .setNegativeButton(R.string.common_word_cancel, null).show();
+        } catch (Exception e) { Log.e("MainActivity", "Failed to check previous crash", e); }
     }
 
-    @Override
-    public void onCreate(Bundle savedInstanceState) {
+    @Override public void onCreate(Bundle savedInstanceState) {
         SplashScreen.installSplashScreen(this);
         super.onCreate(savedInstanceState);
         programInfoLauncher = registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
-            if (result.getResultCode() == RESULT_OK && result.getData() != null) {
-                DataResetter.resetData(this, result.getData().getBooleanExtra("onlyConfig", true));
-            }
+            if (result.getResultCode() == RESULT_OK && result.getData() != null) DataResetter.resetData(this, result.getData().getBooleanExtra("onlyConfig", true));
         });
         enableEdgeToEdgeNoContrast();
         checkPreviousCrash();
@@ -186,10 +171,7 @@ public class MainActivity extends BasePermissionAppCompatActivity {
         binding.drawerLayout.addDrawerListener(drawerToggle);
         binding.drawerLayout.addDrawerListener(new DrawerLayout.DrawerListener() {
             @Override public void onDrawerSlide(@NonNull View drawerView, float slideOffset) {}
-            @Override public void onDrawerOpened(@NonNull View drawerView) {
-                closeDrawer.setEnabled(true);
-                getOnBackPressedDispatcher().addCallback(closeDrawer);
-            }
+            @Override public void onDrawerOpened(@NonNull View drawerView) { closeDrawer.setEnabled(true); getOnBackPressedDispatcher().addCallback(closeDrawer); }
             @Override public void onDrawerClosed(@NonNull View drawerView) {}
             @Override public void onDrawerStateChanged(int newState) {}
         });
@@ -231,10 +213,7 @@ public class MainActivity extends BasePermissionAppCompatActivity {
             bottomSheetDialog.getPositiveButton().setEnabled(false);
             CountDownTimer countDownTimer = new CountDownTimer(10000, 1000) {
                 @Override public void onTick(long millisUntilFinished) { bottomSheetDialog.setPositiveButtonText(millisUntilFinished / 1000 + ""); }
-                @Override public void onFinish() {
-                    bottomSheetDialog.setPositiveButtonText("View changes");
-                    bottomSheetDialog.getPositiveButton().setEnabled(true);
-                }
+                @Override public void onFinish() { bottomSheetDialog.setPositiveButtonText("View changes"); bottomSheetDialog.getPositiveButton().setEnabled(true); }
             };
             countDownTimer.start();
             if (!isFinishing()) bottomSheetDialog.show();
@@ -244,15 +223,13 @@ public class MainActivity extends BasePermissionAppCompatActivity {
             projectsFragment = (ProjectsFragment) getSupportFragmentManager().findFragmentByTag(PROJECTS_FRAGMENT_TAG);
             projectsStoreFragment = (ProjectsStoreFragment) getSupportFragmentManager().findFragmentByTag(PROJECTS_STORE_FRAGMENT_TAG);
             currentNavItemId = savedInstanceState.getInt("selected_tab_id", R.id.tab_projects);
-            if (currentNavItemId == R.id.tab_store) navigateToSketchubFragment();
-            else navigateToProjectsFragment();
+            if (currentNavItemId == R.id.tab_store) navigateToSketchubFragment(); else navigateToProjectsFragment();
             return;
         }
         navigateToProjectsFragment();
     }
 
-    @Override
-    protected void onSaveInstanceState(@NonNull Bundle outState) {
+    @Override protected void onSaveInstanceState(@NonNull Bundle outState) {
         super.onSaveInstanceState(outState);
         outState.putInt("selected_tab_id", currentNavItemId);
     }
@@ -262,8 +239,7 @@ public class MainActivity extends BasePermissionAppCompatActivity {
         FragmentManager fm = getSupportFragmentManager();
         FragmentTransaction transaction = fm.beginTransaction();
         if (activeFragment != null && activeFragment != projectsFragment) transaction.hide(activeFragment);
-        if (fm.findFragmentByTag(PROJECTS_FRAGMENT_TAG) == null) transaction.add(binding.container.getId(), projectsFragment, PROJECTS_FRAGMENT_TAG);
-        else transaction.show(projectsFragment);
+        if (fm.findFragmentByTag(PROJECTS_FRAGMENT_TAG) == null) transaction.add(binding.container.getId(), projectsFragment, PROJECTS_FRAGMENT_TAG); else transaction.show(projectsFragment);
         transaction.commit();
         activeFragment = projectsFragment;
         currentNavItemId = R.id.tab_projects;
@@ -275,16 +251,14 @@ public class MainActivity extends BasePermissionAppCompatActivity {
         FragmentManager fm = getSupportFragmentManager();
         FragmentTransaction transaction = fm.beginTransaction();
         if (activeFragment != null && activeFragment != projectsStoreFragment) transaction.hide(activeFragment);
-        if (fm.findFragmentByTag(PROJECTS_STORE_FRAGMENT_TAG) == null) transaction.add(binding.container.getId(), projectsStoreFragment, PROJECTS_STORE_FRAGMENT_TAG);
-        else transaction.show(projectsStoreFragment);
+        if (fm.findFragmentByTag(PROJECTS_STORE_FRAGMENT_TAG) == null) transaction.add(binding.container.getId(), projectsStoreFragment, PROJECTS_STORE_FRAGMENT_TAG); else transaction.show(projectsStoreFragment);
         transaction.commit();
         activeFragment = projectsStoreFragment;
         currentNavItemId = R.id.tab_store;
         if (binding.mainTabGroup.getCheckedButtonId() != R.id.tab_store) binding.mainTabGroup.check(R.id.tab_store);
     }
 
-    @NonNull
-    private BottomSheetDialogView getBottomSheetDialogView() {
+    @NonNull private BottomSheetDialogView getBottomSheetDialogView() {
         BottomSheetDialogView bottomSheetDialog = new BottomSheetDialogView(this);
         bottomSheetDialog.setTitle(Helper.getResString(R.string.main_major_changes_title));
         bottomSheetDialog.setDescription(Helper.getResString(R.string.main_major_changes_desc));
@@ -298,21 +272,18 @@ public class MainActivity extends BasePermissionAppCompatActivity {
         return bottomSheetDialog;
     }
 
-    @Override
-    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
+    @Override public boolean onOptionsItemSelected(@NonNull MenuItem item) {
         if (drawerToggle.onOptionsItemSelected(item)) return true;
         return super.onOptionsItemSelected(item);
     }
 
-    @Override
-    public void onPostCreate(Bundle savedInstanceState) {
+    @Override public void onPostCreate(Bundle savedInstanceState) {
         super.onPostCreate(savedInstanceState);
         drawerToggle.syncState();
         if (isFirebaseInitialized(this)) FirebaseMessaging.getInstance().subscribeToTopic("all");
     }
 
-    @Override
-    public void onResume() {
+    @Override public void onResume() {
         super.onResume();
         long freeMegabytes = DeviceUtil.getFreeStorageMB();
         if (freeMegabytes < 100 && freeMegabytes > 0) showNoticeNotEnoughFreeStorageSpace();
@@ -335,17 +306,11 @@ public class MainActivity extends BasePermissionAppCompatActivity {
                 dialog.setIcon(R.drawable.ic_expire_48dp);
                 dialog.setTitle(R.string.main_storage_access_title);
                 dialog.setMessage(Helper.getResString(R.string.main_storage_access_message));
-                dialog.setPositiveButton(Helper.getResString(R.string.common_word_settings), (v, which) -> {
-                    FileUtil.requestAllFilesAccessPermission(this);
-                    v.dismiss();
-                });
+                dialog.setPositiveButton(Helper.getResString(R.string.common_word_settings), (v, which) -> { FileUtil.requestAllFilesAccessPermission(this); v.dismiss(); });
                 dialog.setNegativeButton(R.string.common_word_skip, null);
                 dialog.setNeutralButton(R.string.common_word_dont_show_anymore, (v, which) -> {
-                    try {
-                        if (!optOutFile.createNewFile()) throw new IOException("Failed to create file " + optOutFile);
-                    } catch (IOException e) {
-                        Log.e("MainActivity", "Error while creating storage notice opt-out file", e);
-                    }
+                    try { if (!optOutFile.createNewFile()) throw new IOException("Failed to create file " + optOutFile); }
+                    catch (IOException e) { Log.e("MainActivity", "Error while creating storage notice opt-out file", e); }
                     v.dismiss();
                 });
                 dialog.show();
@@ -386,7 +351,5 @@ public class MainActivity extends BasePermissionAppCompatActivity {
         }
     }
 
-    public void launchProgramInfo(Intent intent) {
-        programInfoLauncher.launch(intent);
-    }
+    public void launchProgramInfo(Intent intent) { programInfoLauncher.launch(intent); }
 }
