@@ -46,6 +46,7 @@ import pro.sketchware.R;
 import pro.sketchware.activities.main.activities.MainActivity;
 import pro.sketchware.databinding.MyprojectsBinding;
 import pro.sketchware.databinding.SortProjectDialogBinding;
+import pro.sketchware.util.MapValueHelper;
 import pro.sketchware.util.UI;
 
 public class ProjectsFragment extends PermissionFragment {
@@ -151,6 +152,11 @@ public class ProjectsFragment extends PermissionFragment {
         projectsAdapter = new ProjectsAdapter(this, projectsList);
         binding.myprojects.setAdapter(projectsAdapter);
         binding.myprojects.setHasFixedSize(true);
+        // Small extra view cache keeps icon loading jank-free while scrolling fast
+        // through long project lists without increasing memory pressure noticeably.
+        binding.myprojects.setItemViewCacheSize(5);
+
+        binding.btnEmptyCreate.setOnClickListener(v -> toProjectSettingsActivity());
 
         binding.myprojects.post(this::refreshProjectsList); // wait for RecyclerView to be ready
         UI.addSystemWindowInsetToPadding(binding.specialActionContainer, true, false, true, false);
@@ -226,6 +232,7 @@ public class ProjectsFragment extends PermissionFragment {
 
         executorService.execute(() -> {
             List<HashMap<String, Object>> loadedProjects = ProjectListManager.listProjects();
+            backfillLegacyProjectVersions(loadedProjects);
             loadedProjects.sort(new ProjectComparator(preference.getIntDefault("sortBy"),preference.getString("pinnedProject", "-1")));
 
             DiffUtil.DiffResult diffResult = DiffUtil.calculateDiff(new ProjectDiffCallback(projectsList, loadedProjects));
@@ -243,10 +250,44 @@ public class ProjectsFragment extends PermissionFragment {
                 projectsList.clear();
                 projectsList.addAll(loadedProjects);
                 diffResult.dispatchUpdatesTo(projectsAdapter);
+                updateEmptyState();
                 if (projectsSearchView != null)
                     projectsAdapter.filterData(projectsSearchView.getQuery().toString());
             });
         });
+    }
+
+    /**
+     * One-time metadata fixes for legacy projects. Runs in the background because it may
+     * write to disk — never do this while binding list rows on the main thread.
+     */
+    private static void backfillLegacyProjectVersions(List<HashMap<String, Object>> projects) {
+        for (HashMap<String, Object> project : projects) {
+            String scId = MapValueHelper.getString(project, "sc_id");
+            boolean changed = false;
+            if (MapValueHelper.getString(project, "sc_ver_code").isEmpty()) {
+                project.put("sc_ver_code", "1");
+                project.put("sc_ver_name", "1.0");
+                changed = true;
+            }
+            if (MapValueHelper.getInt(project, "sketchware_ver") <= 0) {
+                project.put("sketchware_ver", 61);
+                changed = true;
+            }
+            if (changed) {
+                ProjectListManager.updateProject(scId, project);
+            }
+        }
+    }
+
+    /**
+     * Shows the "no projects" empty state. Based on the full (unfiltered) list, so an
+     * empty search query result never shows it.
+     */
+    public void updateEmptyState() {
+        if (binding == null) return;
+        binding.emptyContainer.setVisibility(projectsList.isEmpty() ? View.VISIBLE : View.GONE);
+    }
     }
 
     private void addProject(String sc_id) {

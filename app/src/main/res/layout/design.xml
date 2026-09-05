@@ -19,23 +19,61 @@
             <com.google.android.material.appbar.AppBarLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:fitsSystemWindows="true">
+                android:background="@android:color/transparent"
+                android:fitsSystemWindows="true"
+                app:elevation="0dp"
+                app:liftOnScroll="false"
+                app:liftOnScrollColor="@android:color/transparent">
 
-                <androidx.appcompat.widget.Toolbar
+                <com.google.android.material.appbar.MaterialToolbar
                     android:id="@+id/toolbar"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
+                    android:layout_height="48dp"
                     app:navigationIcon="?attr/homeAsUpIndicator"
-                    app:subtitleTextColor="?attr/colorSecondary"
-                    tools:menu="@menu/design_menu"
-                    tools:subtitle="605"
-                    tools:title="InternalDemo" />
+                    tools:menu="@menu/design_menu" />
 
-                <com.google.android.material.tabs.TabLayout
-                    android:id="@+id/tab_layout"
+                <!-- Compact file selector / create-file control (moved up from the bottom bar). -->
+                <LinearLayout
+                    android:id="@+id/file_name_container"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:background="@android:color/transparent" />
+                    android:layout_height="44dp"
+                    android:background="?attr/selectableItemBackground"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingStart="16dp"
+                    android:paddingEnd="16dp">
+
+                    <ImageView
+                        android:id="@+id/img_orientation"
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:importantForAccessibility="no"
+                        android:src="@drawable/ic_mtrl_devices"
+                        app:tint="?attr/colorControlNormal"
+                        tools:ignore="ContentDescription" />
+
+                    <TextView
+                        android:id="@+id/file_name"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="12dp"
+                        android:layout_marginEnd="8dp"
+                        android:layout_weight="1"
+                        android:ellipsize="end"
+                        android:singleLine="true"
+                        android:textAppearance="?attr/textAppearanceBodyMedium"
+                        tools:text="main" />
+
+                    <ImageView
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:importantForAccessibility="no"
+                        android:src="@drawable/ic_arrow_drop_down_24px"
+                        app:tint="?attr/colorControlNormal"
+                        tools:ignore="ContentDescription" />
+                </LinearLayout>
 
                 <com.google.android.material.divider.MaterialDivider
                     android:layout_width="match_parent"
@@ -43,23 +81,26 @@
                     app:dividerColor="?attr/colorSurfaceContainerHighest" />
             </com.google.android.material.appbar.AppBarLayout>
 
-            <androidx.coordinatorlayout.widget.CoordinatorLayout
+            <!-- Swipe workspace: Java <-> UI pages, with the Events/Components
+                 overlays stacked above the pager. -->
+            <FrameLayout
                 android:id="@+id/layout_coordinator"
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
                 android:layout_weight="1">
 
-                <androidx.fragment.app.FragmentContainerView
+                <androidx.viewpager2.widget.ViewPager2
+                    android:id="@+id/editor_pager"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent" />
+
+                <FrameLayout
                     android:id="@+id/editor_fragment_container"
                     android:layout_width="match_parent"
                     android:layout_height="match_parent" />
-            </androidx.coordinatorlayout.widget.CoordinatorLayout>
+            </FrameLayout>
 
-            <com.google.android.material.divider.MaterialDivider
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                app:dividerColor="?attr/colorSurfaceContainerHighest" />
-
+            <!-- Build progress strip (only visible while a build runs). -->
             <LinearLayout
                 android:id="@+id/progress_container"
                 android:layout_width="match_parent"
@@ -69,14 +110,18 @@
                 android:visibility="gone"
                 tools:visibility="visible">
 
+                <com.google.android.material.divider.MaterialDivider
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    app:dividerColor="?attr/colorSurfaceContainerHighest" />
+
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:gravity="center_vertical"
                     android:orientation="horizontal"
                     android:paddingHorizontal="16dp"
-                    android:paddingTop="10dp"
-                    android:paddingBottom="8dp">
+                    android:paddingVertical="6dp">
 
                     <TextView
                         android:id="@+id/progress_text"
@@ -107,87 +152,6 @@
                     android:indeterminate="false"
                     android:progress="0"
                     app:trackStopIndicatorSize="0dp" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/bottom_bar"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:background="?attr/colorSurfaceContainer"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:paddingVertical="4dp">
-
-                <com.google.android.material.card.MaterialCardView
-                    android:id="@+id/file_name_container"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="12dp"
-                    android:layout_marginEnd="8dp"
-                    android:layout_weight="1"
-                    android:clickable="true"
-                    app:cardBackgroundColor="?attr/colorSurfaceContainerLowest"
-                    app:contentPadding="8dp">
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="match_parent"
-                        android:gravity="center_vertical"
-                        android:paddingVertical="2dp">
-
-                        <ImageView
-                            android:id="@+id/img_orientation"
-                            android:layout_width="20dp"
-                            android:layout_height="20dp"
-                            android:layout_marginStart="4dp"
-                            android:layout_marginEnd="8dp"
-                            android:src="@drawable/ic_mtrl_devices"
-                            app:tint="?attr/colorControlNormal" />
-
-                        <TextView
-                            android:id="@+id/file_name"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_marginHorizontal="8dp"
-                            android:layout_weight="1"
-                            android:singleLine="true"
-                            tools:text="main"
-                            android:textAppearance="?attr/textAppearanceBodyMedium" />
-
-                        <ImageView
-                            android:layout_width="20dp"
-                            android:layout_height="20dp"
-                            android:layout_marginEnd="4dp"
-                            android:src="@drawable/ic_arrow_drop_down_24px"
-                            app:tint="?attr/colorControlNormal" />
-
-                    </LinearLayout>
-                </com.google.android.material.card.MaterialCardView>
-
-                <com.google.android.material.button.MaterialSplitButton
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginEnd="8dp"
-                    android:paddingTop="0dp"
-                    android:paddingBottom="0dp">
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btn_run"
-                        style="?attr/materialSplitButtonLeadingFilledStyle"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/design_run"
-                        app:icon="@drawable/ic_mtrl_run" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btn_options"
-                        style="?attr/materialSplitButtonIconFilledStyle"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        app:icon="@drawable/m3_split_button_chevron_avd"
-                        app:iconSize="24dp" />
-
-                </com.google.android.material.button.MaterialSplitButton>
             </LinearLayout>
         </LinearLayout>
 
