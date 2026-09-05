@@ -92,7 +92,7 @@
                         android:layout_marginHorizontal="8dp"
                         android:background="?attr/colorOutlineVariant" />
 
-                    <ImageButton
+                    <pro.sketchware.activities.design.DesignHistoryButton
                         android:id="@+id/design_undo"
                         android:layout_width="48dp"
                         android:layout_height="48dp"
@@ -100,9 +100,10 @@
                         android:contentDescription="@string/design_tools_undo"
                         android:padding="12dp"
                         android:src="@drawable/ic_mtrl_undo"
+                        android:tag="undo"
                         app:tint="?attr/colorControlNormal" />
 
-                    <ImageButton
+                    <pro.sketchware.activities.design.DesignHistoryButton
                         android:id="@+id/design_redo"
                         android:layout_width="48dp"
                         android:layout_height="48dp"
@@ -110,6 +111,7 @@
                         android:contentDescription="@string/design_tools_redo"
                         android:padding="12dp"
                         android:src="@drawable/ic_mtrl_redo"
+                        android:tag="redo"
                         app:tint="?attr/colorControlNormal" />
                 </LinearLayout>
 
