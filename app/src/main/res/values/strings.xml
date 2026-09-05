@@ -3811,8 +3811,26 @@ Please try again later"</string>
     <string name="keystore_helper_algorithm">Example: SHA256withRSA</string>
     <string name="keystore_hint_algorithm">Signing algorithm</string>
     <string name="keystore_hint_alias">Keystore alias</string>
-    <string name="keystore_hint_password">Alias password</string>
+    <string name="keystore_hint_password">Keystore password</string>
     <string name="keystore_hint_signing_mode">Signing mode</string>
+    <string name="keystore_hint_path">Keystore file path</string>
+    <string name="keystore_helper_path">Select or enter path to .jks or .keystore file</string>
+    <string name="keystore_hint_key_password">Key password</string>
+    <string name="keystore_helper_key_password">Optional, defaults to keystore password if left empty</string>
+    <string name="keystore_save_for_future_builds">Save keystore for future release builds</string>
+    <string name="error_keystore_path_empty">Keystore path cannot be empty</string>
+    <string name="error_keystore_file_not_found">Keystore file not found at specified path</string>
+    <string name="build_type_dialog_title">Select Build Type</string>
+    <string name="build_type_debug">Debug</string>
+    <string name="build_type_debug_desc">Build and run using default Sketchware debug key (testkey)</string>
+    <string name="build_type_release">Release</string>
+    <string name="build_type_release_desc">Build and run using configured release keystore</string>
+    <string name="btn_build_release">Build Release</string>
+    <string name="btn_configure_keystore">Configure Keystore</string>
+    <string name="release_build_using_keystore_format">Build release APK with configured keystore:\nPath: %1$s\nAlias: %2$s</string>
+    <string name="release_build_success">Release APK created and signed: %s</string>
+    <string name="release_keystore_config_title">Configure Release Keystore</string>
+    <string name="release_keystore_config_desc">Select and configure the custom keystore for release builds.</string>
 
     <!-- ========== MoreBlock ========== -->
     <string name="moreblock_dialog_title_select">Select a more block</string>

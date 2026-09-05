@@ -76,7 +76,9 @@ import pro.sketchware.core.async.BackgroundTasks;
 import pro.sketchware.util.io.SharedPrefsHelper;
 import pro.sketchware.util.DeviceUtil;
 import pro.sketchware.core.codegen.LayoutGenerator;
+import pro.sketchware.core.build.KeystoreConfig;
 import pro.sketchware.core.build.ProjectBuilder;
+import pro.sketchware.dialogs.GetKeyStoreCredentialsDialog;
 import pro.sketchware.activities.design.fragments.ViewEditorFragment;
 import pro.sketchware.util.SketchToast;
 import pro.sketchware.core.project.BlockHistoryManager;
@@ -617,9 +619,103 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
             requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 1001);
         }
 
-        BuildTask buildTask = new BuildTask(this);
+        showBuildTypeSelectionDialog();
+    }
+
+    private void showBuildTypeSelectionDialog() {
+        CharSequence[] items = new CharSequence[]{
+                Helper.getResString(R.string.build_type_debug),
+                Helper.getResString(R.string.build_type_release)
+        };
+
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.build_type_dialog_title)
+                .setIcon(R.drawable.ic_mtrl_run)
+                .setItems(items, (dialog, which) -> {
+                    dialog.dismiss();
+                    if (which == 0) {
+                        startDebugBuild();
+                    } else if (which == 1) {
+                        startReleaseBuildFlow();
+                    }
+                })
+                .setNegativeButton(R.string.common_word_cancel, null)
+                .show();
+    }
+
+    private void startDebugBuild() {
+        BuildTask buildTask = new BuildTask(this, ProjectFilePaths.ExportType.DEBUG_APP, null);
         currentBuildTask = buildTask;
         buildTask.execute();
+    }
+
+    private void startReleaseBuildFlow() {
+        KeystoreConfig keystoreConfig = KeystoreConfig.load(sc_id);
+        if (keystoreConfig.hasConfig() && new File(keystoreConfig.getPath()).exists()) {
+            if (!keystoreConfig.getPassword().isEmpty()) {
+                String message = String.format(Helper.getResString(R.string.release_build_using_keystore_format),
+                        keystoreConfig.getPath(), keystoreConfig.getAlias());
+
+                new MaterialAlertDialogBuilder(this)
+                        .setTitle(R.string.build_type_release)
+                        .setIcon(R.drawable.ic_mtrl_key)
+                        .setMessage(message)
+                        .setPositiveButton(R.string.btn_build_release, (dialog, which) -> {
+                            dialog.dismiss();
+                            BuildTask buildTask = new BuildTask(this, ProjectFilePaths.ExportType.SIGN_APP, keystoreConfig);
+                            currentBuildTask = buildTask;
+                            buildTask.execute();
+                        })
+                        .setNeutralButton(R.string.btn_configure_keystore, (dialog, which) -> {
+                            dialog.dismiss();
+                            showReleaseKeystoreConfigurationDialog(keystoreConfig);
+                        })
+                        .setNegativeButton(R.string.common_word_cancel, null)
+                        .show();
+            } else {
+                showReleaseKeystoreConfigurationDialog(keystoreConfig);
+            }
+        } else {
+            showReleaseKeystoreConfigurationDialog(keystoreConfig);
+        }
+    }
+
+    private void showReleaseKeystoreConfigurationDialog(KeystoreConfig initialConfig) {
+        GetKeyStoreCredentialsDialog credentialsDialog = new GetKeyStoreCredentialsDialog(
+                this,
+                R.drawable.ic_mtrl_key,
+                Helper.getResString(R.string.release_keystore_config_title),
+                Helper.getResString(R.string.release_keystore_config_desc)
+        );
+        if (initialConfig != null) {
+            credentialsDialog.setKeystoreConfig(initialConfig);
+        }
+        credentialsDialog.setListener(credentials -> {
+            if (credentials == null) {
+                return;
+            }
+            if (credentials.isForSigningWithTestkey()) {
+                startDebugBuild();
+                return;
+            }
+
+            KeystoreConfig config = new KeystoreConfig(
+                    credentials.getKeyStorePath(),
+                    credentials.getKeyAlias(),
+                    credentials.getKeyStorePassword(),
+                    credentials.getKeyPassword(),
+                    credentials.isSaveKeystore()
+            );
+
+            if (credentials.isSaveKeystore()) {
+                config.save(sc_id);
+            }
+
+            BuildTask buildTask = new BuildTask(this, ProjectFilePaths.ExportType.SIGN_APP, config);
+            currentBuildTask = buildTask;
+            buildTask.execute();
+        });
+        credentialsDialog.show();
     }
 
     private void refreshViewTabAdapter() {
@@ -1465,13 +1561,21 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
         private final TextView progressText;
         private final TextView stepInfoText;
         private final LinearProgressIndicator progressBar;
+        private final ProjectFilePaths.ExportType exportType;
+        private final KeystoreConfig releaseKeystoreConfig;
         public volatile boolean canceled;
         private volatile boolean isBuildFinished;
         private boolean isShowingNotification = false;
         private long buildStartTime;
 
         public BuildTask(DesignActivity activity) {
+            this(activity, ProjectFilePaths.ExportType.DEBUG_APP, null);
+        }
+
+        public BuildTask(DesignActivity activity, ProjectFilePaths.ExportType exportType, KeystoreConfig releaseKeystoreConfig) {
             super(activity);
+            this.exportType = exportType != null ? exportType : ProjectFilePaths.ExportType.DEBUG_APP;
+            this.releaseKeystoreConfig = releaseKeystoreConfig;
             notificationManager = (NotificationManager) activity.getSystemService(Context.NOTIFICATION_SERVICE);
             progressContainer = activity.findViewById(R.id.progress_container);
             progressText = activity.findViewById(R.id.progress_text);
@@ -1553,7 +1657,7 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
                 var dataManager = ProjectDataManager.getProjectDataManager(sc_id);
                 var libraryManager = ProjectDataManager.getLibraryManager(sc_id);
                 long metadataInitializationStarted = System.currentTimeMillis();
-                q.initializeMetadata(libraryManager, fileManager, dataManager);
+                q.initializeMetadata(libraryManager, fileManager, dataManager, exportType);
                 long metadataInitializationDuration = System.currentTimeMillis() - metadataInitializationStarted;
                 Log.d("DesignActivity$BuildTask", "Step 2 timing: initializeMetadata took "
                         + metadataInitializationDuration + " ms");
@@ -1672,12 +1776,28 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
                 }
 
                 onProgress("Signing APK...", 20);
-                builder.signDebugApk();
+                if (exportType == ProjectFilePaths.ExportType.DEBUG_APP || releaseKeystoreConfig == null) {
+                    builder.signDebugApk();
+                } else {
+                    builder.signReleaseApk(
+                            releaseKeystoreConfig.getPath(),
+                            releaseKeystoreConfig.getPassword(),
+                            releaseKeystoreConfig.getAlias(),
+                            releaseKeystoreConfig.getKeyPassword()
+                    );
+                }
                 if (canceled) {
                     return;
                 }
 
-                postToUi(activity, activity::installBuiltApk);
+                postToUi(activity, () -> {
+                    if (exportType == ProjectFilePaths.ExportType.SIGN_APP) {
+                        SketchwareUtil.toast(String.format(
+                                Helper.getResString(R.string.release_build_success),
+                                q.releaseApkPath), Toast.LENGTH_LONG);
+                    }
+                    activity.installBuiltApk();
+                });
             } catch (MissingFileException e) {
                 postToUi(activity, () -> {
                     boolean isMissingDirectory = e.isMissingDirectory();

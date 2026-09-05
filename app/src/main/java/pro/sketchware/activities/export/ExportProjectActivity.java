@@ -27,6 +27,7 @@ import pro.sketchware.core.project.ProguardHandler;
 import pro.sketchware.core.project.StringfogHandler;
 import pro.sketchware.util.Helper;
 import pro.sketchware.core.build.BuildProgressReceiver;
+import pro.sketchware.core.build.KeystoreConfig;
 import pro.sketchware.util.library.BuiltInLibraries;
 import pro.sketchware.core.build.compiler.AppBundleCompiler;
 import pro.sketchware.dialogs.GetKeyStoreCredentialsDialog;
@@ -274,6 +275,8 @@ public class ExportProjectActivity extends BaseAppCompatActivity {
     private void showAabSigningDialog() {
         GetKeyStoreCredentialsDialog credentialsDialog = new GetKeyStoreCredentialsDialog(this,
                 R.drawable.ic_mtrl_key, Helper.getResString(R.string.export_aab_sign_dialog_title), Helper.getResString(R.string.export_aab_sign_dialog_desc));
+        KeystoreConfig savedConfig = KeystoreConfig.load(sc_id);
+        credentialsDialog.setKeystoreConfig(savedConfig);
         credentialsDialog.setListener(credentials -> {
             BuildingAsyncTask task = new BuildingAsyncTask(this, ProjectFilePaths.ExportType.AAB);
             currentBuildingTask = task;
@@ -282,8 +285,12 @@ public class ExportProjectActivity extends BaseAppCompatActivity {
                 if (credentials.isForSigningWithTestkey()) {
                     task.setSignWithTestkey(true);
                 } else {
+                    if (credentials.isSaveKeystore()) {
+                        KeystoreConfig.save(sc_id, credentials.getKeyStorePath(), credentials.getKeyAlias(),
+                                credentials.getKeyStorePassword(), credentials.getKeyPassword(), true);
+                    }
                     task.configureResultJarSigning(
-                            SketchwarePaths.getKeystoreFilePath(),
+                            credentials.getKeyStorePath(),
                             credentials.getKeyStorePassword().toCharArray(),
                             credentials.getKeyAlias(),
                             credentials.getKeyPassword().toCharArray(),
@@ -348,6 +355,8 @@ public class ExportProjectActivity extends BaseAppCompatActivity {
                 R.drawable.ic_mtrl_key,
                 Helper.getResString(R.string.export_apk_sign_dialog_title),
                 Helper.getResString(R.string.export_apk_sign_dialog_desc));
+        KeystoreConfig savedConfig = KeystoreConfig.load(sc_id);
+        credentialsDialog.setKeystoreConfig(savedConfig);
         credentialsDialog.setListener(credentials -> {
             sign_apk_button.setVisibility(View.GONE);
             sign_apk_output_stage.setVisibility(View.GONE);
@@ -360,8 +369,12 @@ public class ExportProjectActivity extends BaseAppCompatActivity {
                 if (credentials.isForSigningWithTestkey()) {
                     task.setSignWithTestkey(true);
                 } else {
+                    if (credentials.isSaveKeystore()) {
+                        KeystoreConfig.save(sc_id, credentials.getKeyStorePath(), credentials.getKeyAlias(),
+                                credentials.getKeyStorePassword(), credentials.getKeyPassword(), true);
+                    }
                     task.configureResultJarSigning(
-                            SketchwarePaths.getKeystoreFilePath(),
+                            credentials.getKeyStorePath(),
                             credentials.getKeyStorePassword().toCharArray(),
                             credentials.getKeyAlias(),
                             credentials.getKeyPassword().toCharArray(),
@@ -673,16 +686,11 @@ public class ExportProjectActivity extends BaseAppCompatActivity {
                     if (signWithTestkey) {
                         TestkeySignBridge.signWithTestkey(builder.projectFilePaths.unsignedAlignedApkPath, outputLocation);
                     } else if (isResultJarSigningEnabled()) {
-                        Security.addProvider(new BouncyCastleProvider());
-                        CustomKeySigner.signZip(
-                                new ZipSigner(),
-                                SketchwarePaths.getKeystoreFilePath(),
-                                signingKeystorePassword,
+                        builder.signReleaseApk(
+                                signingKeystorePath,
+                                new String(signingKeystorePassword),
                                 signingAliasName,
-                                signingAliasPassword,
-                                signingAlgorithm,
-                                builder.projectFilePaths.unsignedAlignedApkPath,
-                                outputLocation
+                                new String(signingAliasPassword)
                         );
                     } else {
                         FileUtil.copyFile(builder.projectFilePaths.unsignedAlignedApkPath, outputLocation);

@@ -84,6 +84,7 @@ import pro.sketchware.core.build.compiler.ResourceCompiler;
 import pro.sketchware.core.exception.MissingFileException;
 import pro.sketchware.util.LogUtil;
 import pro.sketchware.util.TestkeySignBridge;
+import pro.sketchware.util.apk.ApkSigner;
 import pro.sketchware.core.build.compiler.JarBuilder;
 import pro.sketchware.core.build.compiler.R8Compiler;
 import pro.sketchware.core.build.ViewBindingBuilder;
@@ -1390,6 +1391,54 @@ public class ProjectBuilder {
         long savedTimeMillis = System.currentTimeMillis();
         TestkeySignBridge.signWithTestkey(projectFilePaths.unsignedUnalignedApkPath, projectFilePaths.finalToInstallApkPath);
         Log.d(TAG, "Signing debug APK took " + (System.currentTimeMillis() - savedTimeMillis) + " ms");
+    }
+
+    /**
+     * Sign the release APK file with the given keystore credentials.
+     * Zipaligns the unsigned APK first (if not already aligned), signs using {@link ApkSigner},
+     * writes to {@link ProjectFilePaths#releaseApkPath}, and copies to {@link ProjectFilePaths#finalToInstallApkPath}.
+     *
+     * @param keystorePath Keystore file path
+     * @param keystorePassword Keystore password
+     * @param keyAlias Keystore key alias
+     * @param keyPassword Key password (falls back to keystorePassword if null or empty)
+     * @throws Exception if signing fails
+     */
+    public void signReleaseApk(String keystorePath, String keystorePassword, String keyAlias, String keyPassword) throws Exception {
+        long savedTimeMillis = System.currentTimeMillis();
+
+        File keystoreFile = new File(keystorePath);
+        if (!keystoreFile.exists()) {
+            throw new FileNotFoundException("Keystore file does not exist: " + keystorePath);
+        }
+
+        String inputForSigning = projectFilePaths.unsignedUnalignedApkPath;
+        String alignedApk = projectFilePaths.unsignedAlignedApkPath;
+        try {
+            runZipalign(projectFilePaths.unsignedUnalignedApkPath, alignedApk);
+            inputForSigning = alignedApk;
+        } catch (Exception e) {
+            LogUtil.w(TAG, "Zipalign before signing failed or skipped, signing unaligned directly: " + e.getMessage());
+            inputForSigning = projectFilePaths.unsignedUnalignedApkPath;
+        }
+
+        File releaseApkDir = new File(projectFilePaths.releaseApkPath).getParentFile();
+        if (releaseApkDir != null && !releaseApkDir.exists()) {
+            releaseApkDir.mkdirs();
+        }
+
+        String effectiveKeyPassword = (keyPassword != null && !keyPassword.isEmpty()) ? keyPassword : keystorePassword;
+
+        ApkSigner signer = new ApkSigner();
+        signer.signWithKeyStore(inputForSigning, projectFilePaths.releaseApkPath,
+                keystorePath, keystorePassword, keyAlias, effectiveKeyPassword, null);
+
+        if (ApkSigner.LogCallback.errorCount.get() > 0) {
+            throw new SketchwareException("ApkSigner failed to sign release APK with keystore");
+        }
+
+        FileUtil.copyFile(projectFilePaths.releaseApkPath, projectFilePaths.finalToInstallApkPath);
+        Log.d(TAG, "Signing release APK took " + (System.currentTimeMillis() - savedTimeMillis) + " ms");
     }
 
     /**
