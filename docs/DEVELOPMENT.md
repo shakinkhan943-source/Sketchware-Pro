@@ -1,7 +1,7 @@
 # Sketchware-Pro 项目开发手册
 
 > 版本：1.0
-> 最后更新：2026-03-29
+> 最后更新：2026-09-05
 > 适用分支：`main`
 
 ---
@@ -45,7 +45,7 @@ Sketchware Pro 是一款运行在 Android 设备上的**可视化 Android 应用
 | **最低 API** | Android 8.0（API 26）|
 | **编译 SDK** | API 36 |
 | **目标 SDK** | API 28（不上架 Google Play，故未升级）|
-| **构建工具** | Gradle 8.14.4、AGP 8.12.0 |
+| **构建工具** | Gradle 8.14.4、AGP 8.13.0（其自带的 D8/R8 8.13.6 不认识 Kotlin 2.4 元数据，已在 `settings.gradle`/根 `build.gradle` 中用版本目录里固定的 R8 ≥ 9.1.29 覆盖）|
 | **UI 框架** | AndroidX、Material Design、ViewBinding |
 | **代码编辑器** | Sora Editor |
 | **图片加载** | Coil + Glide |
@@ -247,6 +247,7 @@ mock 文件包含虚假的 project_number、firebase_url、api_key 等，足以�
 | `Unsupported class file major version 65` | 当前 JDK、Gradle 缓存或第三方 class 文件版本不兼容 | 清理构建缓存，并改用受支持的 JDK 17+（推荐直接使用仓库自带 Gradle Wrapper） |
 | `Duplicate class javax.inject` | 依赖冲突 | 已在 `build.gradle` 中通过 `exclude` 处理 |
 | `Unable to find class androidx.compose.compiler.plugins.kotlin.ComposePluginRegistrar` | 编译器插件 JAR 只含 `.class`，ART 无法从中加载类 | 插件必须同时作为 `implementation` 依赖打进 APK（见 6.5） |
+| `D8: Unexpected error during rewriting of Kotlin metadata ... Should never be called`（`:app:mergeExtDexDebug`）| AGP 8.13.0 自带的 D8/R8 8.13.6 无法解析 Kotlin 2.4.10 生成的 2.4.0 版 `@kotlin.Metadata` | 构建期 D8/R8 由 `settings.gradle` 的 `pluginManagement { buildscript }`（配合根 `build.gradle` 中先于 AGP 的 classpath 依赖）覆盖为版本目录 `r8` 条目固定的版本；Kotlin 2.4 要求 R8 ≥ 9.1.29（见 https://developer.android.com/build/kotlin-support ）。升级 R8 只需改 toml；**不要**删除该覆盖，也不要试图用 `-dontwarn` 或降级 Kotlin/Sora 掩盖此错误 |
 
 ---
 

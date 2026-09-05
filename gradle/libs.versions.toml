@@ -31,6 +31,22 @@ okio = "3.16.0"
 preference = "1.2.1"
 proguardCore = "9.0.2"
 protobufJava = "3.19.2"
+# com.android.tools:r8 has ONE version for two deliberately coupled jobs:
+#   1. Runtime, inside the APK - the `shrinker` bundle below is the on-device
+#      compiler; DexCompiler / R8Compiler / JetpackLibsInstaller call the
+#      com.android.tools.r8 APIs to dex and minify the projects this app builds.
+#   2. Build time, outside the APK - settings.gradle reads this pin and places
+#      com.android.tools:r8 on the buildscript classpath, overriding the D8/R8
+#      bundled with AGP 8.13.0 (8.13.6). That bundled version predates Kotlin
+#      2.4 metadata and crashes :app:mergeExtDexDebug with
+#      "Unexpected error during rewriting of Kotlin metadata ... Should never
+#      be called"; Kotlin 2.4 requires D8/R8 >= 9.1.29
+#      (https://developer.android.com/build/kotlin-support), and settings.gradle
+#      hard-fails configuration if this pin ever drops below that floor.
+# NOTE: this entry alone does NOT affect the build's D8/R8 (it used to be the
+# only r8 pin in the repo and AGP ignored it) - the buildscript wiring in
+# settings.gradle / build.gradle is what does. Bump this version to roll both;
+# do not "fix" metadata errors by downgrading Kotlin/Sora or via -dontwarn.
 r8 = "9.1.31"
 recyclerview = "1.4.0"
 scpkixJdk15on = "1.47.0.2"
@@ -105,6 +121,8 @@ okio = { module = "com.squareup.okio:okio", version.ref = "okio" }
 proguard-core = { module = "com.guardsquare:proguard-core", version.ref = "proguardCore" }
 
 protobuf-java = { module = "com.google.protobuf:protobuf-java", version.ref = "protobufJava" }
+# Dual-role artifact (on-device shrinker + build-time D8/R8 override); see the
+# `r8` entry in [versions] before touching this or removing the override.
 r8 = { module = "com.android.tools:r8", version.ref = "r8" }
 
 scpkix-jdk15on = { module = "com.madgag:scpkix-jdk15on", version.ref = "scpkixJdk15on" }

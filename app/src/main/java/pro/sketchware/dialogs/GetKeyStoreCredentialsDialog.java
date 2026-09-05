@@ -75,7 +75,7 @@ public class GetKeyStoreCredentialsDialog {
         binding.tilPath.setEndIconOnClickListener(v -> {
             if (activity instanceof FragmentActivity fragmentActivity) {
                 FilePickerOptions options = new FilePickerOptions();
-                options.setSelectionMode(SelectionMode.FILES_ONLY);
+                options.setSelectionMode(SelectionMode.FILE);
                 options.setTitle(Helper.getResString(R.string.keystore_hint_path));
                 FilePickerCallback callback = new FilePickerCallback() {
                     @Override

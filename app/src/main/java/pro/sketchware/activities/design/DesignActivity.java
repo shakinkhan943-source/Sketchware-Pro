@@ -351,14 +351,14 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
         if (editorPager == null || pagerAdapter == null) {
             return;
         }
-        Fragment source = pagerAdapter.getFragment(DESTINATION_SOURCE);
-        if (source instanceof JavaEditorFragment) {
-            javaTabAdapter = (JavaEditorFragment) source;
+        JavaEditorFragment source = findEditorFragment(JavaEditorFragment.class);
+        if (source != null) {
+            javaTabAdapter = source;
         }
-        Fragment ui = pagerAdapter.getFragment(DESTINATION_UI);
-        if (ui instanceof ViewEditorFragment) {
-            viewTabAdapter = (ViewEditorFragment) ui;
-            hookViewEditor(viewTabAdapter);
+        ViewEditorFragment ui = findEditorFragment(ViewEditorFragment.class);
+        if (ui != null) {
+            viewTabAdapter = ui;
+            hookViewEditor(ui);
         }
         // Restore the visible workspace: an overlay (Events/Components) if that was the
         // active destination, otherwise the matching pager page.
@@ -373,6 +373,32 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
             refreshCurrentDestination();
             updateDestinationChrome();
         }
+    }
+
+    /**
+     * Finds the live instance of a pager-hosted editor fragment by type.
+     *
+     * <p>ViewPager2's {@link FragmentStateAdapter} has no getFragment(position) API, keeps
+     * its pages in the child FragmentManager of an internal host fragment, and delivers
+     * restored pages without ever calling createFragment() again. The pager is the only
+     * host of these fragment types, so a type-based walk of the FragmentManager tree
+     * reliably re-links both created and restored instances.
+     */
+    private <T extends Fragment> T findEditorFragment(Class<T> type) {
+        return findFragmentIn(getSupportFragmentManager().getFragments(), type);
+    }
+
+    private static <T extends Fragment> T findFragmentIn(List<Fragment> fragments, Class<T> type) {
+        for (Fragment fragment : fragments) {
+            if (type.isInstance(fragment)) {
+                return type.cast(fragment);
+            }
+            T match = findFragmentIn(fragment.getChildFragmentManager().getFragments(), type);
+            if (match != null) {
+                return match;
+            }
+        }
+        return null;
     }
 
     /**
@@ -1319,7 +1345,7 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
             var projectDataManager = ProjectDataManager.getProjectDataManager(sc_id);
             var viewBeans = projectDataManager.getViews(filename);
             var viewFab = projectDataManager.getFabView(filename);
-            xmlGenerator.setExcludeAppcompat(true);
+            xmlGenerator.setExcludeAppCompat(true);
             xmlGenerator.setViews(ProjectDataStore.getSortedRootViews(viewBeans), viewFab);
             return xmlGenerator.toXmlString();
         }, content -> {

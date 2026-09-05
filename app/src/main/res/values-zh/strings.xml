@@ -168,6 +168,7 @@
     <string name="design_run">运行</string>
     <string name="design_run_message_invalid_forever_block">永久循环块中缺少停止块</string>
     <string name="design_run_message_usage_break_block">中断块只能在重复或永久循环块内使用</string>
+    <string name="design_run_stop">停止</string>
     <string name="design_run_title_ready_to_build">准备构建</string>
     <string name="design_toast_clean_temp_done">临时文件清理完成！</string>
     <string name="design_toast_package_installed">应用安装成功！</string>
