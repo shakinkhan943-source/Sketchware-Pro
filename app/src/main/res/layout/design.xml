@@ -128,9 +128,14 @@
                 android:layout_weight="1">
 
                 <pro.sketchware.activities.design.EditorPagerView
-                    android:id="@+id/editor_pager"
                     android:layout_width="match_parent"
-                    android:layout_height="match_parent" />
+                    android:layout_height="match_parent">
+
+                    <androidx.viewpager2.widget.ViewPager2
+                        android:id="@+id/editor_pager"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent" />
+                </pro.sketchware.activities.design.EditorPagerView>
 
                 <FrameLayout
                     android:id="@+id/editor_fragment_container"
