@@ -1,7 +1,23 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
-    <!-- Primary workspace actions. Undo/redo live beside the file selector below the toolbar. -->
+    <!-- Kept as hidden compatibility actions; the visible controls are in the workspace bar. -->
+    <item
+        android:id="@+id/design_option_menu_undo"
+        android:icon="@drawable/ic_mtrl_undo"
+        android:orderInCategory="1"
+        android:title="@string/design_tools_undo"
+        android:visible="false"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/design_option_menu_redo"
+        android:icon="@drawable/ic_mtrl_redo"
+        android:orderInCategory="2"
+        android:title="@string/design_tools_redo"
+        android:visible="false"
+        app:showAsAction="never" />
+
     <item
         android:id="@+id/design_option_menu_events"
         android:icon="@drawable/ic_mtrl_lifecycle"
@@ -38,7 +54,7 @@
         android:visible="false"
         app:showAsAction="always" />
 
-    <!-- Project tools drawer is a dedicated top-bar action, not hidden inside overflow. -->
+    <!-- Dedicated Project Tools drawer action. -->
     <item
         android:id="@+id/design_option_menu_open_tools"
         android:icon="@drawable/ic_mtrl_tune"
@@ -46,7 +62,6 @@
         android:title="@string/design_menu_open_tools"
         app:showAsAction="always" />
 
-    <!-- Secondary build/project actions remain in the overflow menu. -->
     <item
         android:id="@+id/design_menu_build_settings"
         android:orderInCategory="110"
