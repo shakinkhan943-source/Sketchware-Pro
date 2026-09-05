@@ -2,20 +2,19 @@ package pro.sketchware.activities.main.fragments.projects;
 
 import android.app.Activity;
 import android.content.Intent;
-import android.net.Uri;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 
 import androidx.annotation.DrawableRes;
 import androidx.annotation.NonNull;
-import androidx.core.content.FileProvider;
 import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.RecyclerView;
 
 import pro.sketchware.activities.export.ExportProjectActivity;
 import pro.sketchware.widgets.LoadingDialog;
 import pro.sketchware.activities.projects.MyProjectSettingActivity;
+import com.bumptech.glide.Glide;
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
@@ -103,7 +102,6 @@ public class ProjectsAdapter extends RecyclerView.Adapter<ProjectsAdapter.Projec
         }, true);
         shownProjects = newProjects;
         result.dispatchUpdatesTo(this);
-        notifyDataSetChanged();
     }
 
     @Override
@@ -136,78 +134,57 @@ public class ProjectsAdapter extends RecyclerView.Adapter<ProjectsAdapter.Projec
 
     @Override
     public void onBindViewHolder(@NonNull ProjectViewHolder holder, int position) {
-        holder.itemView.setBackgroundResource(getShapedBackgroundForList(shownProjects, position));
         HashMap<String, Object> projectMap = shownProjects.get(position);
         String scId = MapValueHelper.getString(projectMap, "sc_id");
 
-        holder.binding.imgIcon.setImageResource(R.drawable.default_icon);
+        holder.itemView.setBackgroundResource(getShapedBackgroundForList(shownProjects, position));
 
-        if (MapValueHelper.getString(projectMap, "sc_ver_code").isEmpty()) {
-            projectMap.put("sc_ver_code", "1");
-            projectMap.put("sc_ver_name", "1.0");
-            ProjectListManager.updateProject(scId, projectMap);
-        }
-
-        if (MapValueHelper.getInt(projectMap, "sketchware_ver") <= 0) {
-            projectMap.put("sketchware_ver", 61);
-            ProjectListManager.updateProject(scId, projectMap);
-        }
-
-        if (MapValueHelper.get(projectMap, "custom_icon")) {
-            String iconFolder = SketchwarePaths.getIconsPath() + File.separator + scId;
-            File iconFile = new File(iconFolder, "icon.png");
-            if (iconFile.exists()) {
-                Uri uri;
-                String providerPath = activity.getPackageName() + ".provider";
-                uri = FileProvider.getUriForFile(activity, providerPath, iconFile);
-                holder.binding.imgIcon.setImageURI(uri);
-            } else {
-                holder.binding.imgIcon.setImageResource(R.drawable.default_icon);
-            }
-        }
+        // Keep per-row click handling cheap: listeners are attached once and read the
+        // bound data, so binding stays a plain text/icon update.
+        holder.bindData(projectMap, scId, position);
 
         if (isPinned(projectMap)) {
             holder.binding.imgPin.setVisibility(View.VISIBLE);
         } else {
             holder.binding.imgPin.setVisibility(View.INVISIBLE);
-
         }
+
+        bindProjectIcon(holder, projectMap, scId);
 
         String version = " - " + MapValueHelper.getString(projectMap, "sc_ver_name") + " (" + MapValueHelper.getString(projectMap, "sc_ver_code") + ")";
         holder.binding.appName.setText(MapValueHelper.getString(projectMap, "my_ws_name") + version);
         holder.binding.projectName.setText(MapValueHelper.getString(projectMap, "my_app_name"));
         holder.binding.packageName.setText(MapValueHelper.getString(projectMap, "my_sc_pkg_name"));
-        holder.binding.tvPublished.setVisibility(View.VISIBLE);
-        holder.binding.tvPublished.setText(scId);
         holder.itemView.setTag("custom");
+    }
 
-        holder.binding.getRoot().setOnClickListener(v -> {
-            if (!UIHelper.isClickThrottled()) {
-                projectsFragment.toDesignActivity(scId);
+    /**
+     * Loads the project launcher icon. Custom icons are decoded off the main thread and
+     * cached by Glide (the previous FileProvider + setImageURI path decoded on the UI
+     * thread, which caused jank while scrolling through many projects).
+     */
+    private void bindProjectIcon(ProjectViewHolder holder, HashMap<String, Object> projectMap, String scId) {
+        if (MapValueHelper.get(projectMap, "custom_icon")) {
+            File iconFile = new File(SketchwarePaths.getIconsPath() + File.separator + scId + File.separator + "icon.png");
+            if (iconFile.exists()) {
+                Glide.with(holder.binding.imgIcon.getContext())
+                        .load(iconFile)
+                        .placeholder(R.drawable.default_icon)
+                        .error(R.drawable.default_icon)
+                        .centerCrop()
+                        .into(holder.binding.imgIcon);
+                return;
             }
-        });
-
-        View.OnClickListener showProjectSettingsDialog = v -> {
-            UIHelper.disableTemporarily(v);
-            int currentPosition = holder.getAbsoluteAdapterPosition();
-            if (currentPosition != RecyclerView.NO_POSITION) {
-                showProjectOptionsBottomSheet(projectMap, currentPosition);
-            }
-        };
-
-        holder.binding.expand.setOnClickListener(showProjectSettingsDialog);
-        holder.binding.imgIcon.setOnClickListener(v -> toProjectSettingOrRequestPermission(projectMap, position));
-        holder.binding.getRoot().setOnLongClickListener(v -> {
-            showProjectOptionsBottomSheet(projectMap, holder.getAbsoluteAdapterPosition());
-            return true;
-        });
+        }
+        Glide.with(holder.binding.imgIcon.getContext()).clear(holder.binding.imgIcon);
+        holder.binding.imgIcon.setImageResource(R.drawable.default_icon);
     }
 
     @NonNull
     @Override
     public ProjectViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
         MyprojectsItemBinding binding = MyprojectsItemBinding.inflate(LayoutInflater.from(parent.getContext()), parent, false);
-        return new ProjectViewHolder(binding);
+        return new ProjectViewHolder(binding, this);
     }
 
     private void deleteProject(HashMap<String, Object> projectMap, int position) {
@@ -220,10 +197,11 @@ public class ProjectsAdapter extends RecyclerView.Adapter<ProjectsAdapter.Projec
             shownProjects.remove(position);
             notifyDataSetChanged();
             allProjects.remove(projectMap);
+            projectsFragment.updateEmptyState();
         }, error -> progressDialog.dismiss());
     }
 
-    private void toProjectSettingOrRequestPermission(HashMap<String, Object> project, int index) {
+    void toProjectSettingOrRequestPermission(HashMap<String, Object> project, int index) {
         Intent intent = new Intent(activity, MyProjectSettingActivity.class);
         intent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
         intent.putExtra("sc_id", MapValueHelper.getString(project, "sc_id"));
@@ -262,7 +240,7 @@ public class ProjectsAdapter extends RecyclerView.Adapter<ProjectsAdapter.Projec
         return Objects.equals(MapValueHelper.getString(projectMap, "sc_id"), preference.getString("pinnedProject", "-1"));
     }
 
-    private void showProjectOptionsBottomSheet(HashMap<String, Object> projectMap, int position) {
+    void showProjectOptionsBottomSheet(HashMap<String, Object> projectMap, int position) {
         BottomSheetDialog projectOptionsBSD = new BottomSheetDialog(activity);
         BottomSheetProjectOptionsBinding binding = BottomSheetProjectOptionsBinding.inflate(LayoutInflater.from(activity));
         projectOptionsBSD.setContentView(binding.getRoot());
@@ -322,10 +300,48 @@ public class ProjectsAdapter extends RecyclerView.Adapter<ProjectsAdapter.Projec
 
     public static class ProjectViewHolder extends RecyclerView.ViewHolder {
         final MyprojectsItemBinding binding;
+        private final ProjectsAdapter adapter;
+        private HashMap<String, Object> projectMap;
+        private String scId;
+        private int position;
 
-        ProjectViewHolder(MyprojectsItemBinding binding) {
+        ProjectViewHolder(MyprojectsItemBinding binding, ProjectsAdapter adapter) {
             super(binding.getRoot());
             this.binding = binding;
+            this.adapter = adapter;
+
+            // Click handling is attached once; the bound row data is read from the
+            // fields set in {@link #bindData} so binds never re-allocate listeners.
+            binding.getRoot().setOnClickListener(v -> {
+                if (scId != null && !UIHelper.isClickThrottled()) {
+                    adapter.projectsFragment.toDesignActivity(scId);
+                }
+            });
+            binding.expand.setOnClickListener(v -> {
+                UIHelper.disableTemporarily(v);
+                int currentPosition = getAbsoluteAdapterPosition();
+                if (currentPosition != RecyclerView.NO_POSITION && projectMap != null) {
+                    adapter.showProjectOptionsBottomSheet(projectMap, currentPosition);
+                }
+            });
+            binding.imgIcon.setOnClickListener(v -> {
+                if (projectMap != null) {
+                    adapter.toProjectSettingOrRequestPermission(projectMap, position);
+                }
+            });
+            binding.getRoot().setOnLongClickListener(v -> {
+                int currentPosition = getAbsoluteAdapterPosition();
+                if (currentPosition != RecyclerView.NO_POSITION && projectMap != null) {
+                    adapter.showProjectOptionsBottomSheet(projectMap, currentPosition);
+                }
+                return true;
+            });
+        }
+
+        void bindData(HashMap<String, Object> projectMap, String scId, int position) {
+            this.projectMap = projectMap;
+            this.scId = scId;
+            this.position = position;
         }
     }
 }

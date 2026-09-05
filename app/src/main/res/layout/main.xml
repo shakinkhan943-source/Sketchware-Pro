@@ -19,35 +19,20 @@
             app:liftOnScroll="false"
             app:liftOnScrollColor="@android:color/transparent">
 
-            <View
-                android:id="@+id/status_bar_overlapper"
+            <com.google.android.material.appbar.MaterialToolbar
+                android:id="@+id/toolbar"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                app:layout_scrollFlags="scroll|enterAlways|snap" />
+                android:layout_height="56dp"
+                tools:menu="@menu/projects_fragment_menu">
 
-            <com.google.android.material.card.MaterialCardView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginHorizontal="16dp"
-                android:layout_marginTop="8dp"
-                app:cardBackgroundColor="?colorSurfaceContainer"
-                app:cardCornerRadius="50dp"
-                app:layout_scrollFlags="scroll|enterAlways|snap">
-
-                <com.google.android.material.appbar.MaterialToolbar
-                    android:id="@+id/toolbar"
-                    android:layout_width="match_parent"
+                <TextView
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginHorizontal="4dp"
-                    tools:menu="@menu/projects_fragment_menu">
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/main_search_projects"
-                        android:textColor="?attr/colorOnSurfaceVariant" />
-                </com.google.android.material.appbar.MaterialToolbar>
-            </com.google.android.material.card.MaterialCardView>
+                    android:layout_gravity="center_vertical"
+                    android:text="@string/app_name"
+                    android:textAppearance="?attr/textAppearanceTitleLarge"
+                    android:textColor="?attr/colorOnSurface" />
+            </com.google.android.material.appbar.MaterialToolbar>
         </com.google.android.material.appbar.AppBarLayout>
 
         <androidx.fragment.app.FragmentContainerView
@@ -85,7 +70,6 @@
                 android:layout_height="wrap_content"
                 android:layout_gravity="bottom"
                 app:menu="@menu/main_menu" />
-
         </LinearLayout>
     </androidx.coordinatorlayout.widget.CoordinatorLayout>
 

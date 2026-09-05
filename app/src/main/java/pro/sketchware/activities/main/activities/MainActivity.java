@@ -202,7 +202,6 @@ public class MainActivity extends BasePermissionAppCompatActivity {
         setContentView(binding.getRoot());
         setSupportActionBar(binding.toolbar);
 
-        binding.statusBarOverlapper.setMinimumHeight(UI.getStatusBarHeight(this));
         UI.addSystemWindowInsetToPadding(binding.appbar, true, false, true, false);
 
         sharedPrefs = new SharedPrefsHelper(getApplicationContext(), "U1");

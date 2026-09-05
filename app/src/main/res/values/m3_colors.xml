@@ -35,8 +35,8 @@
     <color name="md_theme_light_on_tertiary">#ffffffff</color>
     <color name="md_theme_light_tertiary_container">#ffdee1ff</color>
     <color name="md_theme_light_on_tertiary_container">#ff0e1744</color>
-    <color name="md_theme_light_outline">#ff0e1744</color>
-    <color name="md_theme_light_outline_variant">#ffb1c0ce</color>
+    <color name="md_theme_light_outline">#ff48464f</color>
+    <color name="md_theme_light_outline_variant">#ff76747d</color>
     <color name="md_theme_light_scrim">#ff000000</color>
 
     <color name="md_theme_dark_background">#ff0c141b</color>

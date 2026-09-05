@@ -2100,6 +2100,7 @@ Choosing a theme mode lets you personalize the app\'s appearance, notes:\n
     <string name="design_menu_build_settings">Build Settings</string>
     <string name="design_menu_clean_temp">Clean temporary files</string>
     <string name="design_menu_install_apk">Install last built APK</string>
+    <string name="design_menu_open_tools">Project tools</string>
     <string name="design_menu_show_last_error">Show last compile error</string>
     <string name="design_menu_show_signatures">Show Apk signatures</string>
     <string name="design_menu_show_source">Show source code</string>
@@ -2622,6 +2623,9 @@ But, components should be added manually for working correctly."</string>
     <string name="main_drawer_title_system_settings">System Settings</string>
     <string name="main_major_changes_desc">There have been major changes since v6.3.0 fix1, and it\'s very important to know them all if you want your projects to still work.\n\nYou can view all changes whenever you want at the About Sketchware Pro screen.</string>
     <string name="main_major_changes_title">Major changes in v7.0.0</string>
+    <string name="main_empty_projects_action">Create a project</string>
+    <string name="main_empty_projects_message">Everything you build starts here. Create your first project to get going.</string>
+    <string name="main_empty_projects_title">No projects yet</string>
     <string name="main_new_project">New project</string>
     <string name="main_search_projects">Search for projects…</string>
     <string name="main_storage_access_message">Starting with Android 11, Sketchware Pro needs a new permission to avoid taking ages to build projects. Don\'t worry, we can\'t do more to storage than with current granted permissions.</string>
@@ -3807,8 +3811,26 @@ Please try again later"</string>
     <string name="keystore_helper_algorithm">Example: SHA256withRSA</string>
     <string name="keystore_hint_algorithm">Signing algorithm</string>
     <string name="keystore_hint_alias">Keystore alias</string>
-    <string name="keystore_hint_password">Alias password</string>
+    <string name="keystore_hint_password">Keystore password</string>
     <string name="keystore_hint_signing_mode">Signing mode</string>
+    <string name="keystore_hint_path">Keystore file path</string>
+    <string name="keystore_helper_path">Select or enter path to .jks or .keystore file</string>
+    <string name="keystore_hint_key_password">Key password</string>
+    <string name="keystore_helper_key_password">Optional, defaults to keystore password if left empty</string>
+    <string name="keystore_save_for_future_builds">Save keystore for future release builds</string>
+    <string name="error_keystore_path_empty">Keystore path cannot be empty</string>
+    <string name="error_keystore_file_not_found">Keystore file not found at specified path</string>
+    <string name="build_type_dialog_title">Select Build Type</string>
+    <string name="build_type_debug">Debug</string>
+    <string name="build_type_debug_desc">Build and run using default Sketchware debug key (testkey)</string>
+    <string name="build_type_release">Release</string>
+    <string name="build_type_release_desc">Build and run using configured release keystore</string>
+    <string name="btn_build_release">Build Release</string>
+    <string name="btn_configure_keystore">Configure Keystore</string>
+    <string name="release_build_using_keystore_format">Build release APK with configured keystore:\nPath: %1$s\nAlias: %2$s</string>
+    <string name="release_build_success">Release APK created and signed: %s</string>
+    <string name="release_keystore_config_title">Configure Release Keystore</string>
+    <string name="release_keystore_config_desc">Select and configure the custom keystore for release builds.</string>
 
     <!-- ========== MoreBlock ========== -->
     <string name="moreblock_dialog_title_select">Select a more block</string>

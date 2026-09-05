@@ -827,8 +827,26 @@
     <string name="keystore_helper_algorithm">例: SHA256withRSA</string>
     <string name="keystore_hint_algorithm">签名算法</string>
     <string name="keystore_hint_alias">密钥库别名</string>
-    <string name="keystore_hint_password">别名密码</string>
+    <string name="keystore_hint_password">密钥库密码</string>
     <string name="keystore_hint_signing_mode">签名模式</string>
+    <string name="keystore_hint_path">密钥库文件路径</string>
+    <string name="keystore_helper_path">选择或输入 .jks 或 .keystore 文件路径</string>
+    <string name="keystore_hint_key_password">私钥密码</string>
+    <string name="keystore_helper_key_password">可选，若留空则默认使用密钥库密码</string>
+    <string name="keystore_save_for_future_builds">保存密钥库配置用于后续 Release 构建</string>
+    <string name="error_keystore_path_empty">密钥库路径不能为空</string>
+    <string name="error_keystore_file_not_found">指定路径下的密钥库文件不存在</string>
+    <string name="build_type_dialog_title">选择构建类型</string>
+    <string name="build_type_debug">Debug</string>
+    <string name="build_type_debug_desc">使用 Sketchware 默认调试密钥 (testkey) 构建并运行</string>
+    <string name="build_type_release">Release</string>
+    <string name="build_type_release_desc">使用配置的发布密钥库构建并运行</string>
+    <string name="btn_build_release">构建 Release</string>
+    <string name="btn_configure_keystore">配置密钥库</string>
+    <string name="release_build_using_keystore_format">使用已配置的密钥库构建 Release APK:\n路径: %1$s\n别名: %2$s</string>
+    <string name="release_build_success">Release APK 已生成并签名: %s</string>
+    <string name="release_keystore_config_title">配置 Release 密钥库</string>
+    <string name="release_keystore_config_desc">选择并配置用于 Release 构建的自定义密钥库。</string>
 
     <!-- ========== MoreBlock ========== -->
     <string name="moreblock_dialog_title_select">选择一个 MoreBlock</string>

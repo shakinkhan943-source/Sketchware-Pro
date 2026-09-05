@@ -1,33 +1,118 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
+    <!-- Compact toolbar: undo + redo live here (moved out of the old tools popup). -->
     <item
-        android:id="@+id/design_option_menu_search"
-        android:icon="@drawable/ic_mtrl_search"
-        android:orderInCategory="100"
-        android:title="@string/logic_search_events"
-        android:visible="false"
+        android:id="@+id/design_option_menu_undo"
+        android:icon="@drawable/ic_mtrl_undo"
+        android:orderInCategory="10"
+        android:title="@string/design_tools_undo"
+        app:showAsAction="always" />
+
+    <item
+        android:id="@+id/design_option_menu_redo"
+        android:icon="@drawable/ic_mtrl_redo"
+        android:orderInCategory="11"
+        android:title="@string/design_tools_redo"
+        app:showAsAction="always" />
+
+    <!-- Workspace switchers (previously behind the tools popup). -->
+    <item
+        android:id="@+id/design_option_menu_events"
+        android:icon="@drawable/ic_mtrl_lifecycle"
+        android:orderInCategory="20"
+        android:title="@string/design_tools_events"
+        app:showAsAction="always" />
+
+    <item
+        android:id="@+id/design_option_menu_components"
+        android:icon="@drawable/ic_mtrl_component"
+        android:orderInCategory="21"
+        android:title="@string/design_tools_components"
+        app:showAsAction="always" />
+
+    <!-- Run moved from the bottom bar into the toolbar. -->
+    <item
+        android:id="@+id/design_option_menu_run"
+        android:icon="@drawable/ic_mtrl_run"
+        android:orderInCategory="30"
+        android:title="@string/design_run"
         app:showAsAction="always" />
 
     <item
         android:id="@+id/design_option_menu_title_save_project"
         android:icon="@drawable/selector_save_tinted"
-        android:orderInCategory="110"
+        android:orderInCategory="31"
         android:title="@string/design_option_menu_title_save_project"
         app:showAsAction="always" />
 
+    <!-- Events search (only relevant in the Events workspace). -->
     <item
-        android:id="@+id/design_option_menu_tools"
+        android:id="@+id/design_option_menu_search"
+        android:icon="@drawable/ic_mtrl_search"
+        android:orderInCategory="40"
+        android:title="@string/logic_search_events"
+        android:visible="false"
+        app:showAsAction="always" />
+
+    <!-- "More": consolidated overflow (build actions + project tools drawer). -->
+    <item
+        android:id="@+id/design_option_menu_open_tools"
         android:icon="@drawable/ic_mtrl_tune"
-        android:orderInCategory="120"
-        android:title="@string/design_tools_title"
-        app:showAsAction="always" />
+        android:orderInCategory="100"
+        android:title="@string/design_menu_open_tools"
+        app:showAsAction="never" />
 
     <item
-        android:id="@+id/design_actionbar_titleopen_drawer"
-        android:icon="@drawable/selector_ic_more_tinted_24"
-        android:orderInCategory="130"
-        android:title="@string/menu_design_drawer"
-        app:showAsAction="always" />
+        android:id="@+id/design_menu_build_settings"
+        android:orderInCategory="110"
+        android:title="@string/design_menu_build_settings"
+        app:showAsAction="never" />
 
+    <item
+        android:id="@+id/design_menu_clean_temp"
+        android:orderInCategory="120"
+        android:title="@string/design_menu_clean_temp"
+        android:visible="false"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/design_menu_show_last_error"
+        android:orderInCategory="130"
+        android:title="@string/design_menu_show_last_error"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/design_menu_show_source"
+        android:orderInCategory="140"
+        android:title="@string/design_menu_show_source"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/design_menu_install_apk"
+        android:orderInCategory="150"
+        android:title="@string/design_menu_install_apk"
+        android:visible="false"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/design_menu_show_signatures"
+        android:orderInCategory="160"
+        android:title="@string/design_menu_show_signatures"
+        android:visible="false"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/design_menu_xml_editor"
+        android:orderInCategory="170"
+        android:title="@string/design_menu_xml_editor"
+        android:visible="false"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/design_menu_import_xml"
+        android:orderInCategory="180"
+        android:title="@string/menu_import_xml"
+        android:visible="false"
+        app:showAsAction="never" />
 </menu>

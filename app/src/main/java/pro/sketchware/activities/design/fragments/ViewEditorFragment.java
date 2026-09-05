@@ -67,6 +67,7 @@ public class ViewEditorFragment extends BaseFragment {
     private String sc_id;
     private Runnable propertyPanelWarmUpRunnable;
     private boolean propertyViewsDirty = true;
+    private Runnable undoRedoStateListener;
 
     private WidgetsCreatorManager widgetsCreatorManager;
 
@@ -157,6 +158,9 @@ public class ViewEditorFragment extends BaseFragment {
         setupPalette();
         refreshAllViews();
         schedulePropertyPanelWarmUp();
+        if (undoRedoStateListener != null) {
+            undoRedoStateListener.run();
+        }
     }
 
     private void updateFab(ViewBean viewBean) {
@@ -264,6 +268,9 @@ public class ViewEditorFragment extends BaseFragment {
 
     private void onViewHistoryChanged() {
         propertyViewsDirty = true;
+        if (undoRedoStateListener != null) {
+            undoRedoStateListener.run();
+        }
     }
 
     public void updateViewDisplay(ViewBean viewBean) {
@@ -280,6 +287,15 @@ public class ViewEditorFragment extends BaseFragment {
 
     public ProjectFileBean getProjectFileBean() {
         return projectFileBean;
+    }
+
+    /**
+     * Registers a listener notified whenever the undo/redo availability of this editor
+     * changes (used by {@link pro.sketchware.activities.design.DesignActivity} to keep the
+     * toolbar Undo/Redo actions in sync).
+     */
+    public void setOnUndoRedoStateChanged(Runnable listener) {
+        this.undoRedoStateListener = listener;
     }
 
     public void setupPalette() {
@@ -398,12 +414,18 @@ public class ViewEditorFragment extends BaseFragment {
     public void performRedo() {
         if (canRedo()) {
             onRedo();
+            if (undoRedoStateListener != null) {
+                undoRedoStateListener.run();
+            }
         }
     }
 
     public void performUndo() {
         if (canUndo()) {
             onUndo();
+            if (undoRedoStateListener != null) {
+                undoRedoStateListener.run();
+            }
         }
     }
 

@@ -8,25 +8,19 @@
     android:clickable="true"
     android:focusable="true"
     android:gravity="center_vertical"
-    android:paddingVertical="12dp">
+    android:paddingVertical="10dp">
 
-<androidx.constraintlayout.widget.ConstraintLayout
-    android:layout_width="wrap_content"
-    android:layout_height="wrap_content"
-    android:layout_marginStart="12dp">
+    <FrameLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="12dp">
 
-    <com.google.android.material.card.MaterialCardView
-        android:id="@+id/img_icon_view"
-        android:layout_width="60dp"
-        android:layout_height="60dp"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:strokeWidth="0.5dp">
-
-        <RelativeLayout
-            android:layout_width="match_parent"
-            android:layout_height="match_parent">
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/img_icon_view"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            app:cardElevation="0dp"
+            app:strokeWidth="0dp">
 
             <ImageView
                 android:id="@+id/img_icon"
@@ -36,59 +30,56 @@
                 android:foreground="@drawable/shadow_gradient_bottom_top"
                 android:scaleType="centerCrop"
                 android:src="@drawable/sketch_app_icon" />
+        </com.google.android.material.card.MaterialCardView>
 
-            <TextView
-                android:id="@+id/tv_published"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_alignParentBottom="true"
-                android:layout_centerHorizontal="true"
-                android:layout_marginEnd="14dp"
-                android:layout_marginBottom="4dp"
-                android:textAppearance="?attr/textAppearanceBodySmall"
-                android:textColor="#fff"
-                tools:text="605" />
-
-        </RelativeLayout>
-    </com.google.android.material.card.MaterialCardView>
-
-    <ImageView
-        android:id="@+id/img_pin"
-        android:layout_width="15dp"
-        android:layout_height="15dp"
-        app:srcCompat="@drawable/ic_mtrl_pin_fill"
-        app:layout_constraintEnd_toEndOf="@id/img_icon_view"
-        app:layout_constraintTop_toTopOf="parent"/>
-
-</androidx.constraintlayout.widget.ConstraintLayout>
+        <ImageView
+            android:id="@+id/img_pin"
+            android:layout_width="14dp"
+            android:layout_height="14dp"
+            android:layout_gravity="top|end"
+            android:layout_marginTop="-2dp"
+            android:layout_marginEnd="-2dp"
+            android:importantForAccessibility="no"
+            android:visibility="invisible"
+            app:srcCompat="@drawable/ic_mtrl_pin_fill"
+            tools:ignore="ContentDescription" />
+    </FrameLayout>
 
     <LinearLayout
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginHorizontal="16dp"
+        android:layout_marginStart="14dp"
+        android:layout_marginEnd="4dp"
         android:layout_weight="1"
         android:orientation="vertical">
 
         <TextView
             android:id="@+id/project_name"
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:textAppearance="?attr/textAppearanceBodyLargeEmphasized"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textAppearance="?attr/textAppearanceTitleMedium"
             tools:text="Sketchware Pro Demo" />
 
         <TextView
             android:id="@+id/app_name"
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginVertical="4dp"
+            android:layout_marginTop="1dp"
+            android:ellipsize="end"
+            android:maxLines="1"
             android:textAppearance="?attr/textAppearanceBodySmall"
             android:textColor="?attr/colorOnSurfaceVariant"
             tools:text="InternalDemo (1.4)" />
 
         <TextView
             android:id="@+id/package_name"
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="1dp"
+            android:ellipsize="middle"
+            android:maxLines="1"
             android:textAppearance="?attr/textAppearanceBodySmall"
             android:textColor="?attr/colorOnSurfaceVariant"
             tools:text="com.jbk.internal.demo" />
@@ -101,7 +92,7 @@
         android:background="?attr/selectableItemBackgroundBorderless"
         android:contentDescription="@string/project_options"
         android:scaleType="centerInside"
-        android:src="@drawable/selector_ic_expand_more_24"
+        android:src="@drawable/ic_mtrl_more_vertical"
         app:tint="?attr/colorControlNormal" />
 
 </LinearLayout>
