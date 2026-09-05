@@ -7,20 +7,16 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewConfiguration;
 import android.view.ViewGroup;
+import android.widget.FrameLayout;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.viewpager2.widget.ViewPager2;
 
 /**
- * ViewPager2 that cooperates with editors which have their own scrolling surface.
- *
- * <p>Horizontal gestures are given to the deepest scrollable child when it can still
- * scroll in that direction. Vertical gestures are never treated as page swipes. This
- * keeps code-editor scrolling responsive while preserving normal page swiping and the
- * natural hand-off at the editor's horizontal edges.</p>
+ * Hosts ViewPager2 while allowing nested horizontal editors to consume their own swipes.
+ * ViewPager2 itself is final, so gesture arbitration must live in a parent container.
  */
-public class EditorPagerView extends ViewPager2 {
+public class EditorPagerView extends FrameLayout {
     private final int touchSlop;
     private float downX;
     private float downY;
@@ -33,6 +29,7 @@ public class EditorPagerView extends ViewPager2 {
     public EditorPagerView(@NonNull Context context, @Nullable AttributeSet attrs) {
         super(context, attrs);
         touchSlop = ViewConfiguration.get(context).getScaledTouchSlop();
+        setClipToPadding(false);
     }
 
     @Override
@@ -42,38 +39,47 @@ public class EditorPagerView extends ViewPager2 {
                 downX = event.getX();
                 downY = event.getY();
                 gestureTarget = findDeepestViewUnder(this, downX, downY);
-                break;
+                return false;
 
             case MotionEvent.ACTION_MOVE:
                 float dx = event.getX() - downX;
                 float dy = event.getY() - downY;
 
                 if (Math.abs(dx) <= touchSlop && Math.abs(dy) <= touchSlop) {
-                    return super.onInterceptTouchEvent(event);
-                }
-
-                // A vertical gesture belongs to the editor/content, never to the pager.
-                if (Math.abs(dy) > Math.abs(dx)) {
                     return false;
                 }
 
-                // Let a horizontally scrollable child consume the gesture. At its edge,
-                // allow ViewPager2 to take over so page swiping still works naturally.
-                if (Math.abs(dx) > touchSlop && gestureTarget != null) {
-                    int direction = dx < 0 ? 1 : -1;
-                    if (gestureTarget.canScrollHorizontally(direction)) {
-                        return false;
-                    }
+                if (Math.abs(dy) > Math.abs(dx)) {
+                    requestDisallowInterceptTouchEvent(true);
+                    return false;
                 }
-                break;
+
+                if (Math.abs(dx) > touchSlop && canTargetScrollHorizontally(dx)) {
+                    requestDisallowInterceptTouchEvent(true);
+                }
+                return false;
 
             case MotionEvent.ACTION_CANCEL:
             case MotionEvent.ACTION_UP:
                 gestureTarget = null;
-                break;
-        }
+                requestDisallowInterceptTouchEvent(false);
+                return false;
 
-        return super.onInterceptTouchEvent(event);
+            default:
+                return false;
+        }
+    }
+
+    private boolean canTargetScrollHorizontally(float dx) {
+        int direction = dx < 0 ? 1 : -1;
+        View view = gestureTarget;
+        while (view != null && view != this) {
+            if (view.canScrollHorizontally(direction)) {
+                return true;
+            }
+            view = view.getParent() instanceof View ? (View) view.getParent() : null;
+        }
+        return false;
     }
 
     @Nullable
