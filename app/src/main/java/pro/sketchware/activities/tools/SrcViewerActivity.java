@@ -60,11 +60,7 @@ public class SrcViewerActivity extends BaseAppCompatActivity {
                 SrcCodeBean bean = sourceCodeBeans.get(position);
                 binding.editor.setText(bean.source);
                 currentFileName = bean.srcFileName;
-                if (currentFileName.endsWith(".xml")) {
-                    EditorUtils.loadXmlConfig(binding.editor);
-                } else {
-                    EditorUtils.loadJavaConfig(binding.editor);
-                }
+                configureLanguage(binding.editor);
                 editorPrefs.applyToEditor(binding.editor, false);
             }
 
@@ -115,12 +111,23 @@ public class SrcViewerActivity extends BaseAppCompatActivity {
         binding.editor.setEditable(false);
         binding.editor.setPinLineNumber(true);
 
-        if (currentFileName.endsWith(".xml")) {
-            EditorUtils.loadXmlConfig(binding.editor);
-        } else {
-            EditorUtils.loadJavaConfig(binding.editor);
-        }
+        configureLanguage(binding.editor);
         editorPrefs.applyToEditor(binding.editor, false);
+    }
+
+    /**
+     * Selects the editor language by file extension: XML for {@code .xml}, Kotlin for
+     * {@code .kt}, and Java for everything else. Generated Compose files (Theme.kt, Color.kt,
+     * SketchwareUtil.kt, FileUtil.kt) are therefore highlighted as Kotlin instead of Java.
+     */
+    private void configureLanguage(io.github.rosemoe.sora.widget.CodeEditor editor) {
+        if (currentFileName.endsWith(".xml")) {
+            EditorUtils.loadXmlConfig(editor);
+        } else if (currentFileName.endsWith(".kt")) {
+            EditorUtils.loadKotlinConfig(editor);
+        } else {
+            EditorUtils.loadJavaConfig(editor);
+        }
     }
 
     @Override

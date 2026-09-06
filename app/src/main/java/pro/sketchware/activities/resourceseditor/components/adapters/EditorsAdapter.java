@@ -18,6 +18,16 @@ public class EditorsAdapter extends FragmentStateAdapter {
     @NonNull
     @Override
     public Fragment createFragment(int position) {
+        if (activity.isComposeProject()) {
+            return switch (position) {
+                case 0 -> activity.stringsEditor;
+                case 1 -> activity.colorKtEditor;
+                case 2 -> activity.themeKtEditor;
+                case 3 -> activity.arraysEditor;
+                case 4 -> activity.dimensEditor;
+                default -> throw new IllegalArgumentException("Invalid position");
+            };
+        }
         return switch (position) {
             case 0 -> activity.stringsEditor;
             case 1 -> activity.colorsEditor;
@@ -31,6 +41,6 @@ public class EditorsAdapter extends FragmentStateAdapter {
 
     @Override
     public int getItemCount() {
-        return 6;
+        return activity.isComposeProject() ? 5 : 6;
     }
 }

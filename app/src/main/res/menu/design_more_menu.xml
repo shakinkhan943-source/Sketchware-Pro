@@ -1,0 +1,54 @@
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <item
+        android:id="@+id/design_option_menu_open_tools"
+        android:icon="@drawable/ic_mtrl_tune"
+        android:title="@string/design_menu_open_tools"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/design_menu_build_settings"
+        android:title="@string/design_menu_build_settings"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/design_menu_clean_temp"
+        android:title="@string/design_menu_clean_temp"
+        android:visible="false"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/design_menu_show_last_error"
+        android:title="@string/design_menu_show_last_error"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/design_menu_show_source"
+        android:title="@string/design_menu_show_source"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/design_menu_install_apk"
+        android:title="@string/design_menu_install_apk"
+        android:visible="false"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/design_menu_show_signatures"
+        android:title="@string/design_menu_show_signatures"
+        android:visible="false"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/design_menu_xml_editor"
+        android:title="@string/design_menu_xml_editor"
+        android:visible="false"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/design_menu_import_xml"
+        android:title="@string/menu_import_xml"
+        android:visible="false"
+        app:showAsAction="never" />
+</menu>

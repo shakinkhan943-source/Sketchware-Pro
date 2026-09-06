@@ -47,6 +47,7 @@ public class ViewSelectorActivity extends BaseAppCompatActivity {
     private final int[] widgetTypeCounts = new int[19];
     private final int TAB_ACTIVITY = ProjectFileBean.PROJECT_FILE_TYPE_ACTIVITY;
     private final int TAB_CUSTOM_VIEW = ProjectFileBean.PROJECT_FILE_TYPE_CUSTOM_VIEW;
+    private final int TAB_COMPOSE_FILES = 2;
     private ViewSelectorAdapter viewSelectorAdapter;
     private String sc_id;
     private ProjectFileBean projectFile;
@@ -98,6 +99,66 @@ public class ViewSelectorActivity extends BaseAppCompatActivity {
             return ProjectType.COMPOSE;
         }
         return ProjectType.DEFAULT;
+    }
+
+    private boolean isComposeProject() {
+        return ProjectType.isCompose(getProjectType());
+    }
+
+    /**
+     * Compose projects keep their theme/color configuration in Kotlin source files instead of
+     * XML values resources. These are the files exposed by the "Compose files" selector category.
+     */
+    private ArrayList<String> getComposeFiles() {
+        ArrayList<String> composeFiles = new ArrayList<>();
+        if (isComposeProject()) {
+            composeFiles.add("Theme.kt");
+            composeFiles.add("Color.kt");
+        }
+        return composeFiles;
+    }
+
+    /**
+     * Keeps the bottom "create" FAB and the empty-state text in sync with the selected category.
+     * Compose configuration files are generated, not created, so the FAB is hidden for them.
+     */
+    private void updateCreateButton() {
+        if (selectedTab == TAB_COMPOSE_FILES) {
+            binding.createNewView.setVisibility(View.GONE);
+        } else if (sourceMode && selectedTab == TAB_CUSTOM_VIEW) {
+            // Source selection only creates Activities; custom views are created from the UI mode.
+            binding.createNewView.setVisibility(View.GONE);
+        } else {
+            binding.createNewView.setVisibility(View.VISIBLE);
+            binding.createNewView.setText(sourceMode
+                    ? R.string.file_selector_create_new_activity
+                    : R.string.file_selector_create_new_view);
+        }
+
+        if (selectedTab == TAB_ACTIVITY) {
+            binding.emptyMessage.setText(sourceMode
+                    ? R.string.file_selector_no_activities
+                    : R.string.design_manager_view_message_no_view);
+        } else if (selectedTab == TAB_COMPOSE_FILES) {
+            binding.emptyMessage.setText(R.string.file_selector_no_files);
+        } else {
+            binding.emptyMessage.setText(R.string.design_manager_view_message_no_view);
+        }
+    }
+
+    /** Opens a Compose Kotlin configuration file in the full-screen Kotlin editor. */
+    private void openComposeFile(String fileName) {
+        String path = SketchwarePaths.getProjectJavaPath(sc_id) + java.io.File.separator + fileName;
+        if (!pro.sketchware.util.FileUtil.isExistFile(path)) {
+            String code = new pro.sketchware.core.build.ProjectFilePaths(getApplicationContext(), sc_id)
+                    .getComposeResourceCode(fileName);
+            pro.sketchware.util.FileUtil.writeFile(path, code);
+        }
+        Intent intent = new Intent(getApplicationContext(), pro.sketchware.activities.editor.code.SrcCodeEditor.class);
+        intent.putExtra("sc_id", sc_id);
+        intent.putExtra("title", fileName);
+        intent.putExtra("content", path);
+        startActivity(intent);
     }
 
     private void enableComposeFor(ProjectFileBean file) {
@@ -244,14 +305,11 @@ public class ViewSelectorActivity extends BaseAppCompatActivity {
             selectedTab = TAB_ACTIVITY;
         }
 
-        binding.optionsSelector.check(selectedTab == TAB_ACTIVITY ? R.id.option_view : R.id.option_custom_view);
-        if (sourceMode) {
-            binding.optionsSelector.setVisibility(View.GONE);
-            binding.createNewView.setText(R.string.file_selector_create_new_activity);
-            binding.emptyMessage.setText(R.string.file_selector_no_activities);
-        } else {
-            binding.emptyMessage.setText(R.string.design_manager_view_message_no_view);
-        }
+        binding.optionsSelector.check(switch (selectedTab) {
+            case TAB_CUSTOM_VIEW -> R.id.option_custom_view;
+            case TAB_COMPOSE_FILES -> R.id.option_compose;
+            default -> R.id.option_view;
+        });
         viewSelectorAdapter = new ViewSelectorAdapter();
         binding.listXml.setHasFixedSize(true);
         binding.listXml.setAdapter(viewSelectorAdapter);
@@ -269,9 +327,12 @@ public class ViewSelectorActivity extends BaseAppCompatActivity {
             if (isChecked) {
                 if (checkedId == R.id.option_view) {
                     selectedTab = TAB_ACTIVITY;
+                } else if (checkedId == R.id.option_compose) {
+                    selectedTab = TAB_COMPOSE_FILES;
                 } else if (checkedId == R.id.option_custom_view) {
                     selectedTab = TAB_CUSTOM_VIEW;
                 }
+                updateCreateButton();
                 viewSelectorAdapter.notifyDataSetChanged();
                 binding.emptyMessage.setVisibility(viewSelectorAdapter.getItemCount() == 0 ? View.VISIBLE : View.GONE);
             }
@@ -288,10 +349,10 @@ public class ViewSelectorActivity extends BaseAppCompatActivity {
                     Intent intent = new Intent(getApplicationContext(), AddCustomViewActivity.class);
                     intent.putStringArrayListExtra("screen_names", getScreenNames());
                     addCustomViewLauncher.launch(intent);
-
                 }
             }
         });
+        updateCreateButton();
         binding.container.setOnClickListener(v -> finish());
         overridePendingTransition(R.anim.ani_fade_in, R.anim.ani_fade_out);
 
@@ -439,6 +500,13 @@ public class ViewSelectorActivity extends BaseAppCompatActivity {
                     viewHolder.itemBinding.imgView.setImageResource(getViewIcon(3));
                     viewHolder.itemBinding.tvFilename.setText(customView.getXmlName());
                 }
+            } else if (selectedTab == TAB_COMPOSE_FILES) {
+                viewHolder.itemBinding.imgEdit.setVisibility(View.GONE);
+                viewHolder.itemBinding.tvLinkedFilename.setVisibility(View.GONE);
+                String composeFile = getComposeFiles().get(position);
+                viewHolder.itemBinding.cardView.setStrokeWidth(SketchwareUtil.dpToPx(0f));
+                viewHolder.itemBinding.imgView.setImageResource(R.drawable.ic_mtrl_kotlin);
+                viewHolder.itemBinding.tvFilename.setText(composeFile);
             }
         }
 
@@ -453,13 +521,18 @@ public class ViewSelectorActivity extends BaseAppCompatActivity {
         @Override
         public int getItemCount() {
             binding.emptyMessage.setVisibility(View.GONE);
-            ProjectFileManager ProjectFileManager = ProjectDataManager.getFileManager(sc_id);
-            ArrayList<ProjectFileBean> list = switch (selectedTab) {
-                case TAB_ACTIVITY -> ProjectFileManager.getActivities();
-                case TAB_CUSTOM_VIEW -> ProjectFileManager.getCustomViews();
-                default -> null;
-            };
-            int size = list != null ? list.size() : 0;
+            int size;
+            if (selectedTab == TAB_COMPOSE_FILES) {
+                size = getComposeFiles().size();
+            } else {
+                ProjectFileManager ProjectFileManager = ProjectDataManager.getFileManager(sc_id);
+                ArrayList<ProjectFileBean> list = switch (selectedTab) {
+                    case TAB_ACTIVITY -> ProjectFileManager.getActivities();
+                    case TAB_CUSTOM_VIEW -> ProjectFileManager.getCustomViews();
+                    default -> null;
+                };
+                size = list != null ? list.size() : 0;
+            }
             if (size == 0) {
                 binding.emptyMessage.setVisibility(View.VISIBLE);
             }
@@ -477,6 +550,10 @@ public class ViewSelectorActivity extends BaseAppCompatActivity {
                         int pos = getLayoutPosition();
                         if (pos == RecyclerView.NO_POSITION) return;
                         selectedItem = pos;
+                        if (selectedTab == TAB_COMPOSE_FILES) {
+                            openComposeFile(getComposeFiles().get(pos));
+                            return;
+                        }
                         ProjectFileManager ProjectFileManager = ProjectDataManager.getFileManager(sc_id);
                         ArrayList<ProjectFileBean> list = switch (selectedTab) {
                             case TAB_ACTIVITY -> ProjectFileManager.getActivities();
@@ -505,6 +582,9 @@ public class ViewSelectorActivity extends BaseAppCompatActivity {
                     }
                 });
                 itemBinding.imgPresetSetting.setOnClickListener(v -> {
+                    if (selectedTab == TAB_COMPOSE_FILES) {
+                        return;
+                    }
                     if (!UIHelper.isClickThrottled()) {
                         int pos = getLayoutPosition();
                         if (pos == RecyclerView.NO_POSITION) return;

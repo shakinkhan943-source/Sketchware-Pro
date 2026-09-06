@@ -2127,6 +2127,12 @@ Choosing a theme mode lets you personalize the app\'s appearance, notes:\n
     <string name="design_tools_undo">Undo</string>
     <string name="design_tools_redo">Redo</string>
     <string name="design_tab_ui_disabled">UI disabled for Kotlin/Compose</string>
+    <string name="design_fab_actions">Project actions</string>
+    <string name="design_fab_more">More</string>
+    <string name="file_selector_category_activities">Activities</string>
+    <string name="file_selector_category_compose_files">Compose files</string>
+    <string name="file_selector_category_other_files">Other files</string>
+    <string name="file_selector_no_files">No files to display</string>
     <string name="java_editor_action_reload">Reload from blocks</string>
     <string name="java_editor_action_keep_java">Keep my Java code</string>
     <string name="java_editor_action_keep_blocks">Keep the blocks</string>
@@ -2735,6 +2741,8 @@ Do you want to continue?"</string>
     <string name="projects_restore_desc">Get your projects in a couple of clicks</string>
     <string name="projects_sort_title">Sort options</string>
     <string name="projects_title">Projects</string>
+    <string name="main_store_title">Store</string>
+    <string name="search_menu_title">Search</string>
     <string name="sort_ascending">Ascending (A-Z)</string>
     <string name="sort_by_id">Sort by ID</string>
     <string name="sort_by_name">Sort by Project Name</string>

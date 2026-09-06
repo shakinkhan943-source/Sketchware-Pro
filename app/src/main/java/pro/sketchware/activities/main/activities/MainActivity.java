@@ -57,7 +57,6 @@ import pro.sketchware.lib.base.BottomSheetDialogView;
 import pro.sketchware.util.DataResetter;
 import pro.sketchware.util.FileUtil;
 import pro.sketchware.util.SketchwareUtil;
-import pro.sketchware.util.UI;
 
 public class MainActivity extends BasePermissionAppCompatActivity {
     private ActivityResultLauncher<Intent> programInfoLauncher;
@@ -156,7 +155,6 @@ public class MainActivity extends BasePermissionAppCompatActivity {
         binding = MainBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
         setSupportActionBar(binding.toolbar);
-        UI.addSystemWindowInsetToPadding(binding.appbar, true, false, true, false);
 
         sharedPrefs = new SharedPrefsHelper(getApplicationContext(), "U1");
         int u1I0 = sharedPrefs.getInt("U1I0", -1);

@@ -1820,5 +1820,736 @@ public class ComponentTemplates {
         return sketchwareUtilSource.toString();
     }
 
+    /**
+     * @return Content of a generated {@code SketchwareUtil.kt} file for Kotlin + Jetpack Compose
+     * projects. Mirrors {@link #getSketchwareUtilCode(String, boolean)} but as a Kotlin
+     * {@code object} so Compose source stays idiomatic Kotlin. Java/XML projects keep the Java
+     * class unchanged.
+     */
+    public static String getSketchwareUtilCodeKotlin(String packageName) {
+        return String.format("""
+                package %s;
+
+                import android.app.Activity;
+                import android.content.ActivityNotFoundException;
+                import android.content.ClipboardManager;
+                import android.content.Context;
+                import android.content.Intent;
+                import android.graphics.drawable.GradientDrawable;
+                import android.net.ConnectivityManager;
+                import android.net.NetworkInfo;
+                import android.net.Uri;
+                import android.util.SparseBooleanArray;
+                import android.util.TypedValue;
+                import android.view.Gravity;
+                import android.view.View;
+                import android.view.inputmethod.InputMethodManager;
+                import android.widget.ListView;
+                import android.widget.TextView;
+                import android.widget.Toast;
+
+                import java.io.ByteArrayOutputStream;
+                import java.io.File;
+                import java.io.IOException;
+                import java.io.InputStream;
+                import java.util.ArrayList;
+                import java.util.Collections;
+                import java.util.Comparator;
+                import java.util.HashMap;
+                import java.util.Map;
+                import java.util.Random;
+
+                object SketchwareUtil {
+
+                    const val TOP = 1
+                    const val CENTER = 2
+                    const val BOTTOM = 3
+
+                    fun CustomToast(_context: Context, _message: String, _textColor: Int, _textSize: Int, _bgColor: Int, _radius: Int, _gravity: Int) {
+                        val _toast = Toast.makeText(_context, _message, Toast.LENGTH_SHORT)
+                        val _view = _toast.view
+                        if (_view != null) {
+                            val _textView = _view.findViewById<TextView>(android.R.id.message)
+                            _textView.setTextSize(_textSize.toFloat())
+                            _textView.setTextColor(_textColor)
+                            _textView.gravity = Gravity.CENTER
+
+                            val _gradientDrawable = GradientDrawable()
+                            _gradientDrawable.setColor(_bgColor)
+                            _gradientDrawable.cornerRadius = _radius.toFloat()
+                            _view.background = _gradientDrawable
+                            _view.setPadding(15, 10, 15, 10)
+                            _view.elevation = 10f
+
+                            when (_gravity) {
+                                1 -> _toast.setGravity(Gravity.TOP, 0, 150)
+                                2 -> _toast.setGravity(Gravity.CENTER, 0, 0)
+                                3 -> _toast.setGravity(Gravity.BOTTOM, 0, 150)
+                            }
+                        }
+                        _toast.show()
+                    }
+
+                    fun CustomToastWithIcon(_context: Context, _message: String, _textColor: Int, _textSize: Int, _bgColor: Int, _radius: Int, _gravity: Int, _icon: Int) {
+                        val _toast = Toast.makeText(_context, _message, Toast.LENGTH_SHORT)
+                        val _view = _toast.view
+                        if (_view != null) {
+                            val _textView = _view.findViewById<TextView>(android.R.id.message)
+                            _textView.setTextSize(_textSize.toFloat())
+                            _textView.setTextColor(_textColor)
+                            _textView.setCompoundDrawablesWithIntrinsicBounds(_icon, 0, 0, 0)
+                            _textView.gravity = Gravity.CENTER
+                            _textView.compoundDrawablePadding = 10
+
+                            val _gradientDrawable = GradientDrawable()
+                            _gradientDrawable.setColor(_bgColor)
+                            _gradientDrawable.cornerRadius = _radius.toFloat()
+                            _view.background = _gradientDrawable
+                            _view.setPadding(10, 10, 10, 10)
+                            _view.elevation = 10f
+
+                            when (_gravity) {
+                                1 -> _toast.setGravity(Gravity.TOP, 0, 150)
+                                2 -> _toast.setGravity(Gravity.CENTER, 0, 0)
+                                3 -> _toast.setGravity(Gravity.BOTTOM, 0, 150)
+                            }
+                        }
+                        _toast.show()
+                    }
+
+                    fun sortListMap(_listMap: ArrayList<HashMap<String, Any>>, _key: String, _isNumber: Boolean, _ascending: Boolean) {
+                        Collections.sort(_listMap, Comparator { _compareMap1, _compareMap2 ->
+                            if (_isNumber) {
+                                val _count1 = (_compareMap1[_key] as Number).toInt()
+                                val _count2 = (_compareMap2[_key] as Number).toInt()
+                                if (_ascending) Integer.compare(_count1, _count2) else Integer.compare(_count2, _count1)
+                            } else {
+                                if (_ascending) _compareMap1[_key].toString().compareTo(_compareMap2[_key].toString())
+                                else _compareMap2[_key].toString().compareTo(_compareMap1[_key].toString())
+                            }
+                        })
+                    }
+
+                    fun CropImage(_activity: Activity, _path: String, _requestCode: Int) {
+                        try {
+                            val _intent = Intent("com.android.camera.action.CROP")
+                            val _file = File(_path)
+                            val _contentUri = Uri.fromFile(_file)
+                            _intent.setDataAndType(_contentUri, "image/*")
+                            _intent.putExtra("crop", "true")
+                            _intent.putExtra("aspectX", 1)
+                            _intent.putExtra("aspectY", 1)
+                            _intent.putExtra("outputX", 280)
+                            _intent.putExtra("outputY", 280)
+                            _intent.putExtra("return-data", false)
+                            _activity.startActivityForResult(_intent, _requestCode)
+                        } catch (_e: ActivityNotFoundException) {
+                            Toast.makeText(_activity, "Your device does not support the crop feature.", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+
+                    fun isConnected(_context: Context): Boolean {
+                        val _connectivityManager = _context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+                        val _activeNetworkInfo = _connectivityManager.activeNetworkInfo
+                        return _activeNetworkInfo != null && _activeNetworkInfo.isConnected
+                    }
+
+                    fun copyFromInputStream(_inputStream: InputStream): String {
+                        val _outputStream = ByteArrayOutputStream()
+                        val _buf = ByteArray(1024)
+                        var _i: Int
+                        try {
+                            while (_inputStream.read(_buf).also { _i = it } != -1) {
+                                _outputStream.write(_buf, 0, _i)
+                            }
+                            _outputStream.close()
+                            _inputStream.close()
+                        } catch (_e: IOException) {
+                            _e.printStackTrace()
+                        }
+                        return _outputStream.toString()
+                    }
+
+                    fun hideKeyboard(_context: Context) {
+                        val _inputMethodManager = _context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                        _inputMethodManager.toggleSoftInput(InputMethodManager.HIDE_IMPLICIT_ONLY, 0)
+                    }
+
+                    fun showKeyboard(_context: Context) {
+                        val _inputMethodManager = _context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                        _inputMethodManager.toggleSoftInput(InputMethodManager.SHOW_FORCED, 0)
+                    }
+
+                    fun showMessage(_context: Context, _s: String) {
+                        Toast.makeText(_context, _s, Toast.LENGTH_SHORT).show()
+                    }
+
+                    fun getClipboardText(_context: Context): String {
+                        val _clipboard = _context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager?
+                        if (_clipboard != null && _clipboard.hasPrimaryClip()) {
+                            val _clip = _clipboard.primaryClip
+                            if (_clip != null && _clip.itemCount > 0) {
+                                val _text = _clip.getItemAt(0).text
+                                if (_text != null) {
+                                    return _text.toString()
+                                }
+                            }
+                        }
+                        return ""
+                    }
+
+                    fun getLocationX(_view: View): Int {
+                        val _location = IntArray(2)
+                        _view.getLocationInWindow(_location)
+                        return _location[0]
+                    }
+
+                    fun getLocationY(_view: View): Int {
+                        val _location = IntArray(2)
+                        _view.getLocationInWindow(_location)
+                        return _location[1]
+                    }
+
+                    fun getRandom(_min: Int, _max: Int): Int {
+                        val random = Random()
+                        return random.nextInt(_max - _min + 1) + _min
+                    }
+
+                    fun getCheckedItemPositionsToArray(_list: ListView): ArrayList<Double> {
+                        val _result = ArrayList<Double>()
+                        val _arr = _list.checkedItemPositions
+                        for (_iIdx in 0 until _arr.size()) {
+                            if (_arr.valueAt(_iIdx)) _result.add(_arr.keyAt(_iIdx).toDouble())
+                        }
+                        return _result
+                    }
+
+                    fun getDip(_context: Context, _input: Int): Float {
+                        return TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, _input.toFloat(), _context.resources.displayMetrics)
+                    }
+
+                    fun getDisplayWidthPixels(_context: Context): Int {
+                        return _context.resources.displayMetrics.widthPixels
+                    }
+
+                    fun getDisplayHeightPixels(_context: Context): Int {
+                        return _context.resources.displayMetrics.heightPixels
+                    }
+
+                    fun getAllKeysFromMap(_map: Map<String, Any>?, _output: ArrayList<String>?) {
+                        if (_output == null) return
+                        _output.clear()
+                        if (_map == null || _map.size < 1) return
+                        for (_entry in _map.entries) {
+                            _output.add(_entry.key)
+                        }
+                    }
+                }
+                """, packageName);
+    }
+
+    /**
+     * @return Content of a generated {@code FileUtil.kt} file for Kotlin + Jetpack Compose
+     * projects. Mirrors {@link #getFileUtilCode(String)} as a Kotlin {@code object}. Java/XML
+     * projects keep the Java class unchanged.
+     */
+    public static String getFileUtilCodeKotlin(String packageName) {
+        return String.format("""
+                package %s;
+
+                import android.content.ContentResolver;
+                import android.content.ContentUris;
+                import android.content.Context;
+                import android.database.Cursor;
+                import android.graphics.Bitmap;
+                import android.graphics.BitmapFactory;
+                import android.graphics.Canvas;
+                import android.graphics.ColorMatrix;
+                import android.graphics.ColorMatrixColorFilter;
+                import android.graphics.LightingColorFilter;
+                import android.graphics.Matrix;
+                import android.graphics.Paint;
+                import android.graphics.PorterDuff;
+                import android.graphics.PorterDuffXfermode;
+                import android.graphics.Rect;
+                import android.graphics.RectF;
+                import android.media.ExifInterface;
+                import android.net.Uri;
+                import android.os.Build;
+                import android.os.Environment;
+                import android.provider.DocumentsContract;
+                import android.provider.MediaStore;
+
+                import java.io.File;
+                import java.io.FileInputStream;
+                import java.io.FileOutputStream;
+                import java.io.FileReader;
+                import java.io.FileWriter;
+                import java.io.IOException;
+                import java.net.URLDecoder;
+                import java.text.SimpleDateFormat;
+                import java.util.ArrayList;
+                import java.util.Date;
+
+                object FileUtil {
+
+                    private fun createNewFile(path: String) {
+                        val lastSep = path.lastIndexOf(File.separator)
+                        if (lastSep > 0) {
+                            val dirPath = path.substring(0, lastSep)
+                            makeDir(dirPath)
+                        }
+                        val file = File(path)
+                        try {
+                            if (!file.exists()) file.createNewFile()
+                        } catch (e: IOException) {
+                            e.printStackTrace()
+                        }
+                    }
+
+                    fun readFile(path: String): String {
+                        createNewFile(path)
+                        val sb = StringBuilder()
+                        try {
+                            val fr = FileReader(File(path))
+                            try {
+                                val buff = CharArray(1024)
+                                var length: Int
+                                while (fr.read(buff).also { length = it } > 0) {
+                                    sb.append(String(buff, 0, length))
+                                }
+                            } finally {
+                                fr.close()
+                            }
+                        } catch (e: IOException) {
+                            e.printStackTrace()
+                        }
+                        return sb.toString()
+                    }
+
+                    fun writeFile(path: String, str: String) {
+                        createNewFile(path)
+                        try {
+                            FileWriter(File(path), false).use { writer ->
+                                writer.write(str)
+                                writer.flush()
+                            }
+                        } catch (e: IOException) {
+                            e.printStackTrace()
+                        }
+                    }
+
+                    fun copyFile(sourcePath: String, destPath: String) {
+                        if (!isExistFile(sourcePath)) return
+                        createNewFile(destPath)
+                        try {
+                            FileInputStream(sourcePath).use { fis ->
+                                FileOutputStream(destPath, false).use { fos ->
+                                    val buff = ByteArray(1024)
+                                    var length: Int
+                                    while (fis.read(buff).also { length = it } > 0) {
+                                        fos.write(buff, 0, length)
+                                    }
+                                }
+                            }
+                        } catch (e: IOException) {
+                            e.printStackTrace()
+                        }
+                    }
+
+                    fun copyDir(oldPath: String, newPath: String) {
+                        val oldFile = File(oldPath)
+                        val files = oldFile.listFiles() ?: return
+                        val newFile = File(newPath)
+                        if (!newFile.exists()) {
+                            newFile.mkdirs()
+                        }
+                        for (file in files) {
+                            if (file.isFile) {
+                                copyFile(file.path, newPath + "/" + file.name)
+                            } else if (file.isDirectory) {
+                                copyDir(file.path, newPath + "/" + file.name)
+                            }
+                        }
+                    }
+
+                    fun moveFile(sourcePath: String, destPath: String) {
+                        copyFile(sourcePath, destPath)
+                        deleteFile(sourcePath)
+                    }
+
+                    fun deleteFile(path: String) {
+                        val file = File(path)
+                        if (!file.exists()) return
+                        if (file.isFile) {
+                            file.delete()
+                            return
+                        }
+                        val fileArr = file.listFiles()
+                        if (fileArr != null) {
+                            for (subFile in fileArr) {
+                                if (subFile.isDirectory) {
+                                    deleteFile(subFile.absolutePath)
+                                }
+                                if (subFile.isFile) {
+                                    subFile.delete()
+                                }
+                            }
+                        }
+                        file.delete()
+                    }
+
+                    fun isExistFile(path: String): Boolean {
+                        return File(path).exists()
+                    }
+
+                    fun makeDir(path: String) {
+                        if (!isExistFile(path)) {
+                            File(path).mkdirs()
+                        }
+                    }
+
+                    fun listDir(path: String, list: ArrayList<String>?) {
+                        val dir = File(path)
+                        if (!dir.exists() || dir.isFile) return
+                        val listFiles = dir.listFiles()
+                        if (listFiles == null || listFiles.size <= 0) return
+                        if (list == null) return
+                        list.clear()
+                        for (file in listFiles) {
+                            list.add(file.absolutePath)
+                        }
+                    }
+
+                    fun isDirectory(path: String): Boolean {
+                        return if (!isExistFile(path)) false else File(path).isDirectory
+                    }
+
+                    fun isFile(path: String): Boolean {
+                        return if (!isExistFile(path)) false else File(path).isFile
+                    }
+
+                    fun getFileLength(path: String): Long {
+                        return if (!isExistFile(path)) 0 else File(path).length()
+                    }
+
+                    fun getExternalStorageDir(): String {
+                        return Environment.getExternalStorageDirectory().absolutePath
+                    }
+
+                    fun getPackageDataDir(context: Context): String {
+                        val dir = context.getExternalFilesDir(null)
+                        return if (dir != null) dir.absolutePath else ""
+                    }
+
+                    fun getPublicDir(type: String): String {
+                        return Environment.getExternalStoragePublicDirectory(type).absolutePath
+                    }
+
+                    fun convertUriToFilePath(context: Context, uri: Uri): String? {
+                        var path: String? = null
+                        if (DocumentsContract.isDocumentUri(context, uri)) {
+                            if (isExternalStorageDocument(uri)) {
+                                val docId = DocumentsContract.getDocumentId(uri)
+                                val split = docId.split(":")
+                                val type = split[0]
+                                if ("primary".equals(type, ignoreCase = true)) {
+                                    path = Environment.getExternalStorageDirectory().toString() + "/" + split[1]
+                                }
+                            } else if (isDownloadsDocument(uri)) {
+                                val docId = DocumentsContract.getDocumentId(uri)
+                                val split = docId.split(":")
+                                val type = split[0]
+                                if ("raw".equals(type, ignoreCase = true)) {
+                                    return split[1]
+                                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && "msf".equals(type, ignoreCase = true)) {
+                                    val selection = "_id=?"
+                                    val selectionArgs = arrayOf(split[1])
+                                    path = getDataColumn(context, MediaStore.Downloads.EXTERNAL_CONTENT_URI, selection, selectionArgs)
+                                } else {
+                                    val contentUri = ContentUris.withAppendedId(Uri.parse("content://downloads/public_downloads"), docId.toLong())
+                                    path = getDataColumn(context, contentUri, null, null)
+                                }
+                            } else if (isMediaDocument(uri)) {
+                                val docId = DocumentsContract.getDocumentId(uri)
+                                val split = docId.split(":")
+                                val type = split[0]
+                                var contentUri: Uri? = null
+                                if ("image" == type) {
+                                    contentUri = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+                                } else if ("video" == type) {
+                                    contentUri = MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+                                } else if ("audio" == type) {
+                                    contentUri = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+                                }
+                                val selection = "_id=?"
+                                val selectionArgs = arrayOf(split[1])
+                                path = getDataColumn(context, contentUri, selection, selectionArgs)
+                            }
+                        } else if (ContentResolver.SCHEME_CONTENT.equals(uri.scheme, ignoreCase = true)) {
+                            path = getDataColumn(context, uri, null, null)
+                        } else if (ContentResolver.SCHEME_FILE.equals(uri.scheme, ignoreCase = true)) {
+                            path = uri.path
+                        }
+                        if (path != null) {
+                            try {
+                                return URLDecoder.decode(path, "UTF-8")
+                            } catch (e: Exception) {
+                                return null
+                            }
+                        }
+                        return null
+                    }
+
+                    private fun getDataColumn(context: Context, uri: Uri?, selection: String?, selectionArgs: Array<String>?): String? {
+                        val column = MediaStore.Images.Media.DATA
+                        val projection = arrayOf(column)
+                        try {
+                            context.contentResolver.query(uri, projection, selection, selectionArgs, null).use { cursor ->
+                                if (cursor != null && cursor.moveToFirst()) {
+                                    val column_index = cursor.getColumnIndexOrThrow(column)
+                                    return cursor.getString(column_index)
+                                }
+                            }
+                        } catch (e: Exception) {
+                        }
+                        return null
+                    }
+
+                    private fun isExternalStorageDocument(uri: Uri): Boolean {
+                        return "com.android.externalstorage.documents" == uri.authority
+                    }
+
+                    private fun isDownloadsDocument(uri: Uri): Boolean {
+                        return "com.android.providers.downloads.documents" == uri.authority
+                    }
+
+                    private fun isMediaDocument(uri: Uri): Boolean {
+                        return "com.android.providers.media.documents" == uri.authority
+                    }
+
+                    private fun saveBitmap(bitmap: Bitmap, destPath: String) {
+                        createNewFile(destPath)
+                        try {
+                            FileOutputStream(File(destPath)).use { out ->
+                                bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                            }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }
+
+                    fun getScaledBitmap(path: String, max: Int): Bitmap {
+                        val src = BitmapFactory.decodeFile(path)
+                        if (src == null) {
+                            return Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
+                        }
+                        var width = src.width
+                        var height = src.height
+                        var rate = 0.0f
+                        if (width > height) {
+                            rate = max / width.toFloat()
+                            height = (height * rate).toInt()
+                            width = max
+                        } else {
+                            rate = max / height.toFloat()
+                            width = (width * rate).toInt()
+                            height = max
+                        }
+                        return Bitmap.createScaledBitmap(src, width, height, true)
+                    }
+
+                    fun calculateInSampleSize(options: BitmapFactory.Options, reqWidth: Int, reqHeight: Int): Int {
+                        val width = options.outWidth
+                        val height = options.outHeight
+                        var inSampleSize = 1
+                        if (height > reqHeight || width > reqWidth) {
+                            val halfHeight = height / 2
+                            val halfWidth = width / 2
+                            while (halfHeight / inSampleSize >= reqHeight && halfWidth / inSampleSize >= reqWidth) {
+                                inSampleSize *= 2
+                            }
+                        }
+                        return inSampleSize
+                    }
+
+                    fun decodeSampleBitmapFromPath(path: String, reqWidth: Int, reqHeight: Int): Bitmap {
+                        val options = BitmapFactory.Options()
+                        options.inJustDecodeBounds = true
+                        BitmapFactory.decodeFile(path, options)
+                        options.inSampleSize = calculateInSampleSize(options, reqWidth, reqHeight)
+                        options.inJustDecodeBounds = false
+                        return BitmapFactory.decodeFile(path, options)
+                    }
+
+                    fun resizeBitmapFileRetainRatio(fromPath: String, destPath: String, max: Int) {
+                        if (!isExistFile(fromPath)) return
+                        val bitmap = getScaledBitmap(fromPath, max)
+                        saveBitmap(bitmap, destPath)
+                    }
+
+                    fun resizeBitmapFileToSquare(fromPath: String, destPath: String, max: Int) {
+                        if (!isExistFile(fromPath)) return
+                        val src = BitmapFactory.decodeFile(fromPath)
+                        val bitmap = Bitmap.createScaledBitmap(src, max, max, true)
+                        saveBitmap(bitmap, destPath)
+                    }
+
+                    fun resizeBitmapFileToCircle(fromPath: String, destPath: String) {
+                        if (!isExistFile(fromPath)) return
+                        val src = BitmapFactory.decodeFile(fromPath)
+                        val bitmap = Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888)
+                        val canvas = Canvas(bitmap)
+                        val color = 0xff424242.toInt()
+                        val paint = Paint()
+                        val rect = Rect(0, 0, src.width, src.height)
+                        paint.isAntiAlias = true
+                        canvas.drawARGB(0, 0, 0, 0)
+                        paint.color = color
+                        canvas.drawCircle((src.width / 2).toFloat(), (src.height / 2).toFloat(), (src.width / 2).toFloat(), paint)
+                        paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
+                        canvas.drawBitmap(src, rect, rect, paint)
+                        saveBitmap(bitmap, destPath)
+                    }
+
+                    fun resizeBitmapFileWithRoundedBorder(fromPath: String, destPath: String, pixels: Int) {
+                        if (!isExistFile(fromPath)) return
+                        val src = BitmapFactory.decodeFile(fromPath)
+                        val bitmap = Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888)
+                        val canvas = Canvas(bitmap)
+                        val color = 0xff424242.toInt()
+                        val paint = Paint()
+                        val rect = Rect(0, 0, src.width, src.height)
+                        val rectF = RectF(rect)
+                        val roundPx = pixels.toFloat()
+                        paint.isAntiAlias = true
+                        canvas.drawARGB(0, 0, 0, 0)
+                        paint.color = color
+                        canvas.drawRoundRect(rectF, roundPx, roundPx, paint)
+                        paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
+                        canvas.drawBitmap(src, rect, rect, paint)
+                        saveBitmap(bitmap, destPath)
+                    }
+
+                    fun cropBitmapFileFromCenter(fromPath: String, destPath: String, w: Int, h: Int) {
+                        if (!isExistFile(fromPath)) return
+                        val src = BitmapFactory.decodeFile(fromPath)
+                        val width = src.width
+                        val height = src.height
+                        if (width < w && height < h) return
+                        var x = 0
+                        var y = 0
+                        if (width > w) x = (width - w) / 2
+                        if (height > h) y = (height - h) / 2
+                        var cw = w
+                        var ch = h
+                        if (w > width) cw = width
+                        if (h > height) ch = height
+                        val bitmap = Bitmap.createBitmap(src, x, y, cw, ch)
+                        saveBitmap(bitmap, destPath)
+                    }
+
+                    fun rotateBitmapFile(fromPath: String, destPath: String, angle: Float) {
+                        if (!isExistFile(fromPath)) return
+                        val src = BitmapFactory.decodeFile(fromPath)
+                        val matrix = Matrix()
+                        matrix.postRotate(angle)
+                        val bitmap = Bitmap.createBitmap(src, 0, 0, src.width, src.height, matrix, true)
+                        saveBitmap(bitmap, destPath)
+                    }
+
+                    fun scaleBitmapFile(fromPath: String, destPath: String, x: Float, y: Float) {
+                        if (!isExistFile(fromPath)) return
+                        val src = BitmapFactory.decodeFile(fromPath)
+                        val matrix = Matrix()
+                        matrix.postScale(x, y)
+                        val w = src.width
+                        val h = src.height
+                        val bitmap = Bitmap.createBitmap(src, 0, 0, w, h, matrix, true)
+                        saveBitmap(bitmap, destPath)
+                    }
+
+                    fun skewBitmapFile(fromPath: String, destPath: String, x: Float, y: Float) {
+                        if (!isExistFile(fromPath)) return
+                        val src = BitmapFactory.decodeFile(fromPath)
+                        val matrix = Matrix()
+                        matrix.postSkew(x, y)
+                        val w = src.width
+                        val h = src.height
+                        val bitmap = Bitmap.createBitmap(src, 0, 0, w, h, matrix, true)
+                        saveBitmap(bitmap, destPath)
+                    }
+
+                    fun setBitmapFileColorFilter(fromPath: String, destPath: String, color: Int) {
+                        if (!isExistFile(fromPath)) return
+                        val src = BitmapFactory.decodeFile(fromPath)
+                        val bitmap = Bitmap.createBitmap(src, 0, 0, src.width - 1, src.height - 1)
+                        val p = Paint()
+                        val filter = LightingColorFilter(color, 1)
+                        p.colorFilter = filter
+                        val canvas = Canvas(bitmap)
+                        canvas.drawBitmap(bitmap, 0f, 0f, p)
+                        saveBitmap(bitmap, destPath)
+                    }
+
+                    fun setBitmapFileBrightness(fromPath: String, destPath: String, brightness: Float) {
+                        if (!isExistFile(fromPath)) return
+                        val src = BitmapFactory.decodeFile(fromPath)
+                        val cm = ColorMatrix(floatArrayOf(
+                                1f, 0f, 0f, 0f, brightness,
+                                0f, 1f, 0f, 0f, brightness,
+                                0f, 0f, 1f, 0f, brightness,
+                                0f, 0f, 0f, 1f, 0f
+                        ))
+                        val bitmap = Bitmap.createBitmap(src.width, src.height, src.config)
+                        val canvas = Canvas(bitmap)
+                        val paint = Paint()
+                        paint.colorFilter = ColorMatrixColorFilter(cm)
+                        canvas.drawBitmap(src, 0f, 0f, paint)
+                        saveBitmap(bitmap, destPath)
+                    }
+
+                    fun setBitmapFileContrast(fromPath: String, destPath: String, contrast: Float) {
+                        if (!isExistFile(fromPath)) return
+                        val src = BitmapFactory.decodeFile(fromPath)
+                        val cm = ColorMatrix(floatArrayOf(
+                                contrast, 0f, 0f, 0f, 0f,
+                                0f, contrast, 0f, 0f, 0f,
+                                0f, 0f, contrast, 0f, 0f,
+                                0f, 0f, 0f, 1f, 0f
+                        ))
+                        val bitmap = Bitmap.createBitmap(src.width, src.height, src.config)
+                        val canvas = Canvas(bitmap)
+                        val paint = Paint()
+                        paint.colorFilter = ColorMatrixColorFilter(cm)
+                        canvas.drawBitmap(src, 0f, 0f, paint)
+                        saveBitmap(bitmap, destPath)
+                    }
+
+                    fun getJpegRotate(filePath: String): Int {
+                        var rotate = 0
+                        try {
+                            val exif = ExifInterface(filePath)
+                            val iOrientation = exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, -1)
+                            when (iOrientation) {
+                                ExifInterface.ORIENTATION_ROTATE_90 -> rotate = 90
+                                ExifInterface.ORIENTATION_ROTATE_180 -> rotate = 180
+                                ExifInterface.ORIENTATION_ROTATE_270 -> rotate = 270
+                            }
+                        } catch (e: IOException) {
+                            return 0
+                        }
+                        return rotate
+                    }
+
+                    fun createNewPictureFile(context: Context): File {
+                        val date = SimpleDateFormat("yyyyMMdd_HHmmss")
+                        val fileName = date.format(Date()) + ".jpg"
+                        return File(context.getExternalFilesDir(Environment.DIRECTORY_DCIM)!!.absolutePath + File.separator + fileName)
+                    }
+                }
+                """, packageName);
+    }
+
 }
 
