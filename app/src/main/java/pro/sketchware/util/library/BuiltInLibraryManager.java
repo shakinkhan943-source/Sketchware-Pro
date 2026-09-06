@@ -69,7 +69,7 @@ public class BuiltInLibraryManager {
      * definition of every type, so whichever copy lost would still be referenced by code compiled
      * against the other.</p>
      *
-     * @param libraryName the built-in library's name, e.g. kotlinx-coroutines-android-1.8.1
+     * @param libraryName the built-in library's name, e.g. kotlinx-coroutines-android-1.11.0
      */
     public void removeLibrary(String libraryName) {
         if (libraryNames.remove(libraryName)) {

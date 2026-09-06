@@ -459,8 +459,8 @@ new BuiltInLibrary(FIREBASE_MEASUREMENT_CONNECTOR, List.of(PLAY_SERVICES_BASEMEN
 
 **C. 已存在且无需额外操作的库：**
 - `androidx.browser` — 已捆绑
-- `kotlinx-coroutines-android` — 已捆绑 1.8.1
-- `kotlinx-coroutines-core-jvm` — 已捆绑 1.8.1
+- `kotlinx-coroutines-android` — 已捆绑 1.11.0
+- `kotlinx-coroutines-core-jvm` — 已捆绑 1.11.0
 - `kotlin-stdlib` — 已捆绑 2.4.10
 - `play-services-basement`, `play-services-tasks` — 已在升级计划中
 

@@ -1283,7 +1283,7 @@ zip/
   启用一个根会带上它的整棵依赖子树（一层展开即可，因为清单已压平），关闭只是不再出现在该项目的列表里。
 - **运行时重复的保护**：默认不安装 ZIP 里的 `kotlin-stdlib` / `kotlinx-coroutines*` /
   `androidx.annotation`（App 对所有 Kotlin 项目已经内建 `kotlin-stdlib-2.4.10`、
-  `kotlinx-coroutines-android-1.8.1`）。两份 Kotlin 运行时进入同一个 APK 时，DEX 合并按
+  `kotlinx-coroutines-android-1.11.0`）。两份 Kotlin 运行时进入同一个 APK 时，DEX 合并按
   `CollisionPolicy.KEEP_FIRST` 只保留先到的那份，另一份编译出来的代码就会在
   `kotlin.coroutines.CoroutineContext` 的默认方法转发处炸掉。若 ZIP 里确实带有**更新**的运行时,
   可以在项目页勾选“使用 ZIP 自带的 Kotlin 运行时”，`JetpackLibs.applyRuntimeOverrides()` 会比较版本,

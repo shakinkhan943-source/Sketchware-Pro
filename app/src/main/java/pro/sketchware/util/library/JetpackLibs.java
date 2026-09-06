@@ -170,7 +170,7 @@ public final class JetpackLibs {
         return storeCopiesToDrop;
     }
 
-    /** {@code kotlinx-coroutines-android-1.8.1} → {@code kotlinx-coroutines-android}. */
+    /** {@code kotlinx-coroutines-android-1.11.0} → {@code kotlinx-coroutines-android}. */
     private static String artifactOfBuiltInName(String name) {
         String version = versionOfBuiltInName(name);
         if (version == null) return null;
