@@ -1,0 +1,15 @@
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <item
+        android:id="@+id/design_run_debug"
+        android:icon="@drawable/ic_mtrl_run"
+        android:title="@string/build_type_debug"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/design_run_release"
+        android:icon="@drawable/ic_mtrl_key"
+        android:title="@string/build_type_release"
+        app:showAsAction="never" />
+</menu>

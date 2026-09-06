@@ -27,6 +27,7 @@ import android.view.MenuItem;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.LinearLayout;
+import android.widget.PopupMenu;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -59,6 +60,7 @@ import pro.sketchware.activities.tools.CompileLogActivity;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.button.MaterialButtonToggleGroup;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton;
 import com.google.android.material.progressindicator.LinearProgressIndicator;
 import com.google.android.material.snackbar.Snackbar;
 import com.google.firebase.crashlytics.FirebaseCrashlytics;
@@ -156,6 +158,9 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
     private TextView fileName;
     private String currentJavaFileName;
     private MaterialButtonToggleGroup workspaceSwitch;
+    private ExtendedFloatingActionButton fabRun;
+    private ExtendedFloatingActionButton fabMore;
+    private boolean fabMenuOpen;
     private ViewEditorFragment viewTabAdapter;
     private final ActivityResultLauncher<Intent> openCollectionManager = registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
         if (result.getResultCode() == RESULT_OK) {
@@ -295,9 +300,9 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
     }
 
     /**
-     * Keeps the Java/UI workspace switch in sync with the active destination. While an
-     * Events/Components workspace is open, the switch reflects the workspace the user
-     * returns to. Kotlin/Compose files have no XML layout, so their UI tab is disabled.
+     * Keeps the Java/UI/Event/Component workspace toggle in sync with the active destination.
+     * While an Events/Components workspace is open, the toggle reflects the workspace the user
+     * returns to. Kotlin/Compose files have no XML layout, so their UI tab is hidden entirely.
      */
     private void updateWorkspaceSwitch() {
         if (workspaceSwitch == null) {
@@ -309,12 +314,20 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
         javaTab.setText(isKotlin
                 ? R.string.design_tab_title_kotlin
                 : R.string.design_tab_title_java);
-        uiTab.setEnabled(!isKotlin);
+        // Compose projects own their UI in Kotlin source, so the UI toggle only exists for
+        // Java + XML projects.
+        uiTab.setVisibility(isKotlin ? View.GONE : View.VISIBLE);
         int primaryDestination = isOverlayDestination(currentDestination)
                 ? previousPrimaryDestination
                 : currentDestination;
+        int checkedId = switch (primaryDestination) {
+            case DESTINATION_UI -> R.id.tab_ui;
+            case DESTINATION_EVENTS -> R.id.tab_event;
+            case DESTINATION_COMPONENTS -> R.id.tab_component;
+            default -> R.id.tab_java;
+        };
         isUpdatingWorkspaceSwitch = true;
-        workspaceSwitch.check(primaryDestination == DESTINATION_UI ? R.id.tab_ui : R.id.tab_java);
+        workspaceSwitch.check(checkedId);
         isUpdatingWorkspaceSwitch = false;
     }
 
@@ -573,9 +586,109 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
         if (progressContainer != null) {
             progressContainer.setVisibility(isRunning ? View.VISIBLE : View.GONE);
         }
+        // Mirror the Run/Stop state onto the FAB action.
+        if (fabRun != null) {
+            fabRun.setIconResource(isRunning ? R.drawable.ic_mtrl_stop : R.drawable.ic_mtrl_run);
+            fabRun.setText(Helper.getResString(isRunning ? R.string.design_run_stop : R.string.design_run));
+        }
     }
 
-    private void onRunClicked() {
+    /**
+     * Expands or collapses the FAB sub-actions (Run + More). While expanded, pressing Run
+     * triggers the build-type popup; the main FAB toggles the menu back closed.
+     */
+    private void toggleFabMenu(boolean open) {
+        fabMenuOpen = open;
+        if (fabRun != null) {
+            fabRun.setVisibility(open ? View.VISIBLE : View.GONE);
+        }
+        if (fabMore != null) {
+            fabMore.setVisibility(open ? View.VISIBLE : View.GONE);
+        }
+    }
+
+    /**
+     * Shows the M3 popup holding the Project Tools action alongside the remaining build options.
+     */
+    private void showMorePopup(View anchor) {
+        View effectiveAnchor = anchor != null ? anchor : fabMore != null ? fabMore : findViewById(android.R.id.content);
+        PopupMenu popupMenu = new PopupMenu(this, effectiveAnchor);
+        popupMenu.inflate(R.menu.design_more_menu);
+        Menu moreMenu = popupMenu.getMenu();
+        MenuItem cleanTemp = moreMenu.findItem(R.id.design_menu_clean_temp);
+        if (cleanTemp != null) {
+            cleanTemp.setVisible(projectFilePaths != null
+                    && FileUtil.isExistFile(projectFilePaths.projectMyscPath));
+        }
+        boolean apkExists = isDebugApkExists();
+        MenuItem install = moreMenu.findItem(R.id.design_menu_install_apk);
+        if (install != null) {
+            install.setVisible(apkExists);
+        }
+        MenuItem signatures = moreMenu.findItem(R.id.design_menu_show_signatures);
+        if (signatures != null) {
+            signatures.setVisible(apkExists);
+        }
+        popupMenu.setOnMenuItemClickListener(this::handleMoreMenuItem);
+        popupMenu.show();
+    }
+
+    /**
+     * Dispatches the More popup actions. Project Tools opens the end drawer; the rest reuse the
+     * same handlers as the legacy toolbar menu.
+     */
+    private boolean handleMoreMenuItem(MenuItem item) {
+        int itemId = item.getItemId();
+        if (itemId == R.id.design_option_menu_open_tools) {
+            if (!drawer.isDrawerOpen(GravityCompat.END)) {
+                drawer.openDrawer(GravityCompat.END);
+            }
+            return true;
+        } else if (itemId == R.id.design_menu_build_settings) {
+            BuildSettingsBottomSheet sheet = BuildSettingsBottomSheet.newInstance(sc_id);
+            sheet.show(getSupportFragmentManager(), BuildSettingsBottomSheet.TAG);
+            return true;
+        } else if (itemId == R.id.design_menu_clean_temp) {
+            if (projectFilePaths != null) {
+                BackgroundTasks.runIo(TaskHost.of(this), "DesignActivity",
+                        () -> FileUtil.deleteFile(projectFilePaths.projectMyscPath), () -> {
+                            updateBottomMenu();
+                            SketchwareUtil.toast(Helper.getResString(R.string.design_toast_clean_temp_done));
+                        }, error -> Log.e("DesignActivity", "Failed to clean temporary files", error));
+            }
+            return true;
+        } else if (itemId == R.id.design_menu_show_last_error) {
+            new CompileErrorSaver(sc_id).showLastErrors(this);
+            return true;
+        } else if (itemId == R.id.design_menu_show_source) {
+            showCurrentActivitySrcCode();
+            return true;
+        } else if (itemId == R.id.design_menu_install_apk) {
+            if (projectFilePaths != null && FileUtil.isExistFile(projectFilePaths.finalToInstallApkPath)) {
+                installBuiltApk();
+            } else {
+                SketchwareUtil.toast(Helper.getResString(R.string.design_error_apk_not_exist));
+            }
+            return true;
+        } else if (itemId == R.id.design_menu_show_signatures) {
+            if (projectFilePaths != null) {
+                ApkSignatures apkSignatures = new ApkSignatures(this, projectFilePaths.finalToInstallApkPath);
+                apkSignatures.showSignaturesDialog();
+            }
+            return true;
+        } else if (itemId == R.id.design_menu_xml_editor) {
+            toViewCodeEditor();
+            return true;
+        } else if (itemId == R.id.design_menu_import_xml) {
+            if (viewTabAdapter != null) {
+                viewTabAdapter.showImportXmlDialog();
+            }
+            return true;
+        }
+        return false;
+    }
+
+    private void onRunClicked(View anchor) {
         if (currentBuildTask != null && !currentBuildTask.isBuildFinished) {
             if (!currentBuildTask.canceled) {
                 currentBuildTask.cancelBuild();
@@ -588,28 +701,29 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
             requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 1001);
         }
 
-        showBuildTypeSelectionDialog();
+        showBuildTypeSelectionPopup(anchor);
     }
 
-    private void showBuildTypeSelectionDialog() {
-        CharSequence[] items = new CharSequence[]{
-                Helper.getResString(R.string.build_type_debug),
-                Helper.getResString(R.string.build_type_release)
-        };
-
-        new MaterialAlertDialogBuilder(this)
-                .setTitle(R.string.build_type_dialog_title)
-                .setIcon(R.drawable.ic_mtrl_run)
-                .setItems(items, (dialog, which) -> {
-                    dialog.dismiss();
-                    if (which == 0) {
-                        startDebugBuild();
-                    } else if (which == 1) {
-                        startReleaseBuildFlow();
-                    }
-                })
-                .setNegativeButton(R.string.common_word_cancel, null)
-                .show();
+    /**
+     * Shows an M3 popup menu asking for Debug or Release. The legacy alert dialog is gone so the
+     * build-type selection matches the Material 3 popup styling used elsewhere in the app.
+     */
+    private void showBuildTypeSelectionPopup(View anchor) {
+        View effectiveAnchor = anchor != null ? anchor : fabRun != null ? fabRun : findViewById(android.R.id.content);
+        PopupMenu popupMenu = new PopupMenu(this, effectiveAnchor);
+        popupMenu.inflate(R.menu.design_run_menu);
+        popupMenu.setOnMenuItemClickListener(item -> {
+            int itemId = item.getItemId();
+            if (itemId == R.id.design_run_debug) {
+                startDebugBuild();
+                return true;
+            } else if (itemId == R.id.design_run_release) {
+                startReleaseBuildFlow();
+                return true;
+            }
+            return false;
+        });
+        popupMenu.show();
     }
 
     private void startDebugBuild() {
@@ -838,14 +952,31 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
 
     private void saveChangesAndCloseProject() {
         showLoadingDialog();
-        SaveChangesProjectCloser saveChangesProjectCloser = new SaveChangesProjectCloser(this);
-        saveChangesProjectCloser.execute();
+        syncJavaEditorsBeforeSave(() -> {
+            SaveChangesProjectCloser saveChangesProjectCloser = new SaveChangesProjectCloser(this);
+            saveChangesProjectCloser.execute();
+        });
     }
 
     private void saveProject() {
         showLoadingDialog();
-        ProjectSaver projectSaver = new ProjectSaver(this);
-        projectSaver.execute();
+        syncJavaEditorsBeforeSave(() -> {
+            ProjectSaver projectSaver = new ProjectSaver(this);
+            projectSaver.execute();
+        });
+    }
+
+    /**
+     * Save pipeline: Java editor edits are synchronized into blocks/metadata first, then the
+     * resulting final state is persisted. This is what makes Save reliable: the project on disk is
+     * always the same consistent state the Java editor shows.
+     */
+    private void syncJavaEditorsBeforeSave(Runnable onContinue) {
+        if (javaTabAdapter == null || !javaTabAdapter.isAdded()) {
+            onContinue.run();
+            return;
+        }
+        javaTabAdapter.synchronizeForSave(onContinue);
     }
 
     @Override
@@ -929,8 +1060,30 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
                 showEditorDestination(DESTINATION_UI);
             } else if (checkedId == R.id.tab_java) {
                 showEditorDestination(DESTINATION_SOURCE);
+            } else if (checkedId == R.id.tab_event) {
+                showEditorDestination(DESTINATION_EVENTS);
+            } else if (checkedId == R.id.tab_component) {
+                showEditorDestination(DESTINATION_COMPONENTS);
             }
         });
+
+        fabRun = findViewById(R.id.fab_run);
+        fabMore = findViewById(R.id.fab_more);
+        fabRun.setOnClickListener(v -> {
+            if (!fabMenuOpen) {
+                toggleFabMenu(true);
+            } else if (currentBuildTask == null || currentBuildTask.isBuildFinished) {
+                onRunClicked(v);
+            }
+        });
+        fabMore.setOnClickListener(v -> {
+            if (!fabMenuOpen) {
+                toggleFabMenu(true);
+            } else {
+                showMorePopup(v);
+            }
+        });
+        findViewById(R.id.fab_main).setOnClickListener(v -> toggleFabMenu(!fabMenuOpen));
 
         restoreWorkspaceFragments();
         if (getSupportFragmentManager().findFragmentById(R.id.editor_fragment_container) == null) {
@@ -1017,7 +1170,7 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
         } else if (itemId == R.id.design_option_menu_components) {
             showEditorDestination(DESTINATION_COMPONENTS);
         } else if (itemId == R.id.design_option_menu_run) {
-            onRunClicked();
+            onRunClicked(fabRun);
         } else if (itemId == R.id.design_option_menu_title_save_project) {
             saveProject();
         } else if (itemId == R.id.design_option_menu_search) {
@@ -1109,8 +1262,11 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
         }
 
         if (!isRestoringData) {
-            UnsavedChangesSaver unsavedChangesSaver = new UnsavedChangesSaver(this);
-            unsavedChangesSaver.execute();
+            // Automatic save: synchronize unsynced Java edits first, then persist the backup.
+            syncJavaEditorsBeforeSave(() -> {
+                UnsavedChangesSaver unsavedChangesSaver = new UnsavedChangesSaver(this);
+                unsavedChangesSaver.execute();
+            });
         }
     }
 

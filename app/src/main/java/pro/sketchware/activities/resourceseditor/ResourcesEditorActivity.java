@@ -8,6 +8,7 @@ import android.text.Editable;
 import android.text.TextWatcher;
 import android.util.SparseBooleanArray;
 import android.view.MenuItem;
+import android.view.View;
 import android.widget.ArrayAdapter;
 import android.widget.ListView;
 
@@ -38,6 +39,7 @@ import pro.sketchware.activities.resourceseditor.components.adapters.EditorsAdap
 import pro.sketchware.activities.resourceseditor.components.fragments.ArraysEditor;
 import pro.sketchware.activities.resourceseditor.components.fragments.ColorsEditor;
 import pro.sketchware.activities.resourceseditor.components.fragments.DimensEditor;
+import pro.sketchware.activities.resourceseditor.components.fragments.KotlinResourceEditor;
 import pro.sketchware.activities.resourceseditor.components.fragments.StringsEditor;
 import pro.sketchware.activities.resourceseditor.components.fragments.StylesEditor;
 import pro.sketchware.activities.resourceseditor.components.fragments.ThemesEditor;
@@ -70,9 +72,21 @@ public class ResourcesEditorActivity extends BaseAppCompatActivity {
     public ThemesEditor themesEditor;
     public ArraysEditor arraysEditor;
     public DimensEditor dimensEditor;
+    public KotlinResourceEditor colorKtEditor;
+    public KotlinResourceEditor themeKtEditor;
     private ResourcesEditorsActivityBinding binding;
     private MaterialAlertDialogBuilder builder;
     private int currentTabPosition = 0;
+
+    /**
+     * Compose projects own their theme/colors in Kotlin source (Color.kt/Theme.kt), so the
+     * XML colors/styles/themes editors are replaced with Kotlin editors for those files.
+     */
+    public boolean isComposeProject() {
+        return projectFilePaths != null
+                && projectFilePaths.buildConfig != null
+                && projectFilePaths.buildConfig.isComposeProject();
+    }
 
     public static String escapeXml(String text) {
         return XmlUtil.escapeXml(text);
@@ -115,6 +129,10 @@ public class ResourcesEditorActivity extends BaseAppCompatActivity {
         themesEditor = new ThemesEditor();
         arraysEditor = new ArraysEditor();
         dimensEditor = new DimensEditor();
+        if (isComposeProject()) {
+            colorKtEditor = KotlinResourceEditor.newInstance(sc_id, "Color.kt");
+            themeKtEditor = KotlinResourceEditor.newInstance(sc_id, "Theme.kt");
+        }
     }
 
     private void initializeBackgroundTask(String variant) {
@@ -135,13 +153,24 @@ public class ResourcesEditorActivity extends BaseAppCompatActivity {
 
         binding.fab.setOnClickListener(view -> {
             int currentItem = binding.viewPager.getCurrentItem();
-            switch (currentItem) {
-                case 0 -> stringsEditor.showAddStringDialog();
-                case 1 -> colorsEditor.showColorEditDialog(null, -1);
-                case 2 -> stylesEditor.showAddStyleDialog();
-                case 3 -> themesEditor.showAddThemeDialog();
-                case 4 -> arraysEditor.showAddArrayDialog();
-                case 5 -> dimensEditor.showDimenEditDialog(null, -1);
+            if (isComposeProject()) {
+                switch (currentItem) {
+                    case 0 -> stringsEditor.showAddStringDialog();
+                    case 3 -> arraysEditor.showAddArrayDialog();
+                    case 4 -> dimensEditor.showDimenEditDialog(null, -1);
+                    default -> {
+                        // Color.kt / Theme.kt are edited directly as code.
+                    }
+                }
+            } else {
+                switch (currentItem) {
+                    case 0 -> stringsEditor.showAddStringDialog();
+                    case 1 -> colorsEditor.showColorEditDialog(null, -1);
+                    case 2 -> stylesEditor.showAddStyleDialog();
+                    case 3 -> themesEditor.showAddThemeDialog();
+                    case 4 -> arraysEditor.showAddArrayDialog();
+                    case 5 -> dimensEditor.showDimenEditDialog(null, -1);
+                }
             }
         });
     }
@@ -157,11 +186,18 @@ public class ResourcesEditorActivity extends BaseAppCompatActivity {
 
     private void loadDataInBackground() {
         stringsEditor.updateStringsList(stringsFilePath, 0, false);
-        colorsEditor.updateColorsList(colorsFilePath, 0, false);
-        stylesEditor.updateStylesList(stylesFilePath, 0, false);
-        themesEditor.updateThemesList(themesFilePath, 0, false);
-        arraysEditor.updateArraysList(arrayFilePath, 0, false);
-        dimensEditor.updateDimensList(dimensFilePath, 0, false);
+        if (isComposeProject()) {
+            // Color.kt/Theme.kt are edited as Kotlin and load their own content; the XML
+            // colors/styles/themes editors are not shown for Compose projects.
+            arraysEditor.updateArraysList(arrayFilePath, 0, false);
+            dimensEditor.updateDimensList(dimensFilePath, 0, false);
+        } else {
+            colorsEditor.updateColorsList(colorsFilePath, 0, false);
+            stylesEditor.updateStylesList(stylesFilePath, 0, false);
+            themesEditor.updateThemesList(themesFilePath, 0, false);
+            arraysEditor.updateArraysList(arrayFilePath, 0, false);
+            dimensEditor.updateDimensList(dimensFilePath, 0, false);
+        }
     }
 
     public void checkForInvalidResources() {
@@ -169,17 +205,19 @@ public class ResourcesEditorActivity extends BaseAppCompatActivity {
             showLoadFailedDialog("strings.xml", stringsFilePath);
             return;
         }
-        if (colorsEditor.colorsEditorManager.isDataLoadingFailed) {
-            showLoadFailedDialog("colors.xml", colorsFilePath);
-            return;
-        }
-        if (stylesEditor.stylesEditorManager.isDataLoadingFailed) {
-            showLoadFailedDialog("styles.xml", stylesFilePath);
-            return;
-        }
-        if (themesEditor.themesEditorManager.isDataLoadingFailed) {
-            showLoadFailedDialog("themes.xml", themesFilePath);
-            return;
+        if (!isComposeProject()) {
+            if (colorsEditor.colorsEditorManager.isDataLoadingFailed) {
+                showLoadFailedDialog("colors.xml", colorsFilePath);
+                return;
+            }
+            if (stylesEditor.stylesEditorManager.isDataLoadingFailed) {
+                showLoadFailedDialog("styles.xml", stylesFilePath);
+                return;
+            }
+            if (themesEditor.themesEditorManager.isDataLoadingFailed) {
+                showLoadFailedDialog("themes.xml", themesFilePath);
+                return;
+            }
         }
 
         if (arraysEditor.arraysEditorManager.isDataLoadingFailed) {
@@ -261,14 +299,23 @@ public class ResourcesEditorActivity extends BaseAppCompatActivity {
         if (stringsEditor.hasUnsavedChanges) {
             unsavedFiles.add("strings.xml");
         }
-        if (colorsEditor.hasUnsavedChanges) {
-            unsavedFiles.add("colors.xml");
-        }
-        if (stylesEditor.hasUnsavedChanges) {
-            unsavedFiles.add("styles.xml");
-        }
-        if (themesEditor.hasUnsavedChanges) {
-            unsavedFiles.add("themes.xml");
+        if (isComposeProject()) {
+            if (colorKtEditor != null && colorKtEditor.hasUnsavedChanges) {
+                unsavedFiles.add("Color.kt");
+            }
+            if (themeKtEditor != null && themeKtEditor.hasUnsavedChanges) {
+                unsavedFiles.add("Theme.kt");
+            }
+        } else {
+            if (colorsEditor.hasUnsavedChanges) {
+                unsavedFiles.add("colors.xml");
+            }
+            if (stylesEditor.hasUnsavedChanges) {
+                unsavedFiles.add("styles.xml");
+            }
+            if (themesEditor.hasUnsavedChanges) {
+                unsavedFiles.add("themes.xml");
+            }
         }
         if (arraysEditor.hasUnsavedChanges) {
             unsavedFiles.add("arrays.xml");
@@ -288,24 +335,33 @@ public class ResourcesEditorActivity extends BaseAppCompatActivity {
                 stringsEditor.updateStringsList(stringsFilePath, 0, false);
             }
 
-            if (currentItem == 1 || colorsEditor.colorsEditorManager.isDataLoadingFailed) {
-                colorsEditor.updateColorsList(colorsFilePath, 0, false);
-            }
+            if (isComposeProject()) {
+                if (currentItem == 3 || arraysEditor.arraysEditorManager.isDataLoadingFailed) {
+                    arraysEditor.updateArraysList(arrayFilePath, 0, false);
+                }
+                if (currentItem == 4 || (dimensEditor.dimensEditorManager != null && dimensEditor.dimensEditorManager.isDataLoadingFailed)) {
+                    dimensEditor.updateDimensList(dimensFilePath, 0, false);
+                }
+            } else {
+                if (currentItem == 1 || colorsEditor.colorsEditorManager.isDataLoadingFailed) {
+                    colorsEditor.updateColorsList(colorsFilePath, 0, false);
+                }
 
-            if (currentItem == 2 || stylesEditor.stylesEditorManager.isDataLoadingFailed) {
-                stylesEditor.updateStylesList(stylesFilePath, 0, false);
-            }
+                if (currentItem == 2 || stylesEditor.stylesEditorManager.isDataLoadingFailed) {
+                    stylesEditor.updateStylesList(stylesFilePath, 0, false);
+                }
 
-            if (currentItem == 3 || themesEditor.themesEditorManager.isDataLoadingFailed) {
-                themesEditor.updateThemesList(themesFilePath, 0, false);
-            }
+                if (currentItem == 3 || themesEditor.themesEditorManager.isDataLoadingFailed) {
+                    themesEditor.updateThemesList(themesFilePath, 0, false);
+                }
 
-            if (currentItem == 4 || arraysEditor.arraysEditorManager.isDataLoadingFailed) {
-                arraysEditor.updateArraysList(arrayFilePath, 0, false);
-            }
+                if (currentItem == 4 || arraysEditor.arraysEditorManager.isDataLoadingFailed) {
+                    arraysEditor.updateArraysList(arrayFilePath, 0, false);
+                }
 
-            if (currentItem == 5 || (dimensEditor.dimensEditorManager != null && dimensEditor.dimensEditorManager.isDataLoadingFailed)) {
-                dimensEditor.updateDimensList(dimensFilePath, 0, false);
+                if (currentItem == 5 || (dimensEditor.dimensEditorManager != null && dimensEditor.dimensEditorManager.isDataLoadingFailed)) {
+                    dimensEditor.updateDimensList(dimensFilePath, 0, false);
+                }
             }
             checkForInvalidResources();
         }
@@ -326,18 +382,28 @@ public class ResourcesEditorActivity extends BaseAppCompatActivity {
                 public boolean onQueryTextChange(String newText) {
                     newText = newText.toLowerCase().trim();
                     int currentItem = binding.viewPager.getCurrentItem();
-                    if (currentItem == 0) {
-                        stringsEditor.adapter.filter(newText);
-                    } else if (currentItem == 1) {
-                        colorsEditor.adapter.filter(newText);
-                    } else if (currentItem == 2) {
-                        stylesEditor.adapter.filter(newText);
-                    } else if (currentItem == 3) {
-                        themesEditor.adapter.filter(newText);
-                    } else if (currentItem == 4) {
-                        arraysEditor.adapter.filter(newText);
-                    } else if (currentItem == 5) {
-                        if (dimensEditor.adapter != null) dimensEditor.adapter.filter(newText);
+                    if (isComposeProject()) {
+                        if (currentItem == 0) {
+                            stringsEditor.adapter.filter(newText);
+                        } else if (currentItem == 3) {
+                            arraysEditor.adapter.filter(newText);
+                        } else if (currentItem == 4) {
+                            if (dimensEditor.adapter != null) dimensEditor.adapter.filter(newText);
+                        }
+                    } else {
+                        if (currentItem == 0) {
+                            stringsEditor.adapter.filter(newText);
+                        } else if (currentItem == 1) {
+                            colorsEditor.adapter.filter(newText);
+                        } else if (currentItem == 2) {
+                            stylesEditor.adapter.filter(newText);
+                        } else if (currentItem == 3) {
+                            themesEditor.adapter.filter(newText);
+                        } else if (currentItem == 4) {
+                            arraysEditor.adapter.filter(newText);
+                        } else if (currentItem == 5) {
+                            if (dimensEditor.adapter != null) dimensEditor.adapter.filter(newText);
+                        }
                     }
                     return false;
                 }
@@ -350,7 +416,12 @@ public class ResourcesEditorActivity extends BaseAppCompatActivity {
         }
         MenuItem getFromVariantItem = menu.findItem(R.id.action_get_from_variant);
         if (getFromVariantItem != null) {
-            getFromVariantItem.setVisible(!variant.isEmpty());
+            getFromVariantItem.setVisible(!variant.isEmpty() && !isComposeProject());
+        }
+        MenuItem selectVariantItem = menu.findItem(R.id.action_select_variant);
+        if (selectVariantItem != null) {
+            // Compose resources (Color.kt/Theme.kt) are not values-variant XML files.
+            selectVariantItem.setVisible(!isComposeProject());
         }
 
         return true;
@@ -367,36 +438,59 @@ public class ResourcesEditorActivity extends BaseAppCompatActivity {
             importFromDefaultVariant();
         } else if (id != R.id.action_search) {
             int currentItem = binding.viewPager.getCurrentItem();
-            switch (currentItem) {
-                case 0 -> {
-                    stringsEditor.hasUnsavedChanges = true;
-                    stringsEditor.saveStringsFile();
-                    goToCodeEditor("strings.xml", stringsFilePath);
+            if (isComposeProject()) {
+                switch (currentItem) {
+                    case 0 -> {
+                        stringsEditor.hasUnsavedChanges = true;
+                        stringsEditor.saveStringsFile();
+                        goToCodeEditor("strings.xml", stringsFilePath);
+                    }
+                    case 3 -> {
+                        arraysEditor.hasUnsavedChanges = true;
+                        arraysEditor.saveArraysFile();
+                        goToCodeEditor("arrays.xml", arrayFilePath);
+                    }
+                    case 4 -> {
+                        dimensEditor.hasUnsavedChanges = true;
+                        dimensEditor.saveDimensFile();
+                        goToCodeEditor("dimens.xml", dimensFilePath);
+                    }
+                    default -> {
+                        // Color.kt/Theme.kt are already full-screen Kotlin editors.
+                    }
                 }
-                case 1 -> {
-                    colorsEditor.hasUnsavedChanges = true;
-                    colorsEditor.saveColorsFile();
-                    goToCodeEditor("colors.xml", colorsFilePath);
-                }
-                case 2 -> {
-                    stylesEditor.hasUnsavedChanges = true;
-                    stylesEditor.saveStylesFile();
-                    goToCodeEditor("styles.xml", stylesFilePath);
-                }
-                case 3 -> {
-                    themesEditor.hasUnsavedChanges = true;
-                    themesEditor.saveThemesFile();
-                    goToCodeEditor("themes.xml", themesFilePath);
-                }
-                case 4 -> {
-                    arraysEditor.hasUnsavedChanges = true;
-                    arraysEditor.saveArraysFile();
-                    goToCodeEditor("arrays.xml", arrayFilePath);
-                }
-                case 5 -> {
-                    dimensEditor.hasUnsavedChanges = true;
-                    dimensEditor.saveDimensFile();
-                    goToCodeEditor("dimens.xml", dimensFilePath);
+            } else {
+                switch (currentItem) {
+                    case 0 -> {
+                        stringsEditor.hasUnsavedChanges = true;
+                        stringsEditor.saveStringsFile();
+                        goToCodeEditor("strings.xml", stringsFilePath);
+                    }
+                    case 1 -> {
+                        colorsEditor.hasUnsavedChanges = true;
+                        colorsEditor.saveColorsFile();
+                        goToCodeEditor("colors.xml", colorsFilePath);
+                    }
+                    case 2 -> {
+                        stylesEditor.hasUnsavedChanges = true;
+                        stylesEditor.saveStylesFile();
+                        goToCodeEditor("styles.xml", stylesFilePath);
+                    }
+                    case 3 -> {
+                        themesEditor.hasUnsavedChanges = true;
+                        themesEditor.saveThemesFile();
+                        goToCodeEditor("themes.xml", themesFilePath);
+                    }
+                    case 4 -> {
+                        arraysEditor.hasUnsavedChanges = true;
+                        arraysEditor.saveArraysFile();
+                        goToCodeEditor("arrays.xml", arrayFilePath);
+                    }
+                    case 5 -> {
+                        dimensEditor.hasUnsavedChanges = true;
+                        dimensEditor.saveDimensFile();
+                        goToCodeEditor("dimens.xml", dimensFilePath);
+                    }
                 }
             }
         }
@@ -411,9 +505,18 @@ public class ResourcesEditorActivity extends BaseAppCompatActivity {
 
     private void saveEditorsChanges() {
         stringsEditor.saveStringsFile();
-        colorsEditor.saveColorsFile();
-        stylesEditor.saveStylesFile();
-        themesEditor.saveThemesFile();
+        if (isComposeProject()) {
+            if (colorKtEditor != null) {
+                colorKtEditor.save();
+            }
+            if (themeKtEditor != null) {
+                themeKtEditor.save();
+            }
+        } else {
+            colorsEditor.saveColorsFile();
+            stylesEditor.saveStylesFile();
+            themesEditor.saveThemesFile();
+        }
         arraysEditor.saveArraysFile();
         dimensEditor.saveDimensFile();
         updateProjectMetadata();
@@ -448,26 +551,55 @@ public class ResourcesEditorActivity extends BaseAppCompatActivity {
         binding.viewPager.setCurrentItem(currentTabPosition, false);
 
         new TabLayoutMediator(binding.tabLayout, binding.viewPager, (tab, position) -> {
-            switch (position) {
-                case 0:
-                    tab.setText("strings" + variant + ".xml");
-                    break;
-                case 1:
-                    tab.setText("colors" + variant + ".xml");
-                    break;
-                case 2:
-                    tab.setText("styles" + variant + ".xml");
-                    break;
-                case 3:
-                    tab.setText("themes" + variant + ".xml");
-                    break;
-                case 4:
-                    tab.setText("arrays" + variant + ".xml");
-                    break;
-                case 5:
-                    tab.setText("dimens" + variant + ".xml");
+            if (isComposeProject()) {
+                switch (position) {
+                    case 0:
+                        tab.setText("strings" + variant + ".xml");
+                        break;
+                    case 1:
+                        tab.setText("Color.kt");
+                        break;
+                    case 2:
+                        tab.setText("Theme.kt");
+                        break;
+                    case 3:
+                        tab.setText("arrays" + variant + ".xml");
+                        break;
+                    case 4:
+                        tab.setText("dimens" + variant + ".xml");
+                }
+            } else {
+                switch (position) {
+                    case 0:
+                        tab.setText("strings" + variant + ".xml");
+                        break;
+                    case 1:
+                        tab.setText("colors" + variant + ".xml");
+                        break;
+                    case 2:
+                        tab.setText("styles" + variant + ".xml");
+                        break;
+                    case 3:
+                        tab.setText("themes" + variant + ".xml");
+                        break;
+                    case 4:
+                        tab.setText("arrays" + variant + ".xml");
+                        break;
+                    case 5:
+                        tab.setText("dimens" + variant + ".xml");
+                }
             }
         }).attach();
+
+        if (isComposeProject()) {
+            // Kotlin resource files have no "+ add" action; hide the FAB on those tabs.
+            binding.viewPager.registerOnPageChangeCallback(new androidx.viewpager2.widget.ViewPager2.OnPageChangeCallback() {
+                @Override
+                public void onPageSelected(int position) {
+                    binding.fab.setVisibility(position == 1 || position == 2 ? View.GONE : View.VISIBLE);
+                }
+            });
+        }
         UI.animateLayoutChanges(binding.viewPager);
     }
 

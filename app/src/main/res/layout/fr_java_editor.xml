@@ -11,8 +11,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:visibility="gone"
-        tools:visibility="visible">
+        android:visibility="visible">
 
         <LinearLayout
             android:id="@+id/status_bar"
@@ -58,13 +57,6 @@
                 android:layout_height="wrap_content"
                 android:contentDescription="@string/java_editor_action_reload"
                 app:icon="@drawable/ic_mtrl_refresh" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btn_sync"
-                style="?attr/materialButtonOutlinedStyle"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/java_editor_action_sync" />
 
         </LinearLayout>
 

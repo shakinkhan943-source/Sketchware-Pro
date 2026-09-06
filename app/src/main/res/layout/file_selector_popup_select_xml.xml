@@ -25,7 +25,15 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="@string/common_word_view" />
+            android:text="@string/file_selector_category_activities" />
+
+        <Button
+            android:id="@+id/option_compose"
+            style="@style/Widget.Material3Expressive.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/file_selector_category_compose_files" />
 
         <Button
             android:id="@+id/option_custom_view"
@@ -33,7 +41,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="@string/common_word_custom_view" />
+            android:text="@string/file_selector_category_other_files" />
 
     </com.google.android.material.button.MaterialButtonToggleGroup>
 

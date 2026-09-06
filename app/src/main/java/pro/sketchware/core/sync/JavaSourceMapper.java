@@ -2,6 +2,9 @@ package pro.sketchware.core.sync;
 
 import android.content.Context;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -15,8 +18,9 @@ import pro.sketchware.core.build.ProjectFilePaths;
 import pro.sketchware.core.project.ProjectDataManager;
 
 /**
- * Builds the {@link MappedSource} of an Activity: the complete generated Java source plus the
- * information which lines belong to which block/event and which lines are manually written code.
+ * Builds the {@link MappedSource} of an Activity: the complete generated source plus the
+ * information which lines belong to which block/event, which lines are manually written code and
+ * which generated framework lines the user replaced or deleted.
  * <p>
  * The generation itself is done by the <b>existing, unmodified</b> code generation pipeline
  * ({@link ProjectFilePaths#getFileSrc}). The only difference is that a
@@ -24,6 +28,10 @@ import pro.sketchware.core.project.ProjectDataManager;
  * {@link pro.sketchware.core.codegen.BlockInterpreter} surround the code of every top level block
  * with marker comments. Those markers are removed again here and turned into line ranges, so the
  * source handed to the editor is identical to the one the compiler sees.
+ * <p>
+ * After generation, the persistent user layers are merged in: user chunks (new code) first and then
+ * frame overrides (edits to generated/core sections). The merged source is exactly what the editor
+ * shows and what gets compiled.
  */
 public final class JavaSourceMapper {
 
@@ -35,6 +43,10 @@ public final class JavaSourceMapper {
      */
     public static MappedSource map(Context context, String scId, ProjectFileBean projectFile,
                                    JavaSyncMetadata metadata) {
+        // Whole-file manual mode: the user's saved source is the only source of truth.
+        if (metadata != null && metadata.isWholeSourceMode()) {
+            return buildFromWholeSource(metadata);
+        }
         String sourceName = projectFile.getSourceFileName();
         CodeOwnershipRecorder recorder = CodeOwnershipRecorder.start();
         String code;
@@ -86,14 +98,21 @@ public final class JavaSourceMapper {
         }
         markDuplicates(regions);
 
+        if (metadata != null && metadata.isWholeSourceMode()) {
+            return buildFromWholeSource(metadata);
+        }
+
         List<UserCodeChunk> chunks = metadata == null ? new ArrayList<>()
                 : new ArrayList<>(metadata.getUserCode());
-        UserCodeInjector.Result injection = UserCodeInjector.inject(generatedLines, chunks);
+        List<LineOverride> overrides = metadata == null ? new ArrayList<>()
+                : new ArrayList<>(metadata.getLineOverrides());
 
-        int[] prefix = buildPrefix(injection.insertionsAt, generatedLines.size());
+        UserCodeInjector.Result injection = UserCodeInjector.inject(generatedLines, chunks, overrides);
+
         for (CodeRegion region : regions) {
-            region.startLine = region.generatedStartLine + prefixAt(prefix, region.generatedStartLine);
-            region.endLine = region.generatedEndLine + prefixAt(prefix, region.generatedEndLine - 1);
+            if (region.kind == CodeRegion.Kind.BLOCK) {
+                mapBlockRegion(region, injection);
+            }
         }
         for (Map.Entry<String, int[]> entry : injection.chunkRanges.entrySet()) {
             int[] range = entry.getValue();
@@ -102,25 +121,56 @@ public final class JavaSourceMapper {
             }
         }
 
-        int[] displayToGenerated = new int[injection.lines.size()];
-        boolean[] isUserLine = new boolean[injection.lines.size()];
-        for (int[] range : injection.chunkRanges.values()) {
-            for (int i = range[0]; i < range[1] && i < isUserLine.length; i++) {
-                isUserLine[i] = true;
-            }
-        }
-        int generatedIndex = 0;
-        for (int i = 0; i < displayToGenerated.length; i++) {
-            if (isUserLine[i]) {
-                displayToGenerated[i] = -1;
-            } else {
-                displayToGenerated[i] = generatedIndex < generatedLines.size() ? generatedIndex : -1;
-                generatedIndex++;
+        Map<String, int[]> orphanOverrideRanges = new HashMap<>();
+        for (String id : injection.unanchoredOverrides) {
+            int[] range = injection.overrideRanges.get(id);
+            if (range != null) {
+                orphanOverrideRanges.put(id, range);
             }
         }
 
-        return new MappedSource(injection.lines, generatedLines, regions, chunks,
-                injection.unanchored, displayToGenerated);
+        return new MappedSource(injection.lines, generatedLines, regions, chunks, overrides,
+                injection.unanchored, injection.unanchoredOverrides, orphanOverrideRanges,
+                injection.displayToGenerated);
+    }
+
+    /**
+     * Maps a block region from purely generated coordinates to the merged display coordinates.
+     * Because line overrides can remove or multiply generated lines, this can no longer be a simple
+     * "generated index + insertions-before" computation; the injector records the exact display
+     * span of every generated line instead.
+     */
+    private static void mapBlockRegion(CodeRegion region, UserCodeInjector.Result injection) {
+        int start = region.generatedStartLine;
+        int end = region.generatedEndLine;
+        if (start < 0 || end <= start || start >= injection.generatedStart.length) {
+            return;
+        }
+        int displayStart = -1;
+        int displayEnd = -1;
+        for (int g = start; g < end && g < injection.generatedStart.length; g++) {
+            if (injection.generatedStart[g] >= 0) {
+                if (displayStart < 0) {
+                    displayStart = injection.generatedStart[g];
+                }
+                displayEnd = injection.generatedEnd[g];
+            }
+        }
+        if (displayStart < 0) {
+            // The whole region is suppressed; keep an empty display range.
+            region.startLine = Math.min(start, injection.lines.size());
+            region.endLine = region.startLine;
+            return;
+        }
+        // User chunks inserted between the region's own generated lines belong to the region.
+        for (int position = start + 1; position < end; position++) {
+            Integer inserted = injection.insertionsAt.get(position);
+            if (inserted != null) {
+                displayEnd += inserted;
+            }
+        }
+        region.startLine = displayStart;
+        region.endLine = displayEnd;
     }
 
     private static void addRegion(List<CodeRegion> regions, CodeOwnershipRecorder recorder,
@@ -148,43 +198,59 @@ public final class JavaSourceMapper {
         }
     }
 
-    private static int[] buildPrefix(Map<Integer, Integer> insertionsAt, int generatedLineCount) {
-        int[] prefix = new int[generatedLineCount + 2];
-        if (insertionsAt.isEmpty()) {
-            return prefix;
-        }
-        for (Map.Entry<Integer, Integer> entry : insertionsAt.entrySet()) {
-            int position = Math.max(0, Math.min(entry.getKey(), generatedLineCount + 1));
-            prefix[position] += entry.getValue();
-        }
-        for (int i = 1; i < prefix.length; i++) {
-            prefix[i] += prefix[i - 1];
-        }
-        return prefix;
-    }
-
-    private static int prefixAt(int[] prefix, int index) {
-        if (index < 0) {
-            return 0;
-        }
-        return prefix[Math.min(index, prefix.length - 1)];
+    private static MappedSource buildFromWholeSource(JavaSyncMetadata metadata) {
+        List<String> lines = new ArrayList<>(Arrays.asList(
+                metadata.wholeSource.replace("\r\n", "\n").replace('\r', '\n').split("\n", -1)));
+        int[] noMapping = new int[lines.size()];
+        Arrays.fill(noMapping, -1);
+        return new MappedSource(lines, new ArrayList<>(lines), new ArrayList<>(),
+                new ArrayList<>(), new ArrayList<>(), new ArrayList<>(), new ArrayList<>(),
+                new HashMap<>(), noMapping, true);
     }
 
     /**
-     * Convenience helper used by the build pipeline: injects the persisted user code into plainly
-     * generated code (no markers involved).
+     * Convenience helper used by the build pipeline: injects the persisted user code + frame
+     * overrides into plainly generated code (no markers involved).
      *
-     * @return {@code code} with all manual code of that Activity injected.
+     * @return {@code code} with all manual code and frame overrides applied.
      */
     public static String injectUserCode(String code, JavaSyncMetadata metadata) {
-        if (code == null || code.isEmpty() || metadata == null || metadata.getUserCode().isEmpty()) {
+        if (code == null || code.isEmpty()) {
+            return code;
+        }
+        if (metadata != null && metadata.isWholeSourceMode()) {
+            return metadata.wholeSource;
+        }
+        if (metadata == null || (metadata.getUserCode().isEmpty() && metadata.getLineOverrides().isEmpty())) {
             return code;
         }
         boolean crlf = code.contains("\r\n");
         String normalized = crlf ? code.replace("\r\n", "\n") : code;
         List<String> lines = new ArrayList<>(Arrays.asList(normalized.split("\n", -1)));
-        UserCodeInjector.Result injection = UserCodeInjector.inject(lines, metadata.getUserCode());
+        UserCodeInjector.Result injection = UserCodeInjector.inject(lines,
+                metadata.getUserCode(), metadata.getLineOverrides());
         String result = String.join("\n", injection.lines);
         return crlf ? result.replace("\n", "\r\n") : result;
+    }
+
+    /**
+     * Small stable fingerprint used to detect whether the source the user edited has been
+     * regenerated since (worst-case fallback bookkeeping).
+     */
+    static String hash(String text) {
+        if (text == null) {
+            text = "";
+        }
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] bytes = digest.digest(text.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(bytes.length * 2);
+            for (byte b : bytes) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        } catch (NoSuchAlgorithmException e) {
+            return Integer.toHexString(text.hashCode());
+        }
     }
 }

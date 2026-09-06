@@ -471,52 +471,104 @@ public class ProjectFilePaths {
         String customClassPackage = fullCustomClassName.substring(0, lastDot);
         String customClassPackageAsFolders = customClassPackage.replace('.', File.separatorChar);
 
-        File targetApplicationFile = new File(javaDir + File.separator +
-                customApplicationClassName.substring(1).replace('.', '/') + ".java");
+        if (buildConfig.isComposeProject()) {
+            // Compose projects generate a Kotlin Application class so the whole generated source
+            // tree stays Kotlin. The manifest still references the same simple class name.
+            File targetApplicationFile = new File(javaDir + File.separator +
+                    customApplicationClassName.substring(1).replace('.', '/') + ".kt");
+            if (!targetApplicationFile.exists()) {
+                // A mode switch must never leave the Java Application class alongside the Kotlin one.
+                FileUtil.deleteFile(javaDir + File.separator +
+                        customApplicationClassName.substring(1).replace('.', '/') + ".java");
+                String sketchApplicationFileContent = fileUtil.readAssetFile(
+                        context,
+                        "debug" + File.separator + "SketchApplication.kt"
+                );
+                sketchApplicationFileContent = PACKAGE_PLACEHOLDER_PATTERN.matcher(sketchApplicationFileContent).replaceAll(packageName);
 
-        if (!targetApplicationFile.exists()) {
-            boolean applyMultiDex = projectSettings.getMinSdkVersion() < 21;
-            String sketchApplicationFileContent = fileUtil.readAssetFile(
-                    context,
-                    "debug" + File.separator + "SketchApplication.java"
-            );
-            sketchApplicationFileContent = PACKAGE_PLACEHOLDER_PATTERN.matcher(sketchApplicationFileContent).replaceAll(packageName);
-
-            if (applyMultiDex) {
-                sketchApplicationFileContent = sketchApplicationFileContent.replace(
-                        "Application {", "androidx.multidex.MultiDexApplication {");
-            }
-            if (logcatEnabled) {
-                sketchApplicationFileContent = sketchApplicationFileContent.replace(
-                                "super.onCreate();", "SketchLogger.startLogging();\n        super.onCreate();")
-                        .replace("Process.killProcess(Process.myPid());",
-                                "SketchLogger.broadcastLog(Log.getStackTraceString(throwable));\n" +
-                                        "                    Process.killProcess(Process.myPid());"
-                        );
-            }
-            if (new Material3LibraryManager(sc_id).isDynamicColorsEnabled()) {
-                sketchApplicationFileContent = sketchApplicationFileContent.replace(
-                                "mApplicationContext = getApplicationContext();",
-                                "mApplicationContext = getApplicationContext();\n        DynamicColors.applyToActivitiesIfAvailable(this);")
-                        .replace("import android.util.Log;", "import android.util.Log;\nimport com.google.android.material.color.DynamicColors;");
-            }
-            if (!notUsingCustomApplicationClass) {
-                sketchApplicationFileContent = sketchApplicationFileContent.replace(
-                        "public class SketchApplication", "public class " + customClassSimpleName);
-                sketchApplicationFileContent = sketchApplicationFileContent.replace(
-                        "package " + packageName + ";", "package " + customClassPackage + ";");
-
-                String imports = "import android.util.Log;\nimport " + packageName + ".DebugActivity;";
                 if (logcatEnabled) {
-                    imports += "\nimport " + packageName + ".SketchLogger;";
+                    sketchApplicationFileContent = sketchApplicationFileContent.replace(
+                                    "super.onCreate()", "SketchLogger.startLogging()\n        super.onCreate()")
+                            .replace("Process.killProcess(Process.myPid())",
+                                    "SketchLogger.broadcastLog(Log.getStackTraceString(throwable))\n" +
+                                            "            Process.killProcess(Process.myPid())"
+                            );
                 }
-                sketchApplicationFileContent = sketchApplicationFileContent.replace(
-                        "import android.util.Log;", imports);
-            }
+                if (new Material3LibraryManager(sc_id).isDynamicColorsEnabled()) {
+                    sketchApplicationFileContent = sketchApplicationFileContent.replace(
+                                    "mApplicationContext = applicationContext",
+                                    "mApplicationContext = applicationContext\n        DynamicColors.applyToActivitiesIfAvailable(this)")
+                            .replace("import android.util.Log;", "import android.util.Log;\nimport com.google.android.material.color.DynamicColors;");
+                }
+                if (!notUsingCustomApplicationClass) {
+                    sketchApplicationFileContent = sketchApplicationFileContent.replace(
+                            "class SketchApplication", "class " + customClassSimpleName);
+                    sketchApplicationFileContent = sketchApplicationFileContent.replace(
+                            "package " + packageName + ";", "package " + customClassPackage + ";");
 
-            fileUtil.writeText(javaFilesPath + File.separator
-                    + customClassPackageAsFolders + File.separator
-                    + customClassSimpleName + ".java", sketchApplicationFileContent);
+                    String imports = "import android.util.Log;\nimport " + packageName + ".DebugActivity;";
+                    if (logcatEnabled) {
+                        imports += "\nimport " + packageName + ".SketchLogger;";
+                    }
+                    sketchApplicationFileContent = sketchApplicationFileContent.replace(
+                            "import android.util.Log;", imports);
+                }
+
+                fileUtil.writeText(javaFilesPath + File.separator
+                        + customClassPackageAsFolders + File.separator
+                        + customClassSimpleName + ".kt", sketchApplicationFileContent);
+            }
+        } else {
+            File targetApplicationFile = new File(javaDir + File.separator +
+                    customApplicationClassName.substring(1).replace('.', '/') + ".java");
+
+            if (!targetApplicationFile.exists()) {
+                // A mode switch must never leave the Kotlin Application class alongside the Java one.
+                FileUtil.deleteFile(javaDir + File.separator +
+                        customApplicationClassName.substring(1).replace('.', '/') + ".kt");
+                boolean applyMultiDex = projectSettings.getMinSdkVersion() < 21;
+                String sketchApplicationFileContent = fileUtil.readAssetFile(
+                        context,
+                        "debug" + File.separator + "SketchApplication.java"
+                );
+                sketchApplicationFileContent = PACKAGE_PLACEHOLDER_PATTERN.matcher(sketchApplicationFileContent).replaceAll(packageName);
+
+                if (applyMultiDex) {
+                    sketchApplicationFileContent = sketchApplicationFileContent.replace(
+                            "Application {", "androidx.multidex.MultiDexApplication {");
+                }
+                if (logcatEnabled) {
+                    sketchApplicationFileContent = sketchApplicationFileContent.replace(
+                                    "super.onCreate();", "SketchLogger.startLogging();\n        super.onCreate();")
+                            .replace("Process.killProcess(Process.myPid());",
+                                    "SketchLogger.broadcastLog(Log.getStackTraceString(throwable));\n" +
+                                            "                    Process.killProcess(Process.myPid());"
+                            );
+                }
+                if (new Material3LibraryManager(sc_id).isDynamicColorsEnabled()) {
+                    sketchApplicationFileContent = sketchApplicationFileContent.replace(
+                                    "mApplicationContext = getApplicationContext();",
+                                    "mApplicationContext = getApplicationContext();\n        DynamicColors.applyToActivitiesIfAvailable(this);")
+                            .replace("import android.util.Log;", "import android.util.Log;\nimport com.google.android.material.color.DynamicColors;");
+                }
+                if (!notUsingCustomApplicationClass) {
+                    sketchApplicationFileContent = sketchApplicationFileContent.replace(
+                            "public class SketchApplication", "public class " + customClassSimpleName);
+                    sketchApplicationFileContent = sketchApplicationFileContent.replace(
+                            "package " + packageName + ";", "package " + customClassPackage + ";");
+
+                    String imports = "import android.util.Log;\nimport " + packageName + ".DebugActivity;";
+                    if (logcatEnabled) {
+                        imports += "\nimport " + packageName + ".SketchLogger;";
+                    }
+                    sketchApplicationFileContent = sketchApplicationFileContent.replace(
+                            "import android.util.Log;", imports);
+                }
+
+                fileUtil.writeText(javaFilesPath + File.separator
+                        + customClassPackageAsFolders + File.separator
+                        + customClassSimpleName + ".java", sketchApplicationFileContent);
+            }
         }
 
         if (logcatEnabled) {
@@ -853,9 +905,15 @@ public class ProjectFilePaths {
         // The theme system is owned by one UI system only: Compose keeps it in Color.kt/Theme.kt
         // while Java/XML keeps it in colors.xml/styles.xml. Remove the unused system's generated
         // files so a mode change never leaves both systems behind.
+        String generatedSourceDirectory = javaFilesPath + File.separator + packageNameAsFolders
+                + File.separator;
         if (buildConfig.isComposeProject()) {
             FileUtil.deleteFile(valuesFilesPath + File.separator + "styles.xml");
             FileUtil.deleteFile(valuesFilesPath + File.separator + "colors.xml");
+            // Compose projects generate Kotlin utility objects; a mode switch must not leave the
+            // Java helpers behind (and vice versa).
+            FileUtil.deleteFile(generatedSourceDirectory + "SketchwareUtil.java");
+            FileUtil.deleteFile(generatedSourceDirectory + "FileUtil.java");
             // Compose projects do not own XML layouts. Remove any XML custom-view resources a legacy
             // file list may still leave behind so the build tree cannot accidentally package them.
             for (ProjectFileBean customView : projectFileManager.getCustomViews()) {
@@ -864,10 +922,10 @@ public class ProjectFilePaths {
                 }
             }
         } else {
-            String generatedSourceDirectory = javaFilesPath + File.separator + packageNameAsFolders
-                    + File.separator;
             FileUtil.deleteFile(generatedSourceDirectory + "Color.kt");
             FileUtil.deleteFile(generatedSourceDirectory + "Theme.kt");
+            FileUtil.deleteFile(generatedSourceDirectory + "SketchwareUtil.kt");
+            FileUtil.deleteFile(generatedSourceDirectory + "FileUtil.kt");
         }
         if (buildConfig.isFileProviderUsed) {
             XmlBuilder pathsTag = new XmlBuilder("paths");
@@ -1164,14 +1222,27 @@ public class ProjectFilePaths {
             // Make generated classes viewable. XML Material3 is a Java/XML UI concept; Compose
             // projects must not receive it even if a legacy compat bean still carries Material3 flags.
             boolean material3Enabled = buildConfig.isJavaXmlProject() && material3LibraryManager.isMaterial3Enabled();
-            if (!javaFiles.contains(new File(javaDir + "SketchwareUtil.java"))) {
-                srcCodeBeans.add(new SrcCodeBean("SketchwareUtil.java",
-                        ComponentTemplates.getSketchwareUtilCode(packageName, material3Enabled)));
-            }
+            if (buildConfig.isComposeProject()) {
+                // Compose projects generate Kotlin utility objects so the whole source tree stays
+                // Kotlin. Java/XML projects keep the Java helper classes unchanged below.
+                if (!javaFiles.contains(new File(javaDir + "SketchwareUtil.kt"))) {
+                    srcCodeBeans.add(new SrcCodeBean("SketchwareUtil.kt",
+                            ComponentTemplates.getSketchwareUtilCodeKotlin(packageName)));
+                }
+                if (!javaFiles.contains(new File(javaDir + "FileUtil.kt"))) {
+                    srcCodeBeans.add(new SrcCodeBean("FileUtil.kt",
+                            ComponentTemplates.getFileUtilCodeKotlin(packageName)));
+                }
+            } else {
+                if (!javaFiles.contains(new File(javaDir + "SketchwareUtil.java"))) {
+                    srcCodeBeans.add(new SrcCodeBean("SketchwareUtil.java",
+                            ComponentTemplates.getSketchwareUtilCode(packageName, material3Enabled)));
+                }
 
-            if (!javaFiles.contains(new File(javaDir + "FileUtil.java"))) {
-                srcCodeBeans.add(new SrcCodeBean("FileUtil.java",
-                        ComponentTemplates.getFileUtilCode(packageName)));
+                if (!javaFiles.contains(new File(javaDir + "FileUtil.java"))) {
+                    srcCodeBeans.add(new SrcCodeBean("FileUtil.java",
+                            ComponentTemplates.getFileUtilCode(packageName)));
+                }
             }
 
             if (!javaFiles.contains(new File(javaDir + "RequestNetwork.java")) && buildConfig.isHttp3Used) {
@@ -1281,6 +1352,20 @@ public class ProjectFilePaths {
                 }
                 case "styles.xml" -> {
                     return getXMLStyle();
+                }
+                case "Color.kt", "Theme.kt" -> {
+                    String code = getComposeResourceCode(filename);
+                    String userPath = SketchwarePaths.getProjectJavaPath(sc_id) + File.separator + filename;
+                    if (FileUtil.isExistFile(userPath)) {
+                        return FileUtil.readFile(userPath);
+                    }
+                    return code;
+                }
+                case "SketchwareUtil.kt" -> {
+                    return ComponentTemplates.getSketchwareUtilCodeKotlin(packageName);
+                }
+                case "FileUtil.kt" -> {
+                    return ComponentTemplates.getFileUtilCodeKotlin(packageName);
                 }
             }
 
@@ -1420,6 +1505,21 @@ public class ProjectFilePaths {
                     )
                 }
                 """, packageName);
+    }
+
+    /**
+     * Returns the generated Kotlin source for a Compose resource/configuration file, or an empty
+     * string for unknown names. Only {@code Color.kt} and {@code Theme.kt} are owned by the Compose
+     * system; Java/XML projects never call this.
+     */
+    public String getComposeResourceCode(String fileName) {
+        if ("Color.kt".equals(fileName)) {
+            return getComposeColorCode();
+        }
+        if ("Theme.kt".equals(fileName)) {
+            return getComposeThemeCode();
+        }
+        return "";
     }
 
     private static String composeColor(int argb) {
