@@ -21,13 +21,11 @@ import androidx.appcompat.widget.SearchView;
 import androidx.core.view.MenuProvider;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.recyclerview.widget.DiffUtil;
-import androidx.recyclerview.widget.RecyclerView;
 
 import pro.sketchware.activities.design.DesignActivity;
 import pro.sketchware.activities.editor.manage.library.ProjectComparator;
 import pro.sketchware.activities.projects.MyProjectSettingActivity;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
-import com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton;
 import com.google.android.material.transition.MaterialFadeThrough;
 
 import java.util.ArrayList;
@@ -134,7 +132,7 @@ public class ProjectsFragment extends PermissionFragment {
     public void onDestroyView() {
         super.onDestroyView();
         executorService.shutdownNow();
-        binding = null; // avoid memory leaks
+        binding = null;
     }
 
     @Override
@@ -142,41 +140,25 @@ public class ProjectsFragment extends PermissionFragment {
         executorService = Executors.newSingleThreadExecutor();
         preference = new SharedPrefsHelper(requireContext(), "project");
 
-        ExtendedFloatingActionButton fab = requireActivity().findViewById(R.id.create_new_project);
-        fab.setOnClickListener((v) -> toProjectSettingsActivity());
-        UI.addWindowInsetToMargin(fab, WindowInsetsCompat.Type.navigationBars(), false, false, false, true);
-
         binding.swipeRefresh.setOnRefreshListener(this::refreshProjectsList);
         binding.swipeRefresh.setOnChildScrollUpCallback((parent, child) -> binding.myprojects.canScrollVertically(-1));
 
         projectsAdapter = new ProjectsAdapter(this, projectsList);
         binding.myprojects.setAdapter(projectsAdapter);
         binding.myprojects.setHasFixedSize(true);
-        // Small extra view cache keeps icon loading jank-free while scrolling fast
-        // through long project lists without increasing memory pressure noticeably.
         binding.myprojects.setItemViewCacheSize(5);
 
         binding.btnEmptyCreate.setOnClickListener(v -> toProjectSettingsActivity());
+        binding.specialAction.projectOne.setOnClickListener(v -> toProjectSettingsActivity());
+        binding.specialAction.restoreProject.setOnClickListener(v -> restoreProject());
 
-        binding.myprojects.post(this::refreshProjectsList); // wait for RecyclerView to be ready
+        binding.myprojects.post(this::refreshProjectsList);
         UI.addSystemWindowInsetToPadding(binding.specialActionContainer, true, false, true, false);
         UI.addSystemWindowInsetToPadding(binding.loadingContainer, true, false, true, true);
         UI.addSystemWindowInsetToPadding(binding.titleContainer, true, false, true, false);
         UI.addSystemWindowInsetToPadding(binding.myprojects, true, false, true, true);
 
-        binding.myprojects.addOnScrollListener(new RecyclerView.OnScrollListener() {
-            @Override
-            public void onScrolled(@NonNull RecyclerView recyclerView, int dx, int dy) {
-                if (dy > 0) {
-                    fab.shrink();
-                } else if (dy < 0) {
-                    fab.extend();
-                }
-            }
-        });
-
         binding.iconSort.setOnClickListener(v -> showProjectSortingDialog());
-        binding.specialAction.getRoot().setOnClickListener(v -> restoreProject());
 
         menuProvider = new MenuProvider() {
             @Override
@@ -220,20 +202,18 @@ public class ProjectsFragment extends PermissionFragment {
     }
 
     public void refreshProjectsList() {
-        // Check if the fragment is still attached to the activity
         if (!isAdded()) return;
 
-        // Don't load project list without having permissions
         if (!hasStoragePermission()) {
             if (binding.swipeRefresh.isRefreshing()) binding.swipeRefresh.setRefreshing(false);
-            ((MainActivity) requireActivity()).showStorageAccessDeniedSnackbar(); // ask for permissions
+            ((MainActivity) requireActivity()).showStorageAccessDeniedSnackbar();
             return;
         }
 
         executorService.execute(() -> {
             List<HashMap<String, Object>> loadedProjects = ProjectListManager.listProjects();
             backfillLegacyProjectVersions(loadedProjects);
-            loadedProjects.sort(new ProjectComparator(preference.getIntDefault("sortBy"),preference.getString("pinnedProject", "-1")));
+            loadedProjects.sort(new ProjectComparator(preference.getIntDefault("sortBy"), preference.getString("pinnedProject", "-1")));
 
             DiffUtil.DiffResult diffResult = DiffUtil.calculateDiff(new ProjectDiffCallback(projectsList, loadedProjects));
 
@@ -257,10 +237,6 @@ public class ProjectsFragment extends PermissionFragment {
         });
     }
 
-    /**
-     * One-time metadata fixes for legacy projects. Runs in the background because it may
-     * write to disk — never do this while binding list rows on the main thread.
-     */
     private static void backfillLegacyProjectVersions(List<HashMap<String, Object>> projects) {
         for (HashMap<String, Object> project : projects) {
             String scId = MapValueHelper.getString(project, "sc_id");
@@ -274,16 +250,10 @@ public class ProjectsFragment extends PermissionFragment {
                 project.put("sketchware_ver", 61);
                 changed = true;
             }
-            if (changed) {
-                ProjectListManager.updateProject(scId, project);
-            }
+            if (changed) ProjectListManager.updateProject(scId, project);
         }
     }
 
-    /**
-     * Shows the "no projects" empty state. Based on the full (unfiltered) list, so an
-     * empty search query result never shows it.
-     */
     public void updateEmptyState() {
         if (binding == null) return;
         binding.emptyContainer.setVisibility(projectsList.isEmpty() ? View.VISIBLE : View.GONE);
@@ -335,32 +305,18 @@ public class ProjectsFragment extends PermissionFragment {
         RadioButton sortOrderDesc = dialogBinding.sortOrderDesc;
 
         int storedValue = preference.getInt("sortBy", ProjectComparator.DEFAULT);
-        if ((storedValue & ProjectComparator.SORT_BY_NAME) == ProjectComparator.SORT_BY_NAME) {
-            sortByName.setChecked(true);
-        } else if ((storedValue & ProjectComparator.SORT_BY_ID) == ProjectComparator.SORT_BY_ID) {
-            sortByID.setChecked(true);
-        }
-        if ((storedValue & ProjectComparator.SORT_ORDER_ASCENDING) == ProjectComparator.SORT_ORDER_ASCENDING) {
-            sortOrderAsc.setChecked(true);
-        } else if ((storedValue & ProjectComparator.SORT_ORDER_DESCENDING) == ProjectComparator.SORT_ORDER_DESCENDING) {
-            sortOrderDesc.setChecked(true);
-        }
+        if ((storedValue & ProjectComparator.SORT_BY_NAME) == ProjectComparator.SORT_BY_NAME) sortByName.setChecked(true);
+        else if ((storedValue & ProjectComparator.SORT_BY_ID) == ProjectComparator.SORT_BY_ID) sortByID.setChecked(true);
+        if ((storedValue & ProjectComparator.SORT_ORDER_ASCENDING) == ProjectComparator.SORT_ORDER_ASCENDING) sortOrderAsc.setChecked(true);
+        else if ((storedValue & ProjectComparator.SORT_ORDER_DESCENDING) == ProjectComparator.SORT_ORDER_DESCENDING) sortOrderDesc.setChecked(true);
 
         dialog.setView(dialogBinding.getRoot());
         dialog.setPositiveButton(R.string.common_word_save, (v, which) -> {
             int sortValue = 0;
-            if (sortByName.isChecked()) {
-                sortValue |= ProjectComparator.SORT_BY_NAME;
-            }
-            if (sortByID.isChecked()) {
-                sortValue |= ProjectComparator.SORT_BY_ID;
-            }
-            if (sortOrderAsc.isChecked()) {
-                sortValue |= ProjectComparator.SORT_ORDER_ASCENDING;
-            }
-            if (sortOrderDesc.isChecked()) {
-                sortValue |= ProjectComparator.SORT_ORDER_DESCENDING;
-            }
+            if (sortByName.isChecked()) sortValue |= ProjectComparator.SORT_BY_NAME;
+            if (sortByID.isChecked()) sortValue |= ProjectComparator.SORT_BY_ID;
+            if (sortOrderAsc.isChecked()) sortValue |= ProjectComparator.SORT_ORDER_ASCENDING;
+            if (sortOrderDesc.isChecked()) sortValue |= ProjectComparator.SORT_ORDER_DESCENDING;
             preference.put("sortBy", sortValue, true);
             v.dismiss();
             refreshProjectsList();
@@ -373,33 +329,22 @@ public class ProjectsFragment extends PermissionFragment {
         private final List<HashMap<String, Object>> oldList;
         private final List<HashMap<String, Object>> newList;
 
-        public ProjectDiffCallback(List<HashMap<String, Object>> oldList, List<HashMap<String, Object>> newList) {
+        ProjectDiffCallback(List<HashMap<String, Object>> oldList, List<HashMap<String, Object>> newList) {
             this.oldList = oldList;
             this.newList = newList;
         }
 
-        @Override
-        public int getOldListSize() {
-            return oldList.size();
-        }
-
-        @Override
-        public int getNewListSize() {
-            return newList.size();
-        }
+        @Override public int getOldListSize() { return oldList.size(); }
+        @Override public int getNewListSize() { return newList.size(); }
 
         @Override
         public boolean areItemsTheSame(int oldItemPosition, int newItemPosition) {
-            Object oldId = oldList.get(oldItemPosition).get("sc_id");
-            Object newId = newList.get(newItemPosition).get("sc_id");
-            return Objects.equals(oldId, newId);
+            return Objects.equals(oldList.get(oldItemPosition).get("sc_id"), newList.get(newItemPosition).get("sc_id"));
         }
 
         @Override
         public boolean areContentsTheSame(int oldItemPosition, int newItemPosition) {
-            HashMap<String, Object> oldItem = oldList.get(oldItemPosition);
-            HashMap<String, Object> newItem = newList.get(newItemPosition);
-            return oldItem.equals(newItem);
+            return oldList.get(oldItemPosition).equals(newList.get(newItemPosition));
         }
     }
 }

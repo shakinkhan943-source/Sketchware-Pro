@@ -19,7 +19,6 @@ import android.view.View;
 import android.widget.Toast;
 
 import androidx.activity.OnBackPressedCallback;
-import androidx.annotation.IdRes;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.ActionBarDrawerToggle;
 import androidx.core.app.ActivityCompat;
@@ -42,7 +41,6 @@ import java.io.IOException;
 import java.util.Objects;
 
 import pro.sketchware.util.CrashLogManager;
-
 import pro.sketchware.util.io.SharedPrefsHelper;
 import pro.sketchware.util.DeviceUtil;
 import pro.sketchware.activities.main.fragments.projects.BackupFactory;
@@ -70,8 +68,7 @@ public class MainActivity extends BasePermissionAppCompatActivity {
     private Snackbar storageAccessDenied;
     private MainBinding binding;
     private final OnBackPressedCallback closeDrawer = new OnBackPressedCallback(true) {
-        @Override
-        public void handleOnBackPressed() {
+        @Override public void handleOnBackPressed() {
             setEnabled(false);
             binding.drawerLayout.closeDrawers();
         }
@@ -79,96 +76,62 @@ public class MainActivity extends BasePermissionAppCompatActivity {
     private ProjectsFragment projectsFragment;
     private ProjectsStoreFragment projectsStoreFragment;
     private Fragment activeFragment;
-    @IdRes
-    private int currentNavItemId = R.id.item_projects;
+    private int currentNavItemId = R.id.tab_projects;
 
     private static boolean isFirebaseInitialized(Context context) {
         try {
             return FirebaseApp.getApps(context) != null && !FirebaseApp.getApps(context).isEmpty();
-        } catch (IllegalStateException e) {
-            return false;
-        }
+        } catch (IllegalStateException e) { return false; }
     }
 
-    @Override
-    // onRequestPermissionsResult but for Storage access only, and only when granted
-    public void onStoragePermissionGranted(int requestCode) {
+    @Override public void onStoragePermissionGranted(int requestCode) {
         if (requestCode == 9501) {
             allFilesAccessCheck();
-
-            if (activeFragment instanceof ProjectsFragment) {
-                projectsFragment.refreshProjectsList();
-            }
+            if (activeFragment instanceof ProjectsFragment) projectsFragment.refreshProjectsList();
         }
     }
 
-    @Override
-    public void onOpenSettings(int requestCode) {
+    @Override public void onOpenSettings(int requestCode) {
         Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
         intent.setData(Uri.parse("package:" + getApplicationContext().getPackageName()));
         startActivity(intent);
     }
 
-    @Override
-    public void onPermissionCancelled() {
-    }
-
-    @Override
-    public void onPermissionDeniedCancelled() {
-    }
+    @Override public void onPermissionCancelled() {}
+    @Override public void onPermissionDeniedCancelled() {}
 
     public void refreshProjects() {
-        if (activeFragment instanceof ProjectsFragment) {
-            projectsFragment.refreshProjectsList();
-        }
+        if (activeFragment instanceof ProjectsFragment) projectsFragment.refreshProjectsList();
     }
 
-    @Override
-    public void onActivityResult(int requestCode, int resultCode, Intent data) {
+    @Override public void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (resultCode == RESULT_OK) {
             switch (requestCode) {
-                case 111:
-                    invalidateOptionsMenu();
-                    break;
-
+                case 111: invalidateOptionsMenu(); break;
                 case 113:
-                    if (data != null && data.getBooleanExtra("not_show_popup_anymore", false)) {
-                        sharedPrefs.put("U1I2", (Object) false);
-                    }
+                    if (data != null && data.getBooleanExtra("not_show_popup_anymore", false)) sharedPrefs.put("U1I2", (Object) false);
                     break;
-
                 case 212:
                     if (!(data.getStringExtra("save_as_new_id") == null ? "" : data.getStringExtra("save_as_new_id")).isEmpty() && isStoragePermissionGranted()) {
-                        if (activeFragment instanceof ProjectsFragment) {
-                            projectsFragment.refreshProjectsList();
-                        }
+                        if (activeFragment instanceof ProjectsFragment) projectsFragment.refreshProjectsList();
                     }
                     break;
             }
         }
     }
 
-    @Override
-    public void onConfigurationChanged(@NonNull Configuration newConfig) {
+    @Override public void onConfigurationChanged(@NonNull Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
         drawerToggle.onConfigurationChanged(newConfig);
     }
 
-    /**
-     * Checks if the app crashed in a previous session and offers to show the crash log.
-     * This catches cases where CollectErrorActivity failed to launch during the crash.
-     */
     private void checkPreviousCrash() {
         try {
             File latestCrash = CrashLogManager.getLatestCrashLog();
             if (latestCrash == null) return;
-
-            // Only show if the crash happened within the last 5 minutes
-            // (older crashes were likely already shown by CollectErrorActivity)
             long ageMs = System.currentTimeMillis() - latestCrash.lastModified();
             if (ageMs > 5 * 60 * 1000) return;
-
             new MaterialAlertDialogBuilder(this)
                     .setTitle(R.string.common_error_an_error_occurred)
                     .setMessage(R.string.error_crash_previous_session)
@@ -177,42 +140,29 @@ public class MainActivity extends BasePermissionAppCompatActivity {
                         intent.putExtra("crash_file", latestCrash.getAbsolutePath());
                         startActivity(intent);
                     })
-                    .setNegativeButton(R.string.common_word_cancel, null)
-                    .show();
-        } catch (Exception e) {
-            Log.e("MainActivity", "Failed to check previous crash", e);
-        }
+                    .setNegativeButton(R.string.common_word_cancel, null).show();
+        } catch (Exception e) { Log.e("MainActivity", "Failed to check previous crash", e); }
     }
 
-    @Override
-    public void onCreate(Bundle savedInstanceState) {
+    @Override public void onCreate(Bundle savedInstanceState) {
         SplashScreen.installSplashScreen(this);
         super.onCreate(savedInstanceState);
-        programInfoLauncher = registerForActivityResult(
-                new ActivityResultContracts.StartActivityForResult(), result -> {
-                    if (result.getResultCode() == RESULT_OK && result.getData() != null) {
-                        DataResetter.resetData(this, result.getData().getBooleanExtra("onlyConfig", true));
-                    }
-                });
+        programInfoLauncher = registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
+            if (result.getResultCode() == RESULT_OK && result.getData() != null) DataResetter.resetData(this, result.getData().getBooleanExtra("onlyConfig", true));
+        });
         enableEdgeToEdgeNoContrast();
         checkPreviousCrash();
 
         binding = MainBinding.inflate(getLayoutInflater());
-
         setContentView(binding.getRoot());
         setSupportActionBar(binding.toolbar);
-
         UI.addSystemWindowInsetToPadding(binding.appbar, true, false, true, false);
 
         sharedPrefs = new SharedPrefsHelper(getApplicationContext(), "U1");
         int u1I0 = sharedPrefs.getInt("U1I0", -1);
         long u1I1 = sharedPrefs.getLong("U1I1");
-        if (u1I1 <= 0) {
-            sharedPrefs.put("U1I1", System.currentTimeMillis());
-        }
-        if (System.currentTimeMillis() - u1I1 > /* (a day) */ 1000 * 60 * 60 * 24) {
-            sharedPrefs.put("U1I0", Integer.valueOf(u1I0 + 1));
-        }
+        if (u1I1 <= 0) sharedPrefs.put("U1I1", System.currentTimeMillis());
+        if (System.currentTimeMillis() - u1I1 > 1000 * 60 * 60 * 24) sharedPrefs.put("U1I0", Integer.valueOf(u1I0 + 1));
 
         Objects.requireNonNull(getSupportActionBar()).setDisplayHomeAsUpEnabled(true);
         getSupportActionBar().setTitle(null);
@@ -220,185 +170,98 @@ public class MainActivity extends BasePermissionAppCompatActivity {
         drawerToggle = new ActionBarDrawerToggle(this, binding.drawerLayout, R.string.app_name, R.string.app_name);
         binding.drawerLayout.addDrawerListener(drawerToggle);
         binding.drawerLayout.addDrawerListener(new DrawerLayout.DrawerListener() {
-            @Override
-            public void onDrawerSlide(@NonNull View drawerView, float slideOffset) {
-            }
+            @Override public void onDrawerSlide(@NonNull View drawerView, float slideOffset) {}
+            @Override public void onDrawerOpened(@NonNull View drawerView) { closeDrawer.setEnabled(true); getOnBackPressedDispatcher().addCallback(closeDrawer); }
+            @Override public void onDrawerClosed(@NonNull View drawerView) {}
+            @Override public void onDrawerStateChanged(int newState) {}
+        });
 
-            @Override
-            public void onDrawerOpened(@NonNull View drawerView) {
-                closeDrawer.setEnabled(true);
-                getOnBackPressedDispatcher().addCallback(closeDrawer);
-            }
-
-            @Override
-            public void onDrawerClosed(@NonNull View drawerView) {
-            }
-
-            @Override
-            public void onDrawerStateChanged(int newState) {
-            }
+        binding.mainTabGroup.addOnButtonCheckedListener((group, checkedId, isChecked) -> {
+            if (!isChecked) return;
+            if (checkedId == R.id.tab_projects) navigateToProjectsFragment();
+            else if (checkedId == R.id.tab_store) navigateToSketchubFragment();
         });
 
         boolean hasStorageAccess = isStoragePermissionGranted();
-        if (!hasStorageAccess) {
-            showNoticeNeedStorageAccess();
-        }
-        if (hasStorageAccess) {
-            allFilesAccessCheck();
-        }
+        if (!hasStorageAccess) showNoticeNeedStorageAccess();
+        if (hasStorageAccess) allFilesAccessCheck();
 
         if (Intent.ACTION_VIEW.equals(getIntent().getAction())) {
             Uri data = getIntent().getData();
             if (data != null) {
                 new SingleCopyTask(this, new SingleCopyTask.CallBackTask() {
-                    @Override
-                    public void onCopyPreExecute() {
-                    }
-
-                    @Override
-                    public void onCopyProgressUpdate(int progress) {
-                    }
-
-                    @Override
-                    public void onCopyPostExecute(@NonNull String path, boolean wasSuccessful, @NonNull String reason) {
+                    @Override public void onCopyPreExecute() {}
+                    @Override public void onCopyProgressUpdate(int progress) {}
+                    @Override public void onCopyPostExecute(@NonNull String path, boolean wasSuccessful, @NonNull String reason) {
                         if (wasSuccessful) {
                             BackupRestoreManager manager = new BackupRestoreManager(MainActivity.this, projectsFragment);
-
                             if (BackupFactory.zipContainsFile(path, "local_libs")) {
                                 new MaterialAlertDialogBuilder(MainActivity.this)
                                         .setTitle(R.string.common_word_warning)
                                         .setMessage(BackupRestoreManager.getRestoreIntegratedLocalLibrariesMessage(false, -1, -1, null))
                                         .setPositiveButton(R.string.common_word_copy, (dialog, which) -> manager.doRestore(path, true))
                                         .setNegativeButton(R.string.common_word_dont_copy, (dialog, which) -> manager.doRestore(path, false))
-                                        .setNeutralButton(R.string.common_word_cancel, null)
-                                        .show();
-                            } else {
-                                manager.doRestore(path, true);
-                            }
-
-                            // Clear intent so it doesn't duplicate
+                                        .setNeutralButton(R.string.common_word_cancel, null).show();
+                            } else manager.doRestore(path, true);
                             getIntent().setData(null);
-                        } else {
-                            SketchwareUtil.toastError(String.format(Helper.getResString(R.string.error_copy_backup), reason), Toast.LENGTH_LONG);
-                        }
+                        } else SketchwareUtil.toastError(String.format(Helper.getResString(R.string.error_copy_backup), reason), Toast.LENGTH_LONG);
                     }
                 }).copyFile(data);
             }
         } else if (!ConfigActivity.isSettingEnabled(ConfigActivity.SETTING_CRITICAL_UPDATE_REMINDER)) {
             BottomSheetDialogView bottomSheetDialog = getBottomSheetDialogView();
             bottomSheetDialog.getPositiveButton().setEnabled(false);
-
             CountDownTimer countDownTimer = new CountDownTimer(10000, 1000) {
-                @Override
-                public void onTick(long millisUntilFinished) {
-                    bottomSheetDialog.setPositiveButtonText(millisUntilFinished / 1000 + "");
-                }
-
-                @Override
-                public void onFinish() {
-                    bottomSheetDialog.setPositiveButtonText("View changes");
-                    bottomSheetDialog.getPositiveButton().setEnabled(true);
-                }
+                @Override public void onTick(long millisUntilFinished) { bottomSheetDialog.setPositiveButtonText(millisUntilFinished / 1000 + ""); }
+                @Override public void onFinish() { bottomSheetDialog.setPositiveButtonText("View changes"); bottomSheetDialog.getPositiveButton().setEnabled(true); }
             };
             countDownTimer.start();
-
             if (!isFinishing()) bottomSheetDialog.show();
         }
-
-        binding.bottomNav.setOnItemSelectedListener(item -> {
-            int id = item.getItemId();
-            if (id == R.id.item_projects) {
-                navigateToProjectsFragment();
-                return true;
-            } else if (id == R.id.item_sketchub) {
-                navigateToSketchubFragment();
-                return true;
-            }
-            return false;
-        });
 
         if (savedInstanceState != null) {
             projectsFragment = (ProjectsFragment) getSupportFragmentManager().findFragmentByTag(PROJECTS_FRAGMENT_TAG);
             projectsStoreFragment = (ProjectsStoreFragment) getSupportFragmentManager().findFragmentByTag(PROJECTS_STORE_FRAGMENT_TAG);
-            currentNavItemId = savedInstanceState.getInt("selected_tab_id");
-            Fragment current = getFragmentForNavId(currentNavItemId);
-            if (current instanceof ProjectsFragment) {
-                navigateToProjectsFragment();
-            } else if (current instanceof ProjectsStoreFragment) {
-                navigateToSketchubFragment();
-            }
-
+            currentNavItemId = savedInstanceState.getInt("selected_tab_id", R.id.tab_projects);
+            if (currentNavItemId == R.id.tab_store) navigateToSketchubFragment(); else navigateToProjectsFragment();
             return;
         }
-
         navigateToProjectsFragment();
     }
 
-    private Fragment getFragmentForNavId(int navItemId) {
-        if (navItemId == R.id.item_projects) {
-            return projectsFragment;
-        } else if (navItemId == R.id.item_sketchub) {
-            return projectsStoreFragment;
-        }
-        throw new IllegalArgumentException();
-    }
-
-    @Override
-    protected void onSaveInstanceState(@NonNull Bundle outState) {
+    @Override protected void onSaveInstanceState(@NonNull Bundle outState) {
         super.onSaveInstanceState(outState);
         outState.putInt("selected_tab_id", currentNavItemId);
     }
 
     private void navigateToProjectsFragment() {
-        if (projectsFragment == null) {
-            projectsFragment = new ProjectsFragment();
-        }
-
-        boolean shouldShow = true;
+        if (projectsFragment == null) projectsFragment = new ProjectsFragment();
         FragmentManager fm = getSupportFragmentManager();
         FragmentTransaction transaction = fm.beginTransaction();
-
-        binding.createNewProject.show();
-        if (activeFragment != null) transaction.hide(activeFragment);
-        if (fm.findFragmentByTag(PROJECTS_FRAGMENT_TAG) == null) {
-            shouldShow = false;
-            transaction.add(binding.container.getId(), projectsFragment, PROJECTS_FRAGMENT_TAG);
-        }
-        if (shouldShow) transaction.show(projectsFragment);
+        if (activeFragment != null && activeFragment != projectsFragment) transaction.hide(activeFragment);
+        if (fm.findFragmentByTag(PROJECTS_FRAGMENT_TAG) == null) transaction.add(binding.container.getId(), projectsFragment, PROJECTS_FRAGMENT_TAG); else transaction.show(projectsFragment);
         transaction.commit();
-
         activeFragment = projectsFragment;
-        currentNavItemId = R.id.item_projects;
+        currentNavItemId = R.id.tab_projects;
+        if (binding.mainTabGroup.getCheckedButtonId() != R.id.tab_projects) binding.mainTabGroup.check(R.id.tab_projects);
     }
 
     private void navigateToSketchubFragment() {
-        if (projectsStoreFragment == null) {
-            projectsStoreFragment = new ProjectsStoreFragment();
-        }
-
-        boolean shouldShow = true;
+        if (projectsStoreFragment == null) projectsStoreFragment = new ProjectsStoreFragment();
         FragmentManager fm = getSupportFragmentManager();
         FragmentTransaction transaction = fm.beginTransaction();
-
-        binding.createNewProject.hide();
-        if (activeFragment != null) transaction.hide(activeFragment);
-        if (fm.findFragmentByTag(PROJECTS_STORE_FRAGMENT_TAG) == null) {
-            shouldShow = false;
-            transaction.add(binding.container.getId(), projectsStoreFragment, PROJECTS_STORE_FRAGMENT_TAG);
-        }
-        if (shouldShow) transaction.show(projectsStoreFragment);
+        if (activeFragment != null && activeFragment != projectsStoreFragment) transaction.hide(activeFragment);
+        if (fm.findFragmentByTag(PROJECTS_STORE_FRAGMENT_TAG) == null) transaction.add(binding.container.getId(), projectsStoreFragment, PROJECTS_STORE_FRAGMENT_TAG); else transaction.show(projectsStoreFragment);
         transaction.commit();
-
         activeFragment = projectsStoreFragment;
-        currentNavItemId = R.id.item_sketchub;
+        currentNavItemId = R.id.tab_store;
+        if (binding.mainTabGroup.getCheckedButtonId() != R.id.tab_store) binding.mainTabGroup.check(R.id.tab_store);
     }
 
-    @NonNull
-    private BottomSheetDialogView getBottomSheetDialogView() {
+    @NonNull private BottomSheetDialogView getBottomSheetDialogView() {
         BottomSheetDialogView bottomSheetDialog = new BottomSheetDialogView(this);
         bottomSheetDialog.setTitle(Helper.getResString(R.string.main_major_changes_title));
         bottomSheetDialog.setDescription(Helper.getResString(R.string.main_major_changes_desc));
-
         bottomSheetDialog.setPositiveButton(Helper.getResString(R.string.common_word_view_changes), (dialog, which) -> {
             ConfigActivity.setSetting(ConfigActivity.SETTING_CRITICAL_UPDATE_REMINDER, true);
             Intent launcher = new Intent(this, AboutActivity.class);
@@ -409,39 +272,24 @@ public class MainActivity extends BasePermissionAppCompatActivity {
         return bottomSheetDialog;
     }
 
-    @Override
-    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
-        if (drawerToggle.onOptionsItemSelected(item)) {
-            return true;
-        } else {
-            return super.onOptionsItemSelected(item);
-        }
+    @Override public boolean onOptionsItemSelected(@NonNull MenuItem item) {
+        if (drawerToggle.onOptionsItemSelected(item)) return true;
+        return super.onOptionsItemSelected(item);
     }
 
-    @Override
-    public void onPostCreate(Bundle savedInstanceState) {
+    @Override public void onPostCreate(Bundle savedInstanceState) {
         super.onPostCreate(savedInstanceState);
         drawerToggle.syncState();
-        if (isFirebaseInitialized(this)) {
-            FirebaseMessaging.getInstance().subscribeToTopic("all");
-        }
+        if (isFirebaseInitialized(this)) FirebaseMessaging.getInstance().subscribeToTopic("all");
     }
 
-    @Override
-    public void onResume() {
+    @Override public void onResume() {
         super.onResume();
-        /* Check if the device is running low on storage space */
         long freeMegabytes = DeviceUtil.getFreeStorageMB();
-        if (freeMegabytes < 100 && freeMegabytes > 0) {
-            showNoticeNotEnoughFreeStorageSpace();
-        }
-        if (isStoragePermissionGranted() && storageAccessDenied != null && storageAccessDenied.isShown()) {
-            storageAccessDenied.dismiss();
-        }
+        if (freeMegabytes < 100 && freeMegabytes > 0) showNoticeNotEnoughFreeStorageSpace();
+        if (isStoragePermissionGranted() && storageAccessDenied != null && storageAccessDenied.isShown()) storageAccessDenied.dismiss();
         if (isFirebaseInitialized(this)) {
-            if (mAnalytics == null) {
-                mAnalytics = FirebaseAnalytics.getInstance(this);
-            }
+            if (mAnalytics == null) mAnalytics = FirebaseAnalytics.getInstance(this);
             Bundle bundle = new Bundle();
             bundle.putString(FirebaseAnalytics.Param.SCREEN_NAME, "MainActivity");
             bundle.putString(FirebaseAnalytics.Param.SCREEN_CLASS, "MainActivity");
@@ -453,24 +301,16 @@ public class MainActivity extends BasePermissionAppCompatActivity {
         if (Build.VERSION.SDK_INT > 29) {
             File optOutFile = new File(getFilesDir(), ".skip_all_files_access_notice");
             boolean granted = Environment.isExternalStorageManager();
-
             if (!optOutFile.exists() && !granted) {
                 MaterialAlertDialogBuilder dialog = new MaterialAlertDialogBuilder(this);
                 dialog.setIcon(R.drawable.ic_expire_48dp);
                 dialog.setTitle(R.string.main_storage_access_title);
                 dialog.setMessage(Helper.getResString(R.string.main_storage_access_message));
-                dialog.setPositiveButton(Helper.getResString(R.string.common_word_settings), (v, which) -> {
-                    FileUtil.requestAllFilesAccessPermission(this);
-                    v.dismiss();
-                });
+                dialog.setPositiveButton(Helper.getResString(R.string.common_word_settings), (v, which) -> { FileUtil.requestAllFilesAccessPermission(this); v.dismiss(); });
                 dialog.setNegativeButton(R.string.common_word_skip, null);
                 dialog.setNeutralButton(R.string.common_word_dont_show_anymore, (v, which) -> {
-                    try {
-                        if (!optOutFile.createNewFile())
-                            throw new IOException("Failed to create file " + optOutFile);
-                    } catch (IOException e) {
-                        Log.e("MainActivity", "Error while trying to create " + "\"Don't show Android 11 hint\" dialog file: " + e.getMessage(), e);
-                    }
+                    try { if (!optOutFile.createNewFile()) throw new IOException("Failed to create file " + optOutFile); }
+                    catch (IOException e) { Log.e("MainActivity", "Error while creating storage notice opt-out file", e); }
                     v.dismiss();
                 });
                 dialog.show();
@@ -511,7 +351,5 @@ public class MainActivity extends BasePermissionAppCompatActivity {
         }
     }
 
-    public void launchProgramInfo(Intent intent) {
-        programInfoLauncher.launch(intent);
-    }
+    public void launchProgramInfo(Intent intent) { programInfoLauncher.launch(intent); }
 }

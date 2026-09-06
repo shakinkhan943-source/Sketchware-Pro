@@ -1,22 +1,23 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
-    <!-- Compact toolbar: undo + redo live here (moved out of the old tools popup). -->
+    <!-- Kept as hidden compatibility actions; the visible controls are in the workspace bar. -->
     <item
         android:id="@+id/design_option_menu_undo"
         android:icon="@drawable/ic_mtrl_undo"
-        android:orderInCategory="10"
+        android:orderInCategory="1"
         android:title="@string/design_tools_undo"
-        app:showAsAction="always" />
+        android:visible="false"
+        app:showAsAction="never" />
 
     <item
         android:id="@+id/design_option_menu_redo"
         android:icon="@drawable/ic_mtrl_redo"
-        android:orderInCategory="11"
+        android:orderInCategory="2"
         android:title="@string/design_tools_redo"
-        app:showAsAction="always" />
+        android:visible="false"
+        app:showAsAction="never" />
 
-    <!-- Workspace switchers (previously behind the tools popup). -->
     <item
         android:id="@+id/design_option_menu_events"
         android:icon="@drawable/ic_mtrl_lifecycle"
@@ -31,7 +32,6 @@
         android:title="@string/design_tools_components"
         app:showAsAction="always" />
 
-    <!-- Run moved from the bottom bar into the toolbar. -->
     <item
         android:id="@+id/design_option_menu_run"
         android:icon="@drawable/ic_mtrl_run"
@@ -46,7 +46,6 @@
         android:title="@string/design_option_menu_title_save_project"
         app:showAsAction="always" />
 
-    <!-- Events search (only relevant in the Events workspace). -->
     <item
         android:id="@+id/design_option_menu_search"
         android:icon="@drawable/ic_mtrl_search"
@@ -55,13 +54,13 @@
         android:visible="false"
         app:showAsAction="always" />
 
-    <!-- "More": consolidated overflow (build actions + project tools drawer). -->
+    <!-- Dedicated Project Tools drawer action. -->
     <item
         android:id="@+id/design_option_menu_open_tools"
         android:icon="@drawable/ic_mtrl_tune"
-        android:orderInCategory="100"
+        android:orderInCategory="50"
         android:title="@string/design_menu_open_tools"
-        app:showAsAction="never" />
+        app:showAsAction="always" />
 
     <item
         android:id="@+id/design_menu_build_settings"
