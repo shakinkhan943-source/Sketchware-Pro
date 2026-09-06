@@ -35,6 +35,7 @@
                     app:contentInsetStart="4dp"
                     app:contentInsetStartWithNavigation="4dp"
                     app:navigationIcon="@null"
+                    app:title=""
                     tools:menu="@menu/design_menu" />
 
                 <LinearLayout
