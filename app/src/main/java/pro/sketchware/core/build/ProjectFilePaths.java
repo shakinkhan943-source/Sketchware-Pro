@@ -1357,7 +1357,7 @@ public class ProjectFilePaths {
         String container = composeColor(colorControlHighlight);
         String onBackground = composeColor(colorControlNormal);
 
-        return """
+        return String.format("""
                 package %s;
 
                 import androidx.compose.material3.darkColorScheme;
@@ -1393,7 +1393,7 @@ public class ProjectFilePaths {
                     surface = Color(0xFF1E1E1E),
                     onSurface = Color(0xFFEEEEEE)
                 )
-                """.formatted(packageName, primary, primaryDark, accent, container,
+                """, packageName, primary, primaryDark, accent, container,
                 container, onBackground, primary, primaryDark, accent, container);
     }
 
@@ -1405,7 +1405,7 @@ public class ProjectFilePaths {
      * the Java/XML theme resources.</p>
      */
     private String getComposeThemeCode() {
-        return """
+        return String.format("""
                 package %s;
 
                 import androidx.compose.foundation.isSystemInDarkTheme;
@@ -1419,7 +1419,7 @@ public class ProjectFilePaths {
                         content = content
                     )
                 }
-                """.formatted(packageName);
+                """, packageName);
     }
 
     private static String composeColor(int argb) {
