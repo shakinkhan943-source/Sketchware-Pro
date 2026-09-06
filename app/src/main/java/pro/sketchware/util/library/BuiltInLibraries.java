@@ -118,8 +118,8 @@ public class BuiltInLibraries {
     public static String GSON = "gson-2.13.1";
     public static String HTTP_LEGACY_ANDROID = "http-legacy-android-28";
     public static String JETBRAINS_ANNOTATIONS = "annotations-23.0.0";
-    public static String JETBRAINS_KOTLINX_COROUTINES_ANDROID = "kotlinx-coroutines-android-1.8.1";
-    public static String JETBRAINS_KOTLINX_COROUTINES_CORE_JVM = "kotlinx-coroutines-core-jvm-1.8.1";
+    public static String JETBRAINS_KOTLINX_COROUTINES_ANDROID = "kotlinx-coroutines-android-1.11.0";
+    public static String JETBRAINS_KOTLINX_COROUTINES_CORE_JVM = "kotlinx-coroutines-core-jvm-1.11.0";
     public static String JETBRAINS_KOTLIN_STDLIB = "kotlin-stdlib-2.4.10";
     public static String JSPECIFY = "jspecify-1.0.0";
     public static String LOTTIE = "lottie-6.6.10";
