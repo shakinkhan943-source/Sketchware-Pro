@@ -57,6 +57,7 @@ public final class JavaSyncStore {
             }
             metadata.javaName = javaName;
             metadata.getUserCode();
+            metadata.getLineOverrides();
             metadata.getRegionSnapshots();
             return metadata;
         } catch (RuntimeException e) {

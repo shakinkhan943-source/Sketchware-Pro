@@ -838,14 +838,31 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
 
     private void saveChangesAndCloseProject() {
         showLoadingDialog();
-        SaveChangesProjectCloser saveChangesProjectCloser = new SaveChangesProjectCloser(this);
-        saveChangesProjectCloser.execute();
+        syncJavaEditorsBeforeSave(() -> {
+            SaveChangesProjectCloser saveChangesProjectCloser = new SaveChangesProjectCloser(this);
+            saveChangesProjectCloser.execute();
+        });
     }
 
     private void saveProject() {
         showLoadingDialog();
-        ProjectSaver projectSaver = new ProjectSaver(this);
-        projectSaver.execute();
+        syncJavaEditorsBeforeSave(() -> {
+            ProjectSaver projectSaver = new ProjectSaver(this);
+            projectSaver.execute();
+        });
+    }
+
+    /**
+     * Save pipeline: Java editor edits are synchronized into blocks/metadata first, then the
+     * resulting final state is persisted. This is what makes Save reliable: the project on disk is
+     * always the same consistent state the Java editor shows.
+     */
+    private void syncJavaEditorsBeforeSave(Runnable onContinue) {
+        if (javaTabAdapter == null || !javaTabAdapter.isAdded()) {
+            onContinue.run();
+            return;
+        }
+        javaTabAdapter.synchronizeForSave(onContinue);
     }
 
     @Override
@@ -1109,8 +1126,11 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
         }
 
         if (!isRestoringData) {
-            UnsavedChangesSaver unsavedChangesSaver = new UnsavedChangesSaver(this);
-            unsavedChangesSaver.execute();
+            // Automatic save: synchronize unsynced Java edits first, then persist the backup.
+            syncJavaEditorsBeforeSave(() -> {
+                UnsavedChangesSaver unsavedChangesSaver = new UnsavedChangesSaver(this);
+                unsavedChangesSaver.execute();
+            });
         }
     }
 

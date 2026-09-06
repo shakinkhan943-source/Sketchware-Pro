@@ -95,6 +95,36 @@ public final class BackgroundTasks {
         execute(SERIAL_EXECUTOR, host, tag, work, onSuccess, onError);
     }
 
+    /**
+     * Like {@link #callIo}, but the result callbacks are delivered unconditionally on the main
+     * thread, independent of host aliveness. Used by save-time synchronization: the subsequent
+     * save chain must run even when the Activity is already on its way out (automatic save during
+     * {@code onSaveInstanceState}).
+     */
+    public static <T> void callIoAlways(String tag, ThrowingSupplier<T> work,
+                                        Consumer<T> onSuccess, Consumer<Throwable> onError) {
+        String safeTag = tag != null && !tag.isEmpty() ? tag : "BackgroundTasks";
+        IO_EXECUTOR.execute(() -> {
+            long startedAt = SystemClock.elapsedRealtime();
+            try {
+                T result = work.get();
+                if (onSuccess != null) {
+                    postMain(() -> onSuccess.accept(result));
+                }
+            } catch (Exception e) {
+                LogUtil.e(safeTag, "Background task failed", e);
+                if (onError != null) {
+                    postMain(() -> onError.accept(e));
+                }
+            } finally {
+                long executionMs = SystemClock.elapsedRealtime() - startedAt;
+                if (executionMs >= SLOW_TASK_LOG_THRESHOLD_MS) {
+                    LogUtil.d(safeTag, "Task timing executor=io exec=" + executionMs + "ms thread=" + Thread.currentThread().getName());
+                }
+            }
+        });
+    }
+
     public static ExecutorService createSingleThreadExecutor(String threadNamePrefix) {
         String safeThreadNamePrefix = threadNamePrefix != null && !threadNamePrefix.isEmpty()
                 ? threadNamePrefix

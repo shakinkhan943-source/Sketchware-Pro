@@ -1,5 +1,6 @@
 package pro.sketchware.activities.design.fragments;
 
+import android.content.Context;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -10,20 +11,14 @@ import androidx.annotation.Nullable;
 
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
-import java.util.ArrayList;
-import java.util.List;
-
 import pro.sketchware.R;
 import pro.sketchware.activities.base.BaseFragment;
 import pro.sketchware.beans.ProjectFileBean;
 import pro.sketchware.core.async.BackgroundTasks;
 import pro.sketchware.core.async.TaskHost;
-import pro.sketchware.core.project.ProjectDataManager;
-import pro.sketchware.core.project.ProjectDataStore;
 import pro.sketchware.core.sync.JavaSyncApplier;
 import pro.sketchware.core.sync.JavaSyncManager;
 import pro.sketchware.core.sync.MappedSource;
-import pro.sketchware.core.sync.SyncPlan;
 import pro.sketchware.databinding.FrJavaEditorBinding;
 import pro.sketchware.lib.code_editor.CodeEditorPreferences;
 import pro.sketchware.util.EditorUtils;
@@ -32,19 +27,21 @@ import pro.sketchware.util.LogUtil;
 import pro.sketchware.util.SketchwareUtil;
 
 /**
- * The "Java" tab of the project editor.
+ * The "Java/Kotlin" tab of the project editor.
  * <p>
  * It shows the <b>complete</b> generated source of the currently selected Activity in the regular
  * Sketchware Pro code editor (sora-editor, same widget and preferences as every other code editor
  * of the app) and lets the user edit it directly.
  * <p>
- * Saving runs the synchronization layer:
+ * Synchronization is no longer a separate action: it runs automatically whenever the project is
+ * saved (manual save, save-and-exit and the automatic backup save). The reconciliation is loss free:
  * <ul>
  *     <li>edits inside code that came from a block update or remove that block,</li>
+ *     <li>edits inside generated framework/core sections are kept as content-anchored overrides and
+ *     never overwritten by a later generation,</li>
  *     <li>code that has no block behind it is kept as user-managed code,</li>
- *     <li>generated framework code is protected,</li>
- *     <li>conflicts (blocks and Java changed at the same time) are reported and resolved by the
- *     user instead of silently overwriting anything.</li>
+ *     <li>conflicts (blocks and Java changed at the same time) keep both sides: the block keeps its
+ *     state and the Java edit stays visible as an override.</li>
  * </ul>
  *
  * @see JavaSyncManager
@@ -75,13 +72,16 @@ public class JavaEditorFragment extends BaseFragment {
         editorPrefs = new CodeEditorPreferences(requireContext(), "java_tab");
         editorPrefs.applyToEditor(binding.editor, false);
 
-        binding.btnSync.setOnClickListener(v -> synchronizeNow());
         binding.btnReload.setOnClickListener(v -> confirmReload());
         setStatus(Helper.getResString(R.string.java_editor_status_loading));
 
         binding.editor.subscribeEvent(io.github.rosemoe.sora.event.ContentChangeEvent.class, (event, unsubscribe) -> {
             if (!loading && binding != null) {
-                binding.getRoot().post(this::updateSyncBarState);
+                binding.getRoot().post(() -> {
+                    if (baseline != null && hasUnsavedChanges()) {
+                        setStatus(Helper.getResString(R.string.java_editor_status_unsaved));
+                    }
+                });
             }
         });
 
@@ -165,13 +165,13 @@ public class JavaEditorFragment extends BaseFragment {
             return;
         }
         if (!hasUnsavedChanges()) {
-            reload(showToast);
+            reload(showToast, showToast);
             return;
         }
         new MaterialAlertDialogBuilder(requireActivity())
                 .setTitle(R.string.java_editor_action_reload)
                 .setMessage(R.string.java_editor_message_discard_changes)
-                .setPositiveButton(R.string.common_word_yes, (dialog, which) -> reload(showToast))
+                .setPositiveButton(R.string.common_word_yes, (dialog, which) -> reload(showToast, showToast))
                 .setNegativeButton(R.string.common_word_cancel, null)
                 .show();
     }
@@ -181,7 +181,13 @@ public class JavaEditorFragment extends BaseFragment {
                 && !binding.editor.getText().toString().equals(baseline.getText());
     }
 
-    private void reload(boolean showToast) {
+    /**
+     * Regenerates the source from the blocks and injects the persisted user layers.
+     *
+     * @param resetManualMode {@code true} only for the explicit "Reload from blocks" action: leaves
+     *                        whole-file manual mode, which the user confirmed to discard.
+     */
+    private void reload(boolean showToast, boolean resetManualMode) {
         if (binding == null || projectFile == null || scId == null || loading) {
             return;
         }
@@ -190,7 +196,12 @@ public class JavaEditorFragment extends BaseFragment {
         setStatus(Helper.getResString(R.string.java_editor_status_loading));
         binding.editor.setEditable(false);
         BackgroundTasks.callIoIfAlive(TaskHost.of(this), "JavaEditorFragment",
-                () -> JavaSyncManager.loadSource(requireContext().getApplicationContext(), scId, file),
+                () -> {
+                    if (resetManualMode) {
+                        JavaSyncManager.clearWholeSourceMode(scId, file.getJavaName());
+                    }
+                    return JavaSyncManager.loadSource(requireContext().getApplicationContext(), scId, file);
+                },
                 mapped -> {
                     loading = false;
                     if (binding == null) {
@@ -204,11 +215,10 @@ public class JavaEditorFragment extends BaseFragment {
                     binding.fileName.setText(displayName);
                     updateEditorLanguage();
                     setStatus(describeMapping(mapped));
-                    updateSyncBarState(false);
                     if (showToast) {
                         SketchwareUtil.toast(Helper.getResString(R.string.java_editor_message_reloaded));
                     }
-                    if (!mapped.unanchoredChunkIds.isEmpty()) {
+                    if (!mapped.unanchoredChunkIds.isEmpty() || !mapped.unanchoredOverrideIds.isEmpty()) {
                         SketchwareUtil.toast(Helper.getResString(R.string.java_editor_message_unanchored_code));
                     }
                 },
@@ -225,218 +235,118 @@ public class JavaEditorFragment extends BaseFragment {
     }
 
     private String describeMapping(MappedSource mapped) {
+        if (mapped.wholeSource) {
+            return Helper.getResString(R.string.java_editor_status_manual_file);
+        }
         int blocks = mapped.blockRegions().size();
         int manual = mapped.chunks.size();
         return String.format(Helper.getResString(R.string.java_editor_status_mapped), blocks, manual);
     }
 
     /**
-     * Java → blocks: analyses the editor content and applies the result after asking the user
-     * whenever the automatic resolution would not be safe.
+     * Synchronizes unsaved editor edits and refreshes the editor with the final canonical source.
+     * <p>
+     * Called by {@link pro.sketchware.activities.design.DesignActivity} before every save, so
+     * Save always stores a consistent blocks ↔ code ↔ user-edit state. If the user keeps typing
+     * while the sync runs, their newer text is preserved (it will be synced on the next save).
+     *
+     * @param onComplete invoked on the main thread after synchronization finished (never dropped,
+     *                   even on failure — the save itself can still proceed)
      */
-    private void synchronizeNow() {
-        if (binding == null || baseline == null || projectFile == null || loading) {
+    public void synchronizeForSave(Runnable onComplete) {
+        if (onComplete == null) {
+            return;
+        }
+        if (binding == null || projectFile == null || scId == null || baseline == null) {
+            onComplete.run();
+            return;
+        }
+        if (loading) {
+            // A reload/sync is already running; capture the text after it finishes is complex, so
+            // let the save proceed. The in-flight sync still applies the editor's edits.
+            onComplete.run();
+            return;
+        }
+        if (!hasUnsavedChanges()) {
+            onComplete.run();
             return;
         }
         final ProjectFileBean file = projectFile;
         final MappedSource base = baseline;
         final String edited = binding.editor.getText().toString();
-        if (edited.equals(base.getText())) {
-            SketchwareUtil.toast(Helper.getResString(R.string.java_editor_message_nothing_to_sync));
+        final Context appContext = requireContext().getApplicationContext();
+        loading = true;
+        setStatus(Helper.getResString(R.string.java_editor_status_syncing));
+        BindingGuard guard = new BindingGuard(edited);
+        // The save chain (including the automatic backup save started from onSaveInstanceState)
+        // must always complete, even when the Activity is already being destroyed, so delivery is
+        // not gated on host aliveness. UI updates stay null-guarded.
+        BackgroundTasks.callIoAlways("JavaEditorFragment",
+                () -> JavaSyncManager.synchronize(appContext, scId, file, base, edited),
+                outcome -> {
+                    loading = false;
+                    if (binding != null) {
+                        setStatus(describeReport(outcome.report));
+                        applyFinalSource(outcome.finalSource, file, guard);
+                    }
+                    onComplete.run();
+                },
+                error -> {
+                    loading = false;
+                    LogUtil.e("JavaEditorFragment", "Failed to synchronize Java edits", error);
+                    if (binding != null) {
+                        setStatus(Helper.getResString(R.string.java_editor_status_sync_failed));
+                    }
+                    onComplete.run();
+                });
+    }
+
+    /**
+     * Guards the editor content while a background sync is in flight: only overwrite the editor
+     * with the canonical source when the user did not type anything new.
+     */
+    private static final class BindingGuard {
+        private final String syncSource;
+
+        BindingGuard(String syncSource) {
+            this.syncSource = syncSource;
+        }
+
+        boolean stillMatches(String current) {
+            return current != null && current.equals(syncSource);
+        }
+    }
+
+    private void applyFinalSource(MappedSource finalSource, ProjectFileBean file, BindingGuard guard) {
+        if (binding == null || finalSource == null) {
             return;
         }
-        loading = true;
-        setStatus(Helper.getResString(R.string.java_editor_status_syncing));
-        BackgroundTasks.callIoIfAlive(TaskHost.of(this), "JavaEditorFragment",
-                () -> JavaSyncManager.analyze(requireContext().getApplicationContext(), scId, file, base, edited),
-                plan -> {
-                    loading = false;
-                    if (binding == null) {
-                        return;
-                    }
-                    if (!plan.reliable) {
-                        setStatus(Helper.getResString(R.string.java_editor_status_unreliable));
-                        new MaterialAlertDialogBuilder(requireActivity())
-                                .setTitle(R.string.java_editor_title_cannot_sync)
-                                .setMessage(R.string.java_editor_message_cannot_sync)
-                                .setPositiveButton(R.string.common_word_ok, null)
-                                .show();
-                        return;
-                    }
-                    if (plan.requiresConfirmation()) {
-                        askAndApply(file, plan);
-                    } else {
-                        applyPlan(file, plan, JavaSyncApplier.ConflictResolution.KEEP_JAVA, true);
-                    }
-                },
-                error -> {
-                    loading = false;
-                    LogUtil.e("JavaEditorFragment", "Failed to analyse Java edits", error);
-                    if (binding == null) {
-                        return;
-                    }
-                    setStatus(Helper.getResString(R.string.java_editor_status_sync_failed));
-                    SketchwareUtil.toast(Helper.getResString(R.string.java_editor_status_sync_failed));
-                });
-    }
-
-    private void askAndApply(ProjectFileBean file, SyncPlan plan) {
-        StringBuilder message = new StringBuilder();
-        if (!plan.conflicts.isEmpty()) {
-            message.append(Helper.getResString(R.string.java_editor_message_conflicts)).append("\n");
-            for (SyncPlan.Conflict conflict : plan.conflicts) {
-                message.append("• ").append(conflict.describe()).append('\n');
-            }
-            message.append('\n');
+        if (!guard.stillMatches(binding.editor.getText().toString())) {
+            // User typed while synchronizing: keep their newest text; baseline is still the one we
+            // synced, so the next save picks it up.
+            baseline = finalSource;
+            return;
         }
-        List<String> conversions = new ArrayList<>();
-        List<String> removals = new ArrayList<>();
-        for (SyncPlan.BlockChange change : plan.blockChanges) {
-            if (change.type == SyncPlan.ChangeType.CONVERT_TO_SOURCE_BLOCK) {
-                conversions.add("• " + change.describe());
-            } else if (change.type == SyncPlan.ChangeType.DELETE_BLOCK) {
-                removals.add("• " + change.describe());
-            }
+        baseline = finalSource;
+        loadedSourceName = file.getSourceFileName();
+        binding.editor.setText(finalSource.getText());
+        String displayName = file.isKotlin() ? file.getSourceFileName() : file.getJavaName();
+        binding.fileName.setText(displayName);
+        updateEditorLanguage();
+        if (!finalSource.unanchoredChunkIds.isEmpty() || !finalSource.unanchoredOverrideIds.isEmpty()) {
+            SketchwareUtil.toast(Helper.getResString(R.string.java_editor_message_unanchored_code));
         }
-        if (!conversions.isEmpty()) {
-            message.append(Helper.getResString(R.string.java_editor_message_conversions)).append('\n');
-            message.append(String.join("\n", conversions)).append("\n\n");
-        }
-        if (!removals.isEmpty()) {
-            message.append(Helper.getResString(R.string.java_editor_message_removals)).append('\n');
-            message.append(String.join("\n", removals)).append("\n\n");
-        }
-        if (plan.rejectedFrameworkEdits > 0) {
-            message.append(String.format(
-                    Helper.getResString(R.string.java_editor_message_rejected_framework),
-                    plan.rejectedFrameworkEdits)).append('\n');
-        }
-
-        new MaterialAlertDialogBuilder(requireActivity())
-                .setTitle(R.string.java_editor_title_review_changes)
-                .setMessage(message.toString().trim())
-                .setPositiveButton(R.string.java_editor_action_keep_java,
-                        (dialog, which) -> applyPlan(file, plan, JavaSyncApplier.ConflictResolution.KEEP_JAVA, true))
-                .setNeutralButton(R.string.java_editor_action_keep_blocks,
-                        (dialog, which) -> applyPlan(file, plan, JavaSyncApplier.ConflictResolution.KEEP_BLOCKS, false))
-                .setNegativeButton(R.string.common_word_cancel, null)
-                .show();
-    }
-
-    private void applyPlan(ProjectFileBean file, SyncPlan plan,
-                           JavaSyncApplier.ConflictResolution resolution, boolean allowConversion) {
-        loading = true;
-        setStatus(Helper.getResString(R.string.java_editor_status_syncing));
-        BackgroundTasks.callIoIfAlive(TaskHost.of(this), "JavaEditorFragment",
-                () -> {
-                    JavaSyncApplier.Report report = JavaSyncManager.apply(scId, file, plan, resolution, allowConversion);
-                    ProjectDataStore dataStore = ProjectDataManager.getProjectDataManager(scId);
-                    synchronized (dataStore) {
-                        dataStore.saveAllBackup();
-                    }
-                    return report;
-                },
-                report -> {
-                    loading = false;
-                    if (binding == null) {
-                        return;
-                    }
-                    SketchwareUtil.toast(describeReport(report));
-                    // Re-generate so the editor shows exactly what the blocks produce now.
-                    reload(false);
-                },
-                error -> {
-                    loading = false;
-                    LogUtil.e("JavaEditorFragment", "Failed to apply Java edits", error);
-                    if (binding == null) {
-                        return;
-                    }
-                    setStatus(Helper.getResString(R.string.java_editor_status_sync_failed));
-                    SketchwareUtil.toast(Helper.getResString(R.string.java_editor_status_sync_failed));
-                });
     }
 
     private String describeReport(JavaSyncApplier.Report report) {
         return String.format(Helper.getResString(R.string.java_editor_message_sync_report),
                 report.updatedBlocks + report.convertedBlocks, report.removedBlocks,
-                report.userCodeChunks, report.rejectedFrameworkEdits);
+                report.userCodeChunks + report.lineOverrides, report.preservedGeneratedEdits);
     }
 
     private void setStatus(String status) {
         if (binding != null) {
             binding.syncStatus.setText(status);
-        }
-    }
-
-    private void updateSyncBarState() {
-        updateSyncBarState(true);
-    }
-
-    private void updateSyncBarState(boolean animate) {
-        if (binding == null) {
-            return;
-        }
-        boolean hasEdits = hasUnsavedChanges();
-        if (hasEdits) {
-            setStatus(Helper.getResString(R.string.java_editor_status_unsaved));
-            setSyncBarVisible(true, animate);
-        } else {
-            setSyncBarVisible(false, animate);
-        }
-    }
-
-    private void setSyncBarVisible(boolean visible, boolean animate) {
-        if (binding == null) {
-            return;
-        }
-        View syncBar = binding.syncBarContainer;
-        boolean isCurrentlyVisible = syncBar.getVisibility() == View.VISIBLE && syncBar.getAlpha() > 0.01f;
-        if (visible == isCurrentlyVisible && syncBar.getVisibility() == (visible ? View.VISIBLE : View.GONE)) {
-            return;
-        }
-
-        syncBar.animate().cancel();
-
-        if (!animate) {
-            syncBar.setVisibility(visible ? View.VISIBLE : View.GONE);
-            syncBar.setAlpha(visible ? 1.0f : 0.0f);
-            syncBar.setTranslationY(0f);
-            return;
-        }
-
-        if (visible) {
-            syncBar.setVisibility(View.VISIBLE);
-            syncBar.setAlpha(0.0f);
-            syncBar.post(() -> {
-                if (binding == null) {
-                    return;
-                }
-                float height = syncBar.getHeight() > 0 ? syncBar.getHeight() : 120f;
-                syncBar.setTranslationY(-height);
-                syncBar.animate()
-                        .translationY(0f)
-                        .alpha(1.0f)
-                        .setDuration(250)
-                        .setInterpolator(new android.view.animation.DecelerateInterpolator())
-                        .setListener(null)
-                        .start();
-            });
-        } else {
-            float height = syncBar.getHeight() > 0 ? syncBar.getHeight() : 120f;
-            syncBar.animate()
-                    .translationY(-height)
-                    .alpha(0.0f)
-                    .setDuration(200)
-                    .setInterpolator(new android.view.animation.AccelerateInterpolator())
-                    .setListener(new android.animation.AnimatorListenerAdapter() {
-                        @Override
-                        public void onAnimationEnd(android.animation.Animator animation) {
-                            if (binding != null) {
-                                binding.syncBarContainer.setVisibility(View.GONE);
-                            }
-                        }
-                    })
-                    .start();
         }
     }
 }

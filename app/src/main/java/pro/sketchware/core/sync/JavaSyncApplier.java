@@ -9,8 +9,13 @@ import pro.sketchware.core.project.ProjectDataStore;
 import pro.sketchware.util.LogUtil;
 
 /**
- * Writes a {@link SyncPlan} into the project: updates/removes blocks of the affected events and
- * stores the manually written Java code in the project's synchronization metadata.
+ * Writes a {@link SyncPlan} into the project: updates/removes blocks of the affected events, stores
+ * the new user chunks and generated-line overrides in the synchronization metadata. The metadata is
+ * saved together with the project data, so the final state is always consistent.
+ * <p>
+ * The applier is <b>loss free</b>: if a block change cannot be applied (the block disappeared, the
+ * chain changed, or the user chose to keep blocks), the same Java edit is stored as a
+ * {@link LineOverride} instead. Manual code is never discarded.
  */
 public final class JavaSyncApplier {
 
@@ -23,7 +28,8 @@ public final class JavaSyncApplier {
          */
         KEEP_JAVA,
         /**
-         * Keep the block version, discard the Java edit of that region.
+         * Keep the block version for conflicted regions; the Java edit of that region is preserved
+         * as a frame override instead of being discarded.
          */
         KEEP_BLOCKS
     }
@@ -33,11 +39,21 @@ public final class JavaSyncApplier {
         public int convertedBlocks;
         public int removedBlocks;
         public int userCodeChunks;
+        public int lineOverrides;
         public int skippedConflicts;
-        public int rejectedFrameworkEdits;
+        /**
+         * Number of generated framework lines that the user changed/removed and that were
+         * preserved as overrides.
+         */
+        public int preservedGeneratedEdits;
+        /**
+         * {@code true} when the whole file switched to user-managed mode (unreliable diff).
+         */
+        public boolean wholeSourceMode;
 
         public boolean changedAnything() {
-            return updatedBlocks + convertedBlocks + removedBlocks + userCodeChunks > 0;
+            return updatedBlocks + convertedBlocks + removedBlocks + userCodeChunks
+                    + lineOverrides + preservedGeneratedEdits > 0;
         }
     }
 
@@ -46,17 +62,28 @@ public final class JavaSyncApplier {
 
     /**
      * @param allowConversion when {@code false}, regular blocks whose code was edited stay as they
-     *                        are (the user did not confirm turning them into source-code blocks)
+     *                        are; the edit is kept as a frame override instead.
      */
     public static Report apply(String scId, String javaName, SyncPlan plan,
                                ConflictResolution resolution, boolean allowConversion) {
         Report report = new Report();
-        report.rejectedFrameworkEdits = plan.rejectedFrameworkEdits;
-        if (!plan.reliable) {
+        if (plan == null) {
             return report;
         }
+        if (!plan.reliable) {
+            return applyWholeSource(scId, javaName, plan.wholeSource, plan.wholeSourceBaseHash);
+        }
+        report.preservedGeneratedEdits = plan.preservedGeneratedEdits;
+        report.userCodeChunks = plan.userCode.size();
 
         ProjectDataStore dataStore = ProjectDataManager.getProjectDataManager(scId);
+        // Every block-change fallback is already part of plan.lineOverrides (added by the engine) so
+        // no user edit can escape the plan. When the block change is applied, the fallback must be
+        // removed again: it replaces the *generated* text of the region, and the block now produces
+        // exactly that text, so keeping the override would double-apply and fight the block.
+        // Mutating plan.lineOverrides (not a copy) keeps the plan an accurate view of what the
+        // applier persisted, which the save-time verification relies on.
+        List<LineOverride> overrides = plan.lineOverrides;
 
         for (SyncPlan.BlockChange change : plan.blockChanges) {
             if (change.conflicted && resolution == ConflictResolution.KEEP_BLOCKS) {
@@ -69,6 +96,7 @@ public final class JavaSyncApplier {
             }
             ArrayList<BlockBean> blocks = dataStore.getBlocks(javaName, change.ownerKey);
             if (blocks.isEmpty()) {
+                // The event or block no longer exists: the fallback override keeps the Java edit.
                 continue;
             }
             // getBlocks() returns the live list; copy it so a failed edit cannot corrupt the project.
@@ -85,9 +113,11 @@ public final class JavaSyncApplier {
                 applied = false;
             }
             if (!applied) {
+                // The fallback override is already in the plan; it keeps the Java edit.
                 continue;
             }
             dataStore.putBlocks(javaName, change.ownerKey, working);
+            overrides.remove(change.fallbackOverride);
             switch (change.type) {
                 case UPDATE_SOURCE_BLOCK -> report.updatedBlocks++;
                 case CONVERT_TO_SOURCE_BLOCK -> report.convertedBlocks++;
@@ -97,12 +127,47 @@ public final class JavaSyncApplier {
 
         JavaSyncMetadata metadata = JavaSyncStore.load(scId, javaName);
         metadata.userCode = new ArrayList<>(plan.userCode);
+        metadata.lineOverrides = overrides;
+        metadata.wholeSourceOverride = false;
+        metadata.wholeSource = "";
+        metadata.wholeSourceBaseHash = "";
         metadata.regionSnapshots.clear();
         metadata.regionSnapshots.putAll(plan.regionSnapshots);
         JavaSyncStore.save(scId, metadata);
-        report.userCodeChunks = metadata.getUserCode().size();
-
+        report.lineOverrides = metadata.getLineOverrides().size();
         return report;
+    }
+
+    /**
+     * Stores the whole edited source as user-managed file content. Used when the edited source was
+     * too different from the generated one to be aligned safely.
+     */
+    public static Report applyWholeSource(String scId, String javaName, String wholeSource,
+                                          String baseHash) {
+        Report report = new Report();
+        report.wholeSourceMode = true;
+        if (wholeSource == null || wholeSource.trim().isEmpty()) {
+            return report;
+        }
+        JavaSyncMetadata metadata = JavaSyncStore.load(scId, javaName);
+        metadata.wholeSourceOverride = true;
+        metadata.wholeSource = wholeSource;
+        metadata.wholeSourceBaseHash = baseHash == null ? "" : baseHash;
+        metadata.userCode = new ArrayList<>();
+        metadata.lineOverrides = new ArrayList<>();
+        JavaSyncStore.save(scId, metadata);
+        return report;
+    }
+
+    /**
+     * Clears whole-file manual mode. Called by the explicit "Reload from blocks" action.
+     */
+    public static void clearWholeSource(String scId, String javaName) {
+        JavaSyncMetadata metadata = JavaSyncStore.load(scId, javaName);
+        if (metadata.isWholeSourceMode()) {
+            metadata.clearWholeSourceMode();
+            JavaSyncStore.save(scId, metadata);
+        }
     }
 
     private static ArrayList<BlockBean> deepCopy(List<BlockBean> blocks) {

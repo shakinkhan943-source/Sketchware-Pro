@@ -3,6 +3,7 @@ package pro.sketchware.core.sync;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 /**
  * The complete Java source of one Activity together with the mapping of which lines belong to which
@@ -32,25 +33,61 @@ public class MappedSource {
      */
     public final List<UserCodeChunk> chunks;
     /**
+     * Generated-line overrides that were injected into {@link #lines} (the same list that is
+     * persisted in the metadata). Used by the engine to track which override owns a display line.
+     */
+    public final List<LineOverride> overrides;
+    /**
      * Ids of chunks whose anchor could not be found any more. They are appended at the end of the
      * file, commented out, and reported to the user instead of being deleted.
      */
     public final List<String> unanchoredChunkIds;
     /**
+     * Ids of frame overrides whose anchor could not be found any more. They are appended at the end
+     * of the file, commented out, and reported instead of being deleted.
+     */
+    public final List<String> unanchoredOverrideIds;
+    /**
+     * Display ranges of orphaned overrides: override id → {@code [first, last]} (inclusive) inside
+     * {@link #lines}. Used by the synchronization engine so edits inside an orphaned override are
+     * merged into it (re-rendered) instead of being lost or duplicated.
+     */
+    public final Map<String, int[]> unanchoredOverrideRanges;
+    /**
      * For every displayed line the index of the line inside {@link #generatedLines}, or {@code -1}
      * when the line is manually written user code. Used to anchor user code by content.
      */
     public final int[] displayToGenerated;
+    /**
+     * {@code true} when the file is user-managed wholesale (unreliable-diff fallback). No block
+     * or user-layer mapping exists then; the whole source is the source of truth.
+     */
+    public final boolean wholeSource;
 
     public MappedSource(List<String> lines, List<String> generatedLines, List<CodeRegion> regions,
-                        List<UserCodeChunk> chunks, List<String> unanchoredChunkIds,
+                        List<UserCodeChunk> chunks, List<LineOverride> overrides,
+                        List<String> unanchoredChunkIds, List<String> unanchoredOverrideIds,
+                        Map<String, int[]> unanchoredOverrideRanges,
                         int[] displayToGenerated) {
+        this(lines, generatedLines, regions, chunks, overrides, unanchoredChunkIds,
+                unanchoredOverrideIds, unanchoredOverrideRanges, displayToGenerated, false);
+    }
+
+    public MappedSource(List<String> lines, List<String> generatedLines, List<CodeRegion> regions,
+                        List<UserCodeChunk> chunks, List<LineOverride> overrides,
+                        List<String> unanchoredChunkIds, List<String> unanchoredOverrideIds,
+                        Map<String, int[]> unanchoredOverrideRanges,
+                        int[] displayToGenerated, boolean wholeSource) {
         this.lines = lines;
         this.generatedLines = generatedLines;
         this.regions = regions;
         this.chunks = chunks;
+        this.overrides = overrides;
         this.unanchoredChunkIds = unanchoredChunkIds;
+        this.unanchoredOverrideIds = unanchoredOverrideIds;
+        this.unanchoredOverrideRanges = unanchoredOverrideRanges;
         this.displayToGenerated = displayToGenerated;
+        this.wholeSource = wholeSource;
         Collections.sort(this.regions, (a, b) -> Integer.compare(a.startLine, b.startLine));
     }
 
