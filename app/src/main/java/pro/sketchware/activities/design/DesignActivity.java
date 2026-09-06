@@ -26,7 +26,6 @@ import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.WindowManager;
-import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -43,12 +42,9 @@ import androidx.core.view.GravityCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.drawerlayout.widget.DrawerLayout;
 import androidx.fragment.app.Fragment;
-import androidx.fragment.app.FragmentActivity;
 import androidx.fragment.app.FragmentManager;
 import androidx.fragment.app.FragmentTransaction;
 import androidx.lifecycle.Lifecycle;
-import androidx.viewpager2.adapter.FragmentStateAdapter;
-import androidx.viewpager2.widget.ViewPager2;
 import pro.sketchware.beans.ProjectFileBean;
 import pro.sketchware.activities.tools.SrcViewerActivity;
 import pro.sketchware.activities.editor.manage.ManageCollectionActivity;
@@ -60,6 +56,8 @@ import pro.sketchware.activities.editor.manage.sound.ManageSoundActivity;
 import pro.sketchware.activities.editor.manage.view.ManageViewActivity;
 import pro.sketchware.activities.base.BaseAppCompatActivity;
 import pro.sketchware.activities.tools.CompileLogActivity;
+import com.google.android.material.button.MaterialButton;
+import com.google.android.material.button.MaterialButtonToggleGroup;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.progressindicator.LinearProgressIndicator;
 import com.google.android.material.snackbar.Snackbar;
@@ -134,23 +132,19 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
 
     private static final String STATE_CURRENT_DESTINATION = "current_editor_destination";
     private static final String STATE_PREVIOUS_PRIMARY_DESTINATION = "previous_primary_destination";
+    private static final String FRAGMENT_TAG_SOURCE = "design_editor_source";
+    private static final String FRAGMENT_TAG_UI = "design_editor_ui";
     private static final String FRAGMENT_TAG_EVENTS = "design_editor_events";
     private static final String FRAGMENT_TAG_COMPONENTS = "design_editor_components";
 
     public static String sc_id;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final FirebaseCrashlytics crashlytics = getFirebaseCrashlytics();
-    private ImageView xmlLayoutOrientation;
     private boolean isRestoringData;
     private int currentDestination = DESTINATION_SOURCE;
     private int previousPrimaryDestination = DESTINATION_SOURCE;
-    /** Guards programmatic page changes so the pager callback doesn't re-enter. */
-    private boolean isSynchronizingPager;
-    /**
-     * Number of pages the editor pager currently exposes. Java + XML files show two pages
-     * (source & UI); Kotlin/Compose files are source-only and show a single page.
-     */
-    private int currentPagerPageCount = 2;
+    /** Guards programmatic workspace switch updates so the checked listener doesn't re-enter. */
+    private boolean isUpdatingWorkspaceSwitch;
     private ProjectFileBean lastViewTabProjectFile;
     private View coordinatorLayout;
     private DrawerLayout drawer;
@@ -161,8 +155,7 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
     private ProjectFileBean projectFile;
     private TextView fileName;
     private String currentJavaFileName;
-    private ViewPager2 editorPager;
-    private EditorPagerAdapter pagerAdapter;
+    private MaterialButtonToggleGroup workspaceSwitch;
     private ViewEditorFragment viewTabAdapter;
     private final ActivityResultLauncher<Intent> openCollectionManager = registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
         if (result.getResultCode() == RESULT_OK) {
@@ -298,41 +291,31 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
             }
             fileName.setText(sourceFileName);
         }
-        updatePagerPages();
-        updateFileSelectorIcon();
+        updateWorkspaceSwitch();
     }
 
     /**
-     * Keeps the pager in sync with the kind of file that is open: Kotlin (Compose) files
-     * have no XML layout, so the UI page is removed; Java files expose both pages.
+     * Keeps the Java/UI workspace switch in sync with the active destination. While an
+     * Events/Components workspace is open, the switch reflects the workspace the user
+     * returns to. Kotlin/Compose files have no XML layout, so their UI tab is disabled.
      */
-    private void updatePagerPages() {
-        int newCount = pageCountForCurrentFile();
-        FragmentStateAdapter adapter = editorPager != null ? pagerAdapter : null;
-        int oldCount = currentPagerPageCount;
-        currentPagerPageCount = newCount;
-        if (adapter == null || oldCount == newCount) {
+    private void updateWorkspaceSwitch() {
+        if (workspaceSwitch == null) {
             return;
         }
-        if (newCount > oldCount) {
-            adapter.notifyItemRangeInserted(oldCount, newCount - oldCount);
-        } else {
-            adapter.notifyItemRangeRemoved(newCount, oldCount - newCount);
-        }
-    }
-
-    private int pageCountForCurrentFile() {
-        return projectFile != null && projectFile.isKotlin() ? 1 : 2;
-    }
-
-    private void updateFileSelectorIcon() {
-        if (xmlLayoutOrientation == null) {
-            return;
-        }
-        xmlLayoutOrientation.setImageResource(
-                currentDestination == DESTINATION_UI && projectFile != null
-                        ? R.drawable.ic_mtrl_devices
-                        : R.drawable.ic_mtrl_code);
+        MaterialButton javaTab = findViewById(R.id.tab_java);
+        MaterialButton uiTab = findViewById(R.id.tab_ui);
+        boolean isKotlin = projectFile != null && projectFile.isKotlin();
+        javaTab.setText(isKotlin
+                ? R.string.design_tab_title_kotlin
+                : R.string.design_tab_title_java);
+        uiTab.setEnabled(!isKotlin);
+        int primaryDestination = isOverlayDestination(currentDestination)
+                ? previousPrimaryDestination
+                : currentDestination;
+        isUpdatingWorkspaceSwitch = true;
+        workspaceSwitch.check(primaryDestination == DESTINATION_UI ? R.id.tab_ui : R.id.tab_java);
+        isUpdatingWorkspaceSwitch = false;
     }
 
     /**
@@ -343,70 +326,22 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
     }
 
     /**
-     * Re-links the activity-level fragment references after the pager has (re)created or
-     * restored its page fragments, and restores the visible workspace. Runs after the
-     * first layout pass.
+     * Re-links the workspace fragments restored by the FragmentManager (they keep their
+     * tags across activity recreation).
      */
-    private void syncEditorFragmentReferences() {
-        if (editorPager == null || pagerAdapter == null) {
-            return;
-        }
-        JavaEditorFragment source = findEditorFragment(JavaEditorFragment.class);
-        if (source != null) {
-            javaTabAdapter = source;
-        }
-        ViewEditorFragment ui = findEditorFragment(ViewEditorFragment.class);
-        if (ui != null) {
-            viewTabAdapter = ui;
-            hookViewEditor(ui);
-        }
-        // Restore the visible workspace: an overlay (Events/Components) if that was the
-        // active destination, otherwise the matching pager page.
-        if (isOverlayDestination(currentDestination)) {
-            displayOverlay(currentDestination);
-        } else {
-            synchronizePagerWithDestination();
-        }
-        // Covers the case where the project finished loading before the restored page
-        // fragments were re-linked: make sure the visible page reflects the project.
-        if (projectFile != null && !isRestoringData) {
-            refreshCurrentDestination();
-            updateDestinationChrome();
-        }
-    }
-
-    /**
-     * Finds the live instance of a pager-hosted editor fragment by type.
-     *
-     * <p>ViewPager2's {@link FragmentStateAdapter} has no getFragment(position) API, keeps
-     * its pages in the child FragmentManager of an internal host fragment, and delivers
-     * restored pages without ever calling createFragment() again. The pager is the only
-     * host of these fragment types, so a type-based walk of the FragmentManager tree
-     * reliably re-links both created and restored instances.
-     */
-    private <T extends Fragment> T findEditorFragment(Class<T> type) {
-        return findFragmentIn(getSupportFragmentManager().getFragments(), type);
-    }
-
-    private static <T extends Fragment> T findFragmentIn(List<Fragment> fragments, Class<T> type) {
-        for (Fragment fragment : fragments) {
-            if (type.isInstance(fragment)) {
-                return type.cast(fragment);
-            }
-            T match = findFragmentIn(fragment.getChildFragmentManager().getFragments(), type);
-            if (match != null) {
-                return match;
-            }
-        }
-        return null;
-    }
-
-    /**
-     * Re-links the Events/Components overlay fragments restored by the FragmentManager
-     * (they keep their tags across activity recreation).
-     */
-    private void restoreOverlayFragments() {
+    private void restoreWorkspaceFragments() {
         FragmentManager fragmentManager = getSupportFragmentManager();
+        Fragment restoredSource = fragmentManager.findFragmentByTag(FRAGMENT_TAG_SOURCE);
+        javaTabAdapter = restoredSource instanceof JavaEditorFragment
+                ? (JavaEditorFragment) restoredSource
+                : null;
+        Fragment restoredUi = fragmentManager.findFragmentByTag(FRAGMENT_TAG_UI);
+        viewTabAdapter = restoredUi instanceof ViewEditorFragment
+                ? (ViewEditorFragment) restoredUi
+                : null;
+        if (viewTabAdapter != null) {
+            hookViewEditor(viewTabAdapter);
+        }
         Fragment restoredEvents = fragmentManager.findFragmentByTag(FRAGMENT_TAG_EVENTS);
         eventTabAdapter = restoredEvents instanceof EventListFragment
                 ? (EventListFragment) restoredEvents
@@ -417,8 +352,48 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
                 : null;
     }
 
+    /**
+     * Adds the Java and XML editor fragments exactly once. Every later workspace switch
+     * only uses show()/hide(), so both editors keep their view, state and scroll position
+     * and switching is instant without recreating fragments.
+     */
+    private void addWorkspaceFragments() {
+        if (javaTabAdapter == null) {
+            javaTabAdapter = new JavaEditorFragment();
+        }
+        if (viewTabAdapter == null) {
+            viewTabAdapter = new ViewEditorFragment();
+            hookViewEditor(viewTabAdapter);
+        }
+        boolean showUi = currentDestination == DESTINATION_UI;
+        Fragment shown = showUi ? viewTabAdapter : javaTabAdapter;
+        Fragment hidden = showUi ? javaTabAdapter : viewTabAdapter;
+        FragmentTransaction transaction = getSupportFragmentManager().beginTransaction()
+                .setReorderingAllowed(true);
+        transaction.add(R.id.editor_fragment_container, javaTabAdapter, FRAGMENT_TAG_SOURCE);
+        transaction.add(R.id.editor_fragment_container, viewTabAdapter, FRAGMENT_TAG_UI);
+        transaction.hide(hidden);
+        transaction.setMaxLifecycle(hidden, Lifecycle.State.STARTED);
+        transaction.setMaxLifecycle(shown, Lifecycle.State.RESUMED);
+        transaction.setPrimaryNavigationFragment(shown);
+        transaction.commitNow();
+    }
+
     private Fragment getOrCreateFragmentForDestination(int destination) {
         return switch (destination) {
+            case DESTINATION_SOURCE -> {
+                if (javaTabAdapter == null) {
+                    javaTabAdapter = new JavaEditorFragment();
+                }
+                yield javaTabAdapter;
+            }
+            case DESTINATION_UI -> {
+                if (viewTabAdapter == null) {
+                    viewTabAdapter = new ViewEditorFragment();
+                    hookViewEditor(viewTabAdapter);
+                }
+                yield viewTabAdapter;
+            }
             case DESTINATION_EVENTS -> {
                 if (eventTabAdapter == null) {
                     eventTabAdapter = new EventListFragment();
@@ -437,8 +412,10 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
 
     private String getFragmentTag(int destination) {
         return switch (destination) {
+            case DESTINATION_UI -> FRAGMENT_TAG_UI;
             case DESTINATION_COMPONENTS -> FRAGMENT_TAG_COMPONENTS;
-            default -> FRAGMENT_TAG_EVENTS;
+            case DESTINATION_EVENTS -> FRAGMENT_TAG_EVENTS;
+            default -> FRAGMENT_TAG_SOURCE;
         };
     }
 
@@ -447,17 +424,22 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
     }
 
     /**
-     * Shows an overlay workspace (Events/Components) on top of the pager.
+     * Makes the given workspace the single visible one in the editor container. All other
+     * workspace fragments are merely hidden (their state is preserved) and capped at
+     * STARTED; the visible workspace is RESUMED and becomes the primary navigation
+     * fragment.
      */
-    private void displayOverlay(int destination) {
+    private void displayDestination(int destination) {
         Fragment target = getOrCreateFragmentForDestination(destination);
         if (target == null) {
             return;
         }
         FragmentTransaction transaction = getSupportFragmentManager().beginTransaction()
                 .setReorderingAllowed(true);
-        hideOverlayFragment(transaction, eventTabAdapter, target);
-        hideOverlayFragment(transaction, componentTabAdapter, target);
+        hideWorkspaceFragment(transaction, javaTabAdapter, target);
+        hideWorkspaceFragment(transaction, viewTabAdapter, target);
+        hideWorkspaceFragment(transaction, eventTabAdapter, target);
+        hideWorkspaceFragment(transaction, componentTabAdapter, target);
         if (target.isAdded()) {
             transaction.show(target);
         } else {
@@ -467,22 +449,9 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
         transaction.setMaxLifecycle(target, Lifecycle.State.RESUMED);
         transaction.setPrimaryNavigationFragment(target);
         transaction.commitNow();
-        if (editorPager != null) {
-            editorPager.setVisibility(View.GONE);
-        }
     }
 
-    private void hideOverlay() {
-        FragmentTransaction transaction = getSupportFragmentManager().beginTransaction();
-        hideOverlayFragment(transaction, eventTabAdapter, null);
-        hideOverlayFragment(transaction, componentTabAdapter, null);
-        transaction.commitNow();
-        if (editorPager != null) {
-            editorPager.setVisibility(View.VISIBLE);
-        }
-    }
-
-    private void hideOverlayFragment(
+    private void hideWorkspaceFragment(
             FragmentTransaction transaction, Fragment fragment, Fragment target) {
         if (fragment != null && fragment != target && fragment.isAdded()) {
             transaction.hide(fragment);
@@ -500,11 +469,9 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
         }
         if (destination == DESTINATION_UI && projectFile != null && projectFile.isKotlin()) {
             SketchwareUtil.toast(Helper.getResString(R.string.design_tab_ui_disabled));
-            synchronizePagerWithDestination();
             return;
         }
         if (destination == currentDestination) {
-            synchronizePagerWithDestination();
             return;
         }
 
@@ -515,17 +482,11 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
             componentTabAdapter.unselectAll();
         }
 
-        boolean leavingOverlay = isOverlayDestination(currentDestination);
         currentDestination = destination;
-        if (isOverlayDestination(destination)) {
-            displayOverlay(destination);
-        } else {
+        if (!isOverlayDestination(destination)) {
             previousPrimaryDestination = destination;
-            if (leavingOverlay) {
-                hideOverlay();
-            }
-            synchronizePagerWithDestination();
         }
+        displayDestination(destination);
 
         updateDestinationChrome();
         if (refreshContent && projectFile != null) {
@@ -533,23 +494,6 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
             refreshCurrentDestination();
         }
         invalidateOptionsMenu();
-    }
-
-    /**
-     * Moves the pager (smoothly) to the page that matches the current destination,
-     * without re-triggering the page-change callback.
-     */
-    private void synchronizePagerWithDestination() {
-        if (editorPager == null || isOverlayDestination(currentDestination)) {
-            return;
-        }
-        int target = currentDestination == DESTINATION_UI ? DESTINATION_UI : DESTINATION_SOURCE;
-        if (editorPager.getCurrentItem() == target) {
-            return;
-        }
-        isSynchronizingPager = true;
-        editorPager.setCurrentItem(target, true);
-        isSynchronizingPager = false;
     }
 
     private void updateDestinationChrome() {
@@ -579,9 +523,8 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
                 propertyView.setVisibility(isUiDestination ? View.VISIBLE : View.GONE);
             }
         }
-        updateFileSelectorIcon();
+        updateWorkspaceSwitch();
         updateUndoRedoState();
-        synchronizePagerWithDestination();
     }
 
     /**
@@ -747,7 +690,7 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
     private void refreshViewTabAdapter() {
         lastViewTabProjectFile = projectFile;
         if (viewTabAdapter != null && projectFile != null) {
-            updateFileSelectorIcon();
+            updateWorkspaceSwitch();
             viewTabAdapter.initialize(projectFile);
         }
     }
@@ -977,24 +920,28 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
 
         findViewById(R.id.file_name_container).setOnClickListener(this);
 
-        xmlLayoutOrientation = findViewById(R.id.img_orientation);
-
-        restoreOverlayFragments();
-
-        editorPager = findViewById(R.id.editor_pager);
-        pagerAdapter = new EditorPagerAdapter(this);
-        editorPager.setAdapter(pagerAdapter);
-        // Keep both pages (Java + UI) alive so swiping preserves their editor state.
-        editorPager.setOffscreenPageLimit(1);
-        editorPager.registerOnPageChangeCallback(new ViewPager2.OnPageChangeCallback() {
-            @Override
-            public void onPageSelected(int position) {
-                if (isSynchronizingPager) {
-                    return;
-                }
-                showEditorDestination(position, true);
+        workspaceSwitch = findViewById(R.id.workspace_switch);
+        workspaceSwitch.addOnButtonCheckedListener((group, checkedId, isChecked) -> {
+            if (!isChecked || isUpdatingWorkspaceSwitch) {
+                return;
+            }
+            if (checkedId == R.id.tab_ui) {
+                showEditorDestination(DESTINATION_UI);
+            } else if (checkedId == R.id.tab_java) {
+                showEditorDestination(DESTINATION_SOURCE);
             }
         });
+
+        restoreWorkspaceFragments();
+        if (getSupportFragmentManager().findFragmentById(R.id.editor_fragment_container) == null) {
+            // First launch: add both editor fragments once; all later workspace switches
+            // only use show()/hide() so no fragment is ever recreated.
+            addWorkspaceFragments();
+        } else {
+            // Recreated activity: the FragmentManager already restored the fragments and
+            // their hidden state; re-establish lifecycle caps and the visible workspace.
+            displayDestination(currentDestination);
+        }
 
         IntentFilter filter = new IntentFilter(BuildTask.ACTION_CANCEL_BUILD);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -1124,12 +1071,6 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
 
         HashMap<String, Object> projectInfo = ProjectListManager.getProjectById(sc_id);
         projectFilePaths = new ProjectFilePaths(getApplicationContext(), SketchwarePaths.getMyscPath(sc_id), projectInfo);
-
-        // Re-link the pager's page fragments after the first layout pass (this is when
-        // ViewPager2 restores its saved state and (re)creates the page fragments).
-        if (editorPager != null) {
-            editorPager.post(this::syncEditorFragmentReferences);
-        }
 
         try {
             ProjectLoader projectLoader = new ProjectLoader(this, savedInstanceState);
@@ -1513,34 +1454,6 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
             startActivity(intent);
         } else {
             optionalLauncher.launch(intent);
-        }
-    }
-
-    /**
-     * The Java/Compose + UI workspace pages. Both pages are kept alive (offscreen page
-     * limit 1) so switching between them preserves their editor state; the pager enforces
-     * RESUMED for the visible page and STARTED for the other.
-     */
-    private class EditorPagerAdapter extends FragmentStateAdapter {
-        EditorPagerAdapter(@NonNull FragmentActivity fragmentActivity) {
-            super(fragmentActivity);
-        }
-
-        @NonNull
-        @Override
-        public Fragment createFragment(int position) {
-            if (position == DESTINATION_UI) {
-                viewTabAdapter = new ViewEditorFragment();
-                hookViewEditor(viewTabAdapter);
-                return viewTabAdapter;
-            }
-            javaTabAdapter = new JavaEditorFragment();
-            return javaTabAdapter;
-        }
-
-        @Override
-        public int getItemCount() {
-            return currentPagerPageCount;
         }
     }
 
