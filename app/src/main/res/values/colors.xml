@@ -18,7 +18,6 @@
     <color name="color_secondary">#ff57beee</color>
     <color name="design_menu_bg">#ffffffff</color>
     <color name="design_menu_text_color">#ff000000</color>
-    <color name="design_tab_background">#ff008dcd</color>
     <color name="design_tab_indicator_color">#ffffc107</color>
     <color name="design_tab_selected_text_color">#ffffffff</color>
     <color name="design_tab_text_color">#ffa8cde9</color>
@@ -26,7 +25,6 @@
     <color name="light_grey">#ffc6c6c6</color>
     <color name="lighter_grey">#ffeeeeee</color>
     <color name="list_selected_background">#20008dcd</color>
-    <color name="main_tab_background">#ffffffff</color>
     <color name="main_tab_indicator_color">#ff71bce9</color>
     <color name="main_tab_selected_text_color">#ff007cc9</color>
     <color name="main_tab_text_color">#ff007cc9</color>
