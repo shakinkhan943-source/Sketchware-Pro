@@ -51,11 +51,9 @@
 
                         <com.google.android.material.button.MaterialButton
                             android:id="@+id/tab_java"
-                            style="?attr/materialButtonTextButtonStyle"
+                            style="@style/Widget.SketchwarePro.Button.TextButton"
                             android:layout_width="wrap_content"
                             android:layout_height="32dp"
-                            android:insetTop="0dp"
-                            android:insetBottom="0dp"
                             android:minWidth="0dp"
                             android:minHeight="0dp"
                             android:paddingStart="12dp"
@@ -69,11 +67,9 @@
 
                         <com.google.android.material.button.MaterialButton
                             android:id="@+id/tab_ui"
-                            style="?attr/materialButtonTextButtonStyle"
+                            style="@style/Widget.SketchwarePro.Button.TextButton"
                             android:layout_width="wrap_content"
                             android:layout_height="32dp"
-                            android:insetTop="0dp"
-                            android:insetBottom="0dp"
                             android:minWidth="0dp"
                             android:minHeight="0dp"
                             android:paddingStart="12dp"
@@ -87,11 +83,9 @@
 
                         <com.google.android.material.button.MaterialButton
                             android:id="@+id/tab_event"
-                            style="?attr/materialButtonTextButtonStyle"
+                            style="@style/Widget.SketchwarePro.Button.TextButton"
                             android:layout_width="wrap_content"
                             android:layout_height="32dp"
-                            android:insetTop="0dp"
-                            android:insetBottom="0dp"
                             android:minWidth="0dp"
                             android:minHeight="0dp"
                             android:paddingStart="12dp"
@@ -105,11 +99,9 @@
 
                         <com.google.android.material.button.MaterialButton
                             android:id="@+id/tab_component"
-                            style="?attr/materialButtonTextButtonStyle"
+                            style="@style/Widget.SketchwarePro.Button.TextButton"
                             android:layout_width="wrap_content"
                             android:layout_height="32dp"
-                            android:insetTop="0dp"
-                            android:insetBottom="0dp"
                             android:minWidth="0dp"
                             android:minHeight="0dp"
                             android:paddingStart="12dp"
