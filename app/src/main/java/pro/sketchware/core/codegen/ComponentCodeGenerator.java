@@ -36,11 +36,13 @@ import pro.sketchware.core.codegen.ListenerCodeRegistry;
 public class ComponentCodeGenerator {
 
     /** @deprecated Use {@link GradleFileGenerator#getSettingsGradle()} directly */
+    @Deprecated
     public static String getSettingsGradle() {
         return GradleFileGenerator.getSettingsGradle();
     }
 
     /** @deprecated Use {@link GradleFileGenerator#getBuildGradleString} directly */
+    @Deprecated
     public static String getBuildGradleString(int compileSdkVersion, int minSdkVersion, String targetSdkVersion, BuildConfig metadata, boolean isViewBindingEnabled) {
         return GradleFileGenerator.getBuildGradleString(compileSdkVersion, minSdkVersion, targetSdkVersion, metadata, isViewBindingEnabled);
     }
@@ -669,6 +671,7 @@ public class ComponentCodeGenerator {
 
 
     /** @deprecated Use {@link GradleFileGenerator#getTopLevelBuildGradle} directly */
+    @Deprecated
     public static String getTopLevelBuildGradle(String androidGradlePluginVersion, String
             googleMobileServicesVersion) {
         return GradleFileGenerator.getTopLevelBuildGradle(androidGradlePluginVersion, googleMobileServicesVersion);
@@ -711,11 +714,13 @@ public class ComponentCodeGenerator {
 
 
     /** @deprecated Use {@link CodeFormatter#formatCode} directly */
+    @Deprecated
     public static String formatCode(String code, boolean indentMultiLineComments) {
         return CodeFormatter.formatCode(code, indentMultiLineComments);
     }
 
     /** @deprecated Use {@link CodeFormatter#appendIndent} directly */
+    @Deprecated
     public static void appendIndent(StringBuilder builder, int indentSize) {
         CodeFormatter.appendIndent(builder, indentSize);
     }

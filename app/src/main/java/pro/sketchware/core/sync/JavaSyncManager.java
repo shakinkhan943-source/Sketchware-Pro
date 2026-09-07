@@ -112,7 +112,7 @@ public final class JavaSyncManager {
                     plan.wholeSourceBaseHash.isEmpty() ? JavaSourceMapper.hash(baseline.getText())
                             : plan.wholeSourceBaseHash);
         } else {
-            report = JavaSyncApplier.apply(scId, projectFile, plan,
+            report = JavaSyncApplier.apply(scId, javaName, plan,
                     JavaSyncApplier.ConflictResolution.KEEP_JAVA, true);
         }
         persistBlockBackup(scId);
@@ -147,7 +147,7 @@ public final class JavaSyncManager {
                 report = JavaSyncApplier.applyWholeSource(scId, javaName, edited,
                         JavaSourceMapper.hash(finalSource.getText()));
             } else {
-                JavaSyncApplier.Report second = JavaSyncApplier.apply(scId, projectFile, recovery,
+                JavaSyncApplier.Report second = JavaSyncApplier.apply(scId, javaName, recovery,
                         JavaSyncApplier.ConflictResolution.KEEP_JAVA, true);
                 mergeReport(report, second);
                 persistBlockBackup(scId);

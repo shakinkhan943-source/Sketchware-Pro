@@ -68,9 +68,10 @@ public final class UserCodeInjector {
         public final int[] generatedEnd;
         /**
          * For every displayed line: the generated line it came from, {@code -1} for inserted user
-         * chunk/orphan lines.
+         * chunk/orphan lines. Filled in once the merged source has been emitted, which is only known
+         * after the whole file was walked, so it cannot be assigned from the constructor.
          */
-        public final int[] displayToGenerated;
+        public int[] displayToGenerated;
 
         Result(int generatedLineCount) {
             generatedStart = new int[generatedLineCount];

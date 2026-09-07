@@ -201,13 +201,13 @@ public final class JavaSyncEngine {
                 keptOverrides.remove(regionOverride.id);
             }
 
-            BlockChange change;
+            SyncPlan.BlockChange change;
             if (isBlank(newText)) {
-                change = new BlockChange(ChangeType.DELETE_BLOCK, region, oldText, "", newLines);
+                change = new SyncPlan.BlockChange(SyncPlan.ChangeType.DELETE_BLOCK, region, oldText, "", newLines);
             } else if (region.isSourceCodeBlock()) {
-                change = new BlockChange(ChangeType.UPDATE_SOURCE_BLOCK, region, oldText, dedent(newText), newLines);
+                change = new SyncPlan.BlockChange(SyncPlan.ChangeType.UPDATE_SOURCE_BLOCK, region, oldText, dedent(newText), newLines);
             } else {
-                change = new BlockChange(ChangeType.CONVERT_TO_SOURCE_BLOCK, region, oldText, dedent(newText), newLines);
+                change = new SyncPlan.BlockChange(SyncPlan.ChangeType.CONVERT_TO_SOURCE_BLOCK, region, oldText, dedent(newText), newLines);
             }
             // Safety net: even if applying the block change fails, the Java edit is kept.
             change.fallbackOverride = overrideForRegion(baseline, region, newLines);
@@ -218,7 +218,7 @@ public final class JavaSyncEngine {
                 CodeRegion currentRegion = current.findBlockRegion(region.ownerKey, region.blockId);
                 if (currentRegion == null) {
                     plan.blockSideChanged = true;
-                    plan.conflicts.add(new Conflict(ConflictType.BLOCK_REMOVED,
+                    plan.conflicts.add(new SyncPlan.Conflict(SyncPlan.ConflictType.BLOCK_REMOVED,
                             region.id(), region.ownerKey, region.blockId, "", newText));
                     conflicted = true;
                 } else {
@@ -228,13 +228,13 @@ public final class JavaSyncEngine {
                     String currentGenerated = textOfGenerated(current, currentRegion);
                     if (!normalize(currentGenerated).equals(normalize(baselineGenerated))) {
                         plan.blockSideChanged = true;
-                        plan.conflicts.add(new Conflict(ConflictType.BOTH_CHANGED,
+                        plan.conflicts.add(new SyncPlan.Conflict(SyncPlan.ConflictType.BOTH_CHANGED,
                                 region.id(), region.ownerKey, region.blockId, currentGenerated, newText));
                         conflicted = true;
                     }
                 }
             } else if (region.duplicate && current != null) {
-                plan.conflicts.add(new Conflict(ConflictType.AMBIGUOUS_REGION,
+                plan.conflicts.add(new SyncPlan.Conflict(SyncPlan.ConflictType.AMBIGUOUS_REGION,
                         region.id(), region.ownerKey, region.blockId, "", newText));
             }
             // Every region edit carries a fallback override in the plan. The applier keeps it when
