@@ -1,4 +1,4 @@
-name: Run Model
+name: Generate Model ZIP
 
 on:
   workflow_dispatch:
@@ -7,14 +7,14 @@ on:
       - "model.py"
 
 jobs:
-  run-model:
+  generate:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -29,3 +29,15 @@ jobs:
       - name: Run model.py
         run: |
           python model.py
+
+      - name: Find generated ZIP
+        run: |
+          echo "Generated files:"
+          find . -type f -name "*.zip" -print
+
+      - name: Upload generated ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-model
+          path: "**/*.zip"
+          if-no-files-found: error
