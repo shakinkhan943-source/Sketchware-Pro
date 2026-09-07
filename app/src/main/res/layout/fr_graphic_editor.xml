@@ -9,4 +9,6 @@
         android:layout_height="match_parent"
         android:forceDarkAllowed="false"
         tools:ignore="UnusedAttribute" />
+
+    <include layout="@layout/view_editor_loading" />
 </FrameLayout>

@@ -58,6 +58,31 @@ public class JavaEditorFragment extends BaseFragment {
     private MappedSource baseline;
     private String loadedSourceName;
     private boolean loading;
+    /**
+     * Notified whenever the code editor's undo/redo availability changes, so the hosting activity
+     * can keep its toolbar history buttons in sync.
+     */
+    private Runnable undoRedoStateListener;
+    /**
+     * Last sync/mapping status text. The dedicated status bar was removed, so this is kept for
+     * callers that want to surface the state (e.g. the toolbar reload action); it is no longer
+     * shown in the fragment itself.
+     */
+    private String statusText = "";
+
+    /**
+     * Registers a listener notified whenever the code editor's undo/redo availability changes
+     * (text edits, undo/redo performed, a new source loaded).
+     */
+    public void setOnUndoRedoStateChanged(Runnable listener) {
+        this.undoRedoStateListener = listener;
+    }
+
+    private void notifyUndoRedoStateChanged() {
+        if (undoRedoStateListener != null) {
+            undoRedoStateListener.run();
+        }
+    }
 
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container,
@@ -72,7 +97,6 @@ public class JavaEditorFragment extends BaseFragment {
         editorPrefs = new CodeEditorPreferences(requireContext(), "java_tab");
         editorPrefs.applyToEditor(binding.editor, false);
 
-        binding.btnReload.setOnClickListener(v -> confirmReload());
         setStatus(Helper.getResString(R.string.java_editor_status_loading));
 
         binding.editor.subscribeEvent(io.github.rosemoe.sora.event.ContentChangeEvent.class, (event, unsubscribe) -> {
@@ -81,6 +105,7 @@ public class JavaEditorFragment extends BaseFragment {
                     if (baseline != null && hasUnsavedChanges()) {
                         setStatus(Helper.getResString(R.string.java_editor_status_unsaved));
                     }
+                    notifyUndoRedoStateChanged();
                 });
             }
         });
@@ -131,15 +156,10 @@ public class JavaEditorFragment extends BaseFragment {
         projectFile = projectFileBean;
         if (binding != null && projectFile != null) {
             updateEditorLanguage();
-            String displayName = projectFile.isKotlin() ? projectFile.getSourceFileName() : projectFile.getJavaName();
-            if (loadedSourceName == null) {
-                binding.fileName.setText(displayName);
-            }
             if (!projectFile.getSourceFileName().equals(loadedSourceName)) {
                 reloadKeepingEdits(false);
             } else {
-                // Even if same file, update label for language change
-                binding.fileName.setText(displayName);
+                updateEditorLanguage();
             }
         }
     }
@@ -153,7 +173,10 @@ public class JavaEditorFragment extends BaseFragment {
         reloadKeepingEdits(false);
     }
 
-    private void confirmReload() {
+    /**
+     * Triggered by the toolbar "Reload from blocks" action. Asks before discarding unsaved edits.
+     */
+    public void reloadFromBlocks() {
         reloadKeepingEdits(true);
     }
 
@@ -182,6 +205,32 @@ public class JavaEditorFragment extends BaseFragment {
     }
 
     /**
+     * Shows/hides the inline loading overlay while source is being generated. Kept in the
+     * fragment (instead of a modal dialog) so editor state and the overlay never get out of sync.
+     */
+    private void setLoading(boolean loadingState, String message) {
+        if (binding == null) {
+            return;
+        }
+        View overlay = binding.getRoot().findViewById(R.id.editor_loading_overlay);
+        if (overlay != null) {
+            overlay.setVisibility(loadingState ? View.VISIBLE : View.GONE);
+        }
+        android.widget.TextView text = binding.getRoot().findViewById(R.id.editor_loading_text);
+        if (text != null && message != null) {
+            text.setText(message);
+        }
+    }
+
+    private void showLoading(String message) {
+        setLoading(true, message);
+    }
+
+    private void hideLoading() {
+        setLoading(false, null);
+    }
+
+    /**
      * Regenerates the source from the blocks and injects the persisted user layers.
      *
      * @param resetManualMode {@code true} only for the explicit "Reload from blocks" action: leaves
@@ -195,6 +244,8 @@ public class JavaEditorFragment extends BaseFragment {
         final ProjectFileBean file = projectFile;
         setStatus(Helper.getResString(R.string.java_editor_status_loading));
         binding.editor.setEditable(false);
+        showLoading(Helper.getResString(R.string.java_editor_status_loading));
+        notifyUndoRedoStateChanged();
         BackgroundTasks.callIoIfAlive(TaskHost.of(this), "JavaEditorFragment",
                 () -> {
                     if (resetManualMode) {
@@ -211,10 +262,10 @@ public class JavaEditorFragment extends BaseFragment {
                     loadedSourceName = file.getSourceFileName();
                     binding.editor.setText(mapped.getText());
                     binding.editor.setEditable(true);
-                    String displayName = file.isKotlin() ? file.getSourceFileName() : file.getJavaName();
-                    binding.fileName.setText(displayName);
                     updateEditorLanguage();
                     setStatus(describeMapping(mapped));
+                    notifyUndoRedoStateChanged();
+                    hideLoading();
                     if (showToast) {
                         SketchwareUtil.toast(Helper.getResString(R.string.java_editor_message_reloaded));
                     }
@@ -229,6 +280,7 @@ public class JavaEditorFragment extends BaseFragment {
                         return;
                     }
                     binding.editor.setEditable(true);
+                    hideLoading();
                     setStatus(Helper.getResString(R.string.design_error_generate_source));
                     SketchwareUtil.toast(Helper.getResString(R.string.design_error_generate_source));
                 });
@@ -330,9 +382,8 @@ public class JavaEditorFragment extends BaseFragment {
         baseline = finalSource;
         loadedSourceName = file.getSourceFileName();
         binding.editor.setText(finalSource.getText());
-        String displayName = file.isKotlin() ? file.getSourceFileName() : file.getJavaName();
-        binding.fileName.setText(displayName);
         updateEditorLanguage();
+        notifyUndoRedoStateChanged();
         if (!finalSource.unanchoredChunkIds.isEmpty() || !finalSource.unanchoredOverrideIds.isEmpty()) {
             SketchwareUtil.toast(Helper.getResString(R.string.java_editor_message_unanchored_code));
         }
@@ -345,8 +396,47 @@ public class JavaEditorFragment extends BaseFragment {
     }
 
     private void setStatus(String status) {
-        if (binding != null) {
-            binding.syncStatus.setText(status);
+        statusText = status != null ? status : "";
+    }
+
+    /**
+     * @return whether the source is currently being (re)generated; the toolbar reload action
+     *         uses this to stay disabled while a load/sync is in flight.
+     */
+    public boolean isLoading() {
+        return loading;
+    }
+
+    /**
+     * @return whether the code editor has edits not yet synchronized back to the blocks, so the
+     *         activity can drive undo/redo and dirty-state chrome for the source tab.
+     */
+    public boolean hasUnsavedEdits() {
+        return hasUnsavedChanges();
+    }
+
+    /**
+     * Undo/redo availability of the sora code editor backing this tab.
+     */
+    public boolean canUndo() {
+        return binding != null && !loading && binding.editor.canUndo();
+    }
+
+    public boolean canRedo() {
+        return binding != null && !loading && binding.editor.canRedo();
+    }
+
+    public void performUndo() {
+        if (canUndo()) {
+            binding.editor.undo();
+            notifyUndoRedoStateChanged();
+        }
+    }
+
+    public void performRedo() {
+        if (canRedo()) {
+            binding.editor.redo();
+            notifyUndoRedoStateChanged();
         }
     }
 }

@@ -35,6 +35,7 @@ import androidx.activity.OnBackPressedCallback;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.appcompat.widget.Toolbar;
 import androidx.core.app.NotificationCompat;
 import androidx.core.content.ContextCompat;
@@ -339,6 +340,83 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
     }
 
     /**
+     * Creates the undo/redo hook on a (possibly restored) source code editor fragment.
+     */
+    private void hookJavaEditor(JavaEditorFragment fragment) {
+        fragment.setOnUndoRedoStateChanged(this::updateUndoRedoState);
+    }
+
+    /**
+     * Resolves the editor whose history the toolbar undo/redo buttons should act on: the
+     * drag-and-drop view editor on the UI tab, the sora code editor on the Source tab, or
+     * {@code null} on the Events/Components tabs.
+     */
+    @Nullable
+    public DesignHistoryButton.UndoRedoHost getActiveUndoRedoHost() {
+        if (currentDestination == DESTINATION_UI && viewTabAdapter != null) {
+            return new DesignHistoryButton.UndoRedoHost() {
+                @Override
+                public boolean canUndo() {
+                    return viewTabAdapter.canUndo();
+                }
+
+                @Override
+                public boolean canRedo() {
+                    return viewTabAdapter.canRedo();
+                }
+
+                @Override
+                public void performUndo() {
+                    viewTabAdapter.performUndo();
+                }
+
+                @Override
+                public void performRedo() {
+                    viewTabAdapter.performRedo();
+                }
+            };
+        }
+        if (currentDestination == DESTINATION_SOURCE && javaTabAdapter != null) {
+            return new DesignHistoryButton.UndoRedoHost() {
+                @Override
+                public boolean canUndo() {
+                    return javaTabAdapter.canUndo();
+                }
+
+                @Override
+                public boolean canRedo() {
+                    return javaTabAdapter.canRedo();
+                }
+
+                @Override
+                public void performUndo() {
+                    javaTabAdapter.performUndo();
+                }
+
+                @Override
+                public void performRedo() {
+                    javaTabAdapter.performRedo();
+                }
+            };
+        }
+        return null;
+    }
+
+    /**
+     * Refreshes the visible undo/redo buttons and the compatibility menu actions together.
+     */
+    private void refreshHistoryButtons() {
+        DesignHistoryButton undo = findViewById(R.id.design_undo);
+        if (undo != null) {
+            undo.refreshVisualState();
+        }
+        DesignHistoryButton redo = findViewById(R.id.design_redo);
+        if (redo != null) {
+            redo.refreshVisualState();
+        }
+    }
+
+    /**
      * Re-links the workspace fragments restored by the FragmentManager (they keep their
      * tags across activity recreation).
      */
@@ -348,6 +426,9 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
         javaTabAdapter = restoredSource instanceof JavaEditorFragment
                 ? (JavaEditorFragment) restoredSource
                 : null;
+        if (javaTabAdapter != null) {
+            hookJavaEditor(javaTabAdapter);
+        }
         Fragment restoredUi = fragmentManager.findFragmentByTag(FRAGMENT_TAG_UI);
         viewTabAdapter = restoredUi instanceof ViewEditorFragment
                 ? (ViewEditorFragment) restoredUi
@@ -373,6 +454,7 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
     private void addWorkspaceFragments() {
         if (javaTabAdapter == null) {
             javaTabAdapter = new JavaEditorFragment();
+            hookJavaEditor(javaTabAdapter);
         }
         if (viewTabAdapter == null) {
             viewTabAdapter = new ViewEditorFragment();
@@ -397,6 +479,7 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
             case DESTINATION_SOURCE -> {
                 if (javaTabAdapter == null) {
                     javaTabAdapter = new JavaEditorFragment();
+                    hookJavaEditor(javaTabAdapter);
                 }
                 yield javaTabAdapter;
             }
@@ -541,21 +624,35 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
     }
 
     /**
-     * Keeps the toolbar Undo/Redo actions in sync with the UI editor's history.
+     * Keeps the toolbar Undo/Redo actions in sync with the active editor's history (the
+     * drag-and-drop view editor on the UI tab or the code editor on the Source tab).
      */
     private void updateUndoRedoState() {
-        if (toolbarMenu == null) {
-            return;
+        boolean canUndo = false;
+        boolean canRedo = false;
+        DesignHistoryButton.UndoRedoHost host = getActiveUndoRedoHost();
+        if (host != null) {
+            canUndo = host.canUndo();
+            canRedo = host.canRedo();
         }
-        boolean uiAvailable = currentDestination == DESTINATION_UI && viewTabAdapter != null;
-        MenuItem undo = toolbarMenu.findItem(R.id.design_option_menu_undo);
-        if (undo != null) {
-            undo.setEnabled(uiAvailable && viewTabAdapter.canUndo());
+        if (toolbarMenu != null) {
+            MenuItem undo = toolbarMenu.findItem(R.id.design_option_menu_undo);
+            if (undo != null) {
+                undo.setEnabled(canUndo);
+            }
+            MenuItem redo = toolbarMenu.findItem(R.id.design_option_menu_redo);
+            if (redo != null) {
+                redo.setEnabled(canRedo);
+            }
+            MenuItem reload = toolbarMenu.findItem(R.id.design_option_menu_reload_source);
+            if (reload != null) {
+                boolean onSourceTab = currentDestination == DESTINATION_SOURCE;
+                reload.setVisible(onSourceTab);
+                // Disabled while a source (re)generation is already running, enabled otherwise.
+                reload.setEnabled(onSourceTab && javaTabAdapter != null && !javaTabAdapter.isLoading());
+            }
         }
-        MenuItem redo = toolbarMenu.findItem(R.id.design_option_menu_redo);
-        if (redo != null) {
-            redo.setEnabled(uiAvailable && viewTabAdapter.canRedo());
-        }
+        refreshHistoryButtons();
     }
 
     /**
@@ -1158,12 +1255,18 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
     public boolean onOptionsItemSelected(@NonNull MenuItem item) {
         int itemId = item.getItemId();
         if (itemId == R.id.design_option_menu_undo) {
-            if (viewTabAdapter != null) {
-                viewTabAdapter.performUndo();
+            DesignHistoryButton.UndoRedoHost host = getActiveUndoRedoHost();
+            if (host != null) {
+                host.performUndo();
             }
         } else if (itemId == R.id.design_option_menu_redo) {
-            if (viewTabAdapter != null) {
-                viewTabAdapter.performRedo();
+            DesignHistoryButton.UndoRedoHost host = getActiveUndoRedoHost();
+            if (host != null) {
+                host.performRedo();
+            }
+        } else if (itemId == R.id.design_option_menu_reload_source) {
+            if (javaTabAdapter != null) {
+                javaTabAdapter.reloadFromBlocks();
             }
         } else if (itemId == R.id.design_option_menu_events) {
             showEditorDestination(DESTINATION_EVENTS);

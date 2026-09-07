@@ -68,6 +68,8 @@ public class ViewEditorFragment extends BaseFragment {
     private Runnable propertyPanelWarmUpRunnable;
     private boolean propertyViewsDirty = true;
     private Runnable undoRedoStateListener;
+    /** Posted runnable that (re)builds the view hierarchy; guarded against duplicate schedules. */
+    private Runnable rebuildRunnable;
 
     private WidgetsCreatorManager widgetsCreatorManager;
 
@@ -152,14 +154,67 @@ public class ViewEditorFragment extends BaseFragment {
     public void initialize(ProjectFileBean projectFileBean) {
         this.projectFileBean = projectFileBean;
         isFabEnabled = projectFileBean.hasActivityOption(ProjectFileBean.OPTION_ACTIVITY_FAB);
+        // Show an inline loading overlay while the (potentially large) view hierarchy and palette
+        // are built on the next frame, so the tab never appears blank/unresponsive.
+        showLoadingOverlay(Helper.getResString(R.string.design_editor_loading_views));
+        if (rebuildRunnable != null && viewEditor != null) {
+            viewEditor.removeCallbacks(rebuildRunnable);
+        }
+        rebuildRunnable = this::rebuildEditor;
+        if (viewEditor != null) {
+            viewEditor.post(rebuildRunnable);
+        } else {
+            rebuildEditor();
+        }
+    }
+
+    /**
+     * Rebuilds the drag-and-drop editor (palette, views and property panel) for the current
+     * {@link #projectFileBean}. Runs posted to the UI thread so the loading overlay can draw first.
+     */
+    private void rebuildEditor() {
+        rebuildRunnable = null;
+        if (!isAdded() || viewEditor == null || projectFileBean == null) {
+            hideLoadingOverlay();
+            return;
+        }
         viewEditor.initialize(sc_id, projectFileBean);
         viewEditor.refreshResourceManager();
-        viewProperty.initialize(sc_id, this.projectFileBean);
+        if (viewProperty != null) {
+            viewProperty.initialize(sc_id, this.projectFileBean);
+        }
         setupPalette();
         refreshAllViews();
         schedulePropertyPanelWarmUp();
+        hideLoadingOverlay();
         if (undoRedoStateListener != null) {
             undoRedoStateListener.run();
+        }
+    }
+
+    private void showLoadingOverlay(String message) {
+        View root = getView();
+        if (root == null) {
+            return;
+        }
+        View overlay = root.findViewById(R.id.editor_loading_overlay);
+        if (overlay != null) {
+            TextView text = overlay.findViewById(R.id.editor_loading_text);
+            if (text != null && message != null) {
+                text.setText(message);
+            }
+            overlay.setVisibility(View.VISIBLE);
+        }
+    }
+
+    private void hideLoadingOverlay() {
+        View root = getView();
+        if (root == null) {
+            return;
+        }
+        View overlay = root.findViewById(R.id.editor_loading_overlay);
+        if (overlay != null) {
+            overlay.setVisibility(View.GONE);
         }
     }
 
