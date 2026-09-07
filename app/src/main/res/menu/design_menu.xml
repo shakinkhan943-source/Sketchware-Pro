@@ -1,6 +1,15 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
+    <!-- Reload source from blocks, shown directly in the toolbar on the Source tab. -->
+    <item
+        android:id="@+id/design_option_menu_reload_source"
+        android:icon="@drawable/ic_mtrl_refresh"
+        android:orderInCategory="30"
+        android:title="@string/java_editor_action_reload"
+        android:visible="false"
+        app:showAsAction="always" />
+
     <!-- Save project, shown directly in the toolbar. -->
     <item
         android:id="@+id/design_option_menu_title_save_project"

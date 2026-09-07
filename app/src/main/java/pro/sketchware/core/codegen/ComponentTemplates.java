@@ -2039,9 +2039,9 @@ public class ComponentTemplates {
                     fun getAllKeysFromMap(_map: Map<String, Any>?, _output: ArrayList<String>?) {
                         if (_output == null) return
                         _output.clear()
-                        if (_map == null || _map.size < 1) return
-                        for (_entry in _map.entries) {
-                            _output.add(_entry.key)
+                        if (_map == null || _map.isEmpty()) return
+                        for (_entry in _map.entrySet()) {
+                            _output.add(_entry.getKey())
                         }
                     }
                 }
@@ -2284,7 +2284,9 @@ public class ComponentTemplates {
                                 }
                                 val selection = "_id=?"
                                 val selectionArgs = arrayOf(split[1])
-                                path = getDataColumn(context, contentUri, selection, selectionArgs)
+                                if (contentUri != null) {
+                                    path = getDataColumn(context, contentUri, selection, selectionArgs)
+                                }
                             }
                         } else if (ContentResolver.SCHEME_CONTENT.equals(uri.scheme, ignoreCase = true)) {
                             path = getDataColumn(context, uri, null, null)
@@ -2301,11 +2303,11 @@ public class ComponentTemplates {
                         return null
                     }
 
-                    private fun getDataColumn(context: Context, uri: Uri?, selection: String?, selectionArgs: Array<String>?): String? {
+                    private fun getDataColumn(context: Context, uri: Uri, selection: String?, selectionArgs: Array<String>?): String? {
                         val column = MediaStore.Images.Media.DATA
                         val projection = arrayOf(column)
                         try {
-                            context.contentResolver.query(uri, projection, selection, selectionArgs, null).use { cursor ->
+                            context.contentResolver.query(uri, projection, selection, selectionArgs, null)?.use { cursor ->
                                 if (cursor != null && cursor.moveToFirst()) {
                                     val column_index = cursor.getColumnIndexOrThrow(column)
                                     return cursor.getString(column_index)
