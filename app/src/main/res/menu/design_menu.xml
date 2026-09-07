@@ -9,6 +9,14 @@
         android:title="@string/design_option_menu_title_save_project"
         app:showAsAction="always" />
 
+    <!-- Project tools moved from the FAB More menu into the toolbar. -->
+    <item
+        android:id="@+id/design_option_menu_open_tools"
+        android:icon="@drawable/ic_mtrl_more_vertical"
+        android:orderInCategory="35"
+        android:title="@string/design_menu_open_tools"
+        app:showAsAction="always" />
+
     <!-- Search bar for the Events workspace, hidden unless Events is open. -->
     <item
         android:id="@+id/design_option_menu_search"
