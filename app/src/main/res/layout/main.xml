@@ -89,7 +89,7 @@
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/tab_projects"
-                    style="?attr/materialButtonTextButtonStyle"
+                    style="@style/Widget.SketchwarePro.Button.TextButton"
                     android:layout_width="wrap_content"
                     android:layout_height="match_parent"
                     android:minWidth="0dp"
@@ -101,13 +101,11 @@
                     android:textColor="@color/main_tab_text"
                     app:backgroundTint="@color/main_tab_background"
                     app:cornerRadius="28dp"
-                    app:insetTop="0dp"
-                    app:insetBottom="0dp"
                     app:strokeWidth="0dp" />
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/tab_store"
-                    style="?attr/materialButtonTextButtonStyle"
+                    style="@style/Widget.SketchwarePro.Button.TextButton"
                     android:layout_width="wrap_content"
                     android:layout_height="match_parent"
                     android:minWidth="0dp"
@@ -119,8 +117,6 @@
                     android:textColor="@color/main_tab_text"
                     app:backgroundTint="@color/main_tab_background"
                     app:cornerRadius="28dp"
-                    app:insetTop="0dp"
-                    app:insetBottom="0dp"
                     app:strokeWidth="0dp" />
             </com.google.android.material.button.MaterialButtonToggleGroup>
         </com.google.android.material.card.MaterialCardView>
