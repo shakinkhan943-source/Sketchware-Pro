@@ -1,4 +1,4 @@
-package importmodel;
+package pro.sketchware.core.importmodel;
 
 import java.util.*;
 import java.util.regex.*;

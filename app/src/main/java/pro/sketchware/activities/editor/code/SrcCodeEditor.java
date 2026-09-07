@@ -43,6 +43,10 @@ import javax.xml.xpath.XPathConstants;
 import javax.xml.xpath.XPathFactory;
 
 import pro.sketchware.core.codegen.ComponentCodeGenerator;
+import pro.sketchware.core.importmodel.ImportLanguage;
+import pro.sketchware.core.importmodel.integration.ImportActions;
+import pro.sketchware.core.importmodel.integration.ImportService;
+import pro.sketchware.core.importmodel.integration.SoraEditorImportGateway;
 import pro.sketchware.core.project.SketchwarePaths;
 import io.github.rosemoe.sora.langs.java.JavaLanguage;
 import io.github.rosemoe.sora.langs.textmate.TextMateColorScheme;
@@ -366,7 +370,7 @@ public class SrcCodeEditor extends BaseAppCompatActivity {
             MENU_FIND_REPLACE = 5, MENU_WORD_WRAP = 6, MENU_PRETTY_PRINT = 7,
             MENU_SELECT_LANGUAGE = 8, MENU_SELECT_THEME = 9, MENU_AUTO_COMPLETE = 10,
             MENU_AUTO_COMPLETE_SYMBOL_PAIR = 11, MENU_FONT_SIZE = 12, MENU_LINE_NUMBERS = 13,
-            MENU_STICKY_SCROLL = 14;
+            MENU_STICKY_SCROLL = 14, MENU_RESOLVE_IMPORTS = 15, MENU_ORGANIZE_IMPORTS = 16;
 
     private void loadToolbar() {
         {
@@ -381,6 +385,10 @@ public class SrcCodeEditor extends BaseAppCompatActivity {
                 toolbarMenu.add(Menu.NONE, MENU_LAYOUT_PREVIEW, Menu.NONE, Helper.getResString(R.string.code_editor_menu_layout_preview));
             }
             toolbarMenu.add(Menu.NONE, MENU_FIND_REPLACE, Menu.NONE, Helper.getResString(R.string.code_editor_menu_find_replace));
+            if (isSourceFileEditable()) {
+                toolbarMenu.add(Menu.NONE, MENU_RESOLVE_IMPORTS, Menu.NONE, Helper.getResString(R.string.design_menu_resolve_imports));
+                toolbarMenu.add(Menu.NONE, MENU_ORGANIZE_IMPORTS, Menu.NONE, Helper.getResString(R.string.design_menu_organize_imports));
+            }
             toolbarMenu.add(Menu.NONE, MENU_WORD_WRAP, Menu.NONE, Helper.getResString(R.string.code_editor_menu_word_wrap)).setCheckable(true).setChecked(editorPrefs.getWordWrap());
             toolbarMenu.add(Menu.NONE, MENU_PRETTY_PRINT, Menu.NONE, Helper.getResString(R.string.code_editor_menu_pretty_print));
             toolbarMenu.add(Menu.NONE, MENU_FONT_SIZE, Menu.NONE, Helper.getResString(R.string.code_editor_menu_font_size));
@@ -498,11 +506,46 @@ public class SrcCodeEditor extends BaseAppCompatActivity {
                         toLayoutPreview();
                         break;
 
+                    case MENU_RESOLVE_IMPORTS:
+                        processImports(true);
+                        break;
+
+                    case MENU_ORGANIZE_IMPORTS:
+                        processImports(false);
+                        break;
+
                     default:
                         return false;
                 }
                 return true;
             });
+        }
+    }
+
+    /**
+     * Import actions are only meaningful for a Java/Kotlin file that belongs to a project, since
+     * the ImportModel index is built from that project's classpath.
+     */
+    private boolean isSourceFileEditable() {
+        String title = getIntent().getStringExtra("title");
+        return scId != null && title != null && (title.endsWith(".java") || title.endsWith(".kt"));
+    }
+
+    /**
+     * Manual Resolve/Organize Imports. The shared ImportModel engine reads the Sora document
+     * through {@link SoraEditorImportGateway} and only writes back when the source really changed.
+     */
+    private void processImports(boolean resolve) {
+        if (!isSourceFileEditable()) {
+            SketchwareUtil.toast(Helper.getResString(R.string.import_model_unsupported_language));
+            return;
+        }
+        ImportLanguage language = ImportService.languageOf(getIntent().getStringExtra("title"));
+        SoraEditorImportGateway gateway = new SoraEditorImportGateway(binding.editor, language);
+        if (resolve) {
+            ImportActions.resolveImports(this, scId, gateway);
+        } else {
+            ImportActions.organizeImports(this, scId, gateway);
         }
     }
 

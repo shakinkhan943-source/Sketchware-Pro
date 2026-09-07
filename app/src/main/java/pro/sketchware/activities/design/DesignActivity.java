@@ -781,8 +781,38 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
                 viewTabAdapter.showImportXmlDialog();
             }
             return true;
+        } else if (itemId == R.id.design_menu_resolve_imports) {
+            processImports(true);
+            return true;
+        } else if (itemId == R.id.design_menu_organize_imports) {
+            processImports(false);
+            return true;
         }
         return false;
+    }
+
+    /**
+     * Runs the shared ImportModel engine over the currently selected activity's user source file.
+     * The engine resolves against this project's real classpath (see
+     * {@link pro.sketchware.core.importmodel.integration.ProjectClasspath}); nothing happens while
+     * the user is editing, only when this action is picked.
+     */
+    private void processImports(boolean resolve) {
+        if (projectFile == null) {
+            return;
+        }
+        java.io.File sourceFile = new java.io.File(SketchwarePaths.getProjectJavaPath(sc_id),
+                projectFile.getSourceFileName());
+        if (!sourceFile.isFile()) {
+            SketchwareUtil.toast(Helper.getResString(R.string.import_model_nothing_to_resolve));
+            return;
+        }
+        var gateway = new pro.sketchware.core.importmodel.integration.FileImportGateway(sourceFile);
+        if (resolve) {
+            pro.sketchware.core.importmodel.integration.ImportActions.resolveImports(this, sc_id, gateway);
+        } else {
+            pro.sketchware.core.importmodel.integration.ImportActions.organizeImports(this, sc_id, gateway);
+        }
     }
 
     private void onRunClicked(View anchor) {
@@ -1316,6 +1346,10 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
             if (viewTabAdapter != null) {
                 viewTabAdapter.showImportXmlDialog();
             }
+        } else if (itemId == R.id.design_menu_resolve_imports) {
+            processImports(true);
+        } else if (itemId == R.id.design_menu_organize_imports) {
+            processImports(false);
         }
         return super.onOptionsItemSelected(item);
     }

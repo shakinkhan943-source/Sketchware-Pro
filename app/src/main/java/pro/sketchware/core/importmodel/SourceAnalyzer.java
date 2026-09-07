@@ -1,4 +1,4 @@
-package importmodel;
+package pro.sketchware.core.importmodel;
 
 import java.util.*;
 
@@ -13,8 +13,9 @@ public final class SourceAnalyzer {
         }
         public String identity(){return (statik?"S:":"I:")+qualified+(alias==null?"":" AS "+alias);}
         public String text(ImportLanguage l){
+            // Java statements are terminated, Kotlin ones are not.
             return "import "+(statik&&l==ImportLanguage.JAVA?"static ":"")+qualified+
-                (alias==null?"": " as "+alias);
+                (alias==null?"": " as "+alias)+(l==ImportLanguage.JAVA?";":"");
         }
     }
     public static final class Analysis {
@@ -67,6 +68,9 @@ public final class SourceAnalyzer {
     }
 
     private static Import parseImport(String s,ImportLanguage l){
+        // Strip the statement terminator and any trailing comment so the qualified name is clean.
+        s=s.trim();
+        int sc=s.indexOf(';'); if(sc>=0)s=s.substring(0,sc).trim();
         boolean st=l==ImportLanguage.JAVA&&s.startsWith("static ");
         if(st)s=s.substring(7).trim();
         String alias=null;
