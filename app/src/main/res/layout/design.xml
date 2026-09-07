@@ -41,67 +41,85 @@
                     <com.google.android.material.button.MaterialButtonToggleGroup
                         android:id="@+id/workspace_switch"
                         android:layout_width="wrap_content"
-                        android:layout_height="36dp"
+                        android:layout_height="32dp"
                         android:layout_gravity="start|center_vertical"
+                        android:padding="0dp"
                         app:checkedButton="@id/tab_java"
+                        app:innerCornerSize="24dp"
                         app:selectionRequired="true"
                         app:singleSelection="true">
 
                         <com.google.android.material.button.MaterialButton
                             android:id="@+id/tab_java"
-                            style="?attr/materialButtonOutlinedStyle"
+                            style="?attr/materialButtonTextButtonStyle"
                             android:layout_width="wrap_content"
-                            android:layout_height="36dp"
+                            android:layout_height="32dp"
                             android:insetTop="0dp"
                             android:insetBottom="0dp"
                             android:minWidth="0dp"
                             android:minHeight="0dp"
-                            android:paddingStart="10dp"
-                            android:paddingEnd="10dp"
+                            android:paddingStart="12dp"
+                            android:paddingEnd="12dp"
                             android:text="@string/design_tab_title_java"
-                            android:textAppearance="?attr/textAppearanceLabelMedium" />
+                            android:textAppearance="?attr/textAppearanceLabelMedium"
+                            android:textColor="@color/design_tab_text"
+                            app:backgroundTint="@color/design_tab_background"
+                            app:cornerRadius="20dp"
+                            app:strokeWidth="0dp" />
 
                         <com.google.android.material.button.MaterialButton
                             android:id="@+id/tab_ui"
-                            style="?attr/materialButtonOutlinedStyle"
+                            style="?attr/materialButtonTextButtonStyle"
                             android:layout_width="wrap_content"
-                            android:layout_height="36dp"
+                            android:layout_height="32dp"
                             android:insetTop="0dp"
                             android:insetBottom="0dp"
                             android:minWidth="0dp"
                             android:minHeight="0dp"
-                            android:paddingStart="10dp"
-                            android:paddingEnd="10dp"
+                            android:paddingStart="12dp"
+                            android:paddingEnd="12dp"
                             android:text="@string/design_tab_title_ui"
-                            android:textAppearance="?attr/textAppearanceLabelMedium" />
+                            android:textAppearance="?attr/textAppearanceLabelMedium"
+                            android:textColor="@color/design_tab_text"
+                            app:backgroundTint="@color/design_tab_background"
+                            app:cornerRadius="20dp"
+                            app:strokeWidth="0dp" />
 
                         <com.google.android.material.button.MaterialButton
                             android:id="@+id/tab_event"
-                            style="?attr/materialButtonOutlinedStyle"
+                            style="?attr/materialButtonTextButtonStyle"
                             android:layout_width="wrap_content"
-                            android:layout_height="36dp"
+                            android:layout_height="32dp"
                             android:insetTop="0dp"
                             android:insetBottom="0dp"
                             android:minWidth="0dp"
                             android:minHeight="0dp"
-                            android:paddingStart="10dp"
-                            android:paddingEnd="10dp"
+                            android:paddingStart="12dp"
+                            android:paddingEnd="12dp"
                             android:text="@string/design_tab_title_event"
-                            android:textAppearance="?attr/textAppearanceLabelMedium" />
+                            android:textAppearance="?attr/textAppearanceLabelMedium"
+                            android:textColor="@color/design_tab_text"
+                            app:backgroundTint="@color/design_tab_background"
+                            app:cornerRadius="20dp"
+                            app:strokeWidth="0dp" />
 
                         <com.google.android.material.button.MaterialButton
                             android:id="@+id/tab_component"
-                            style="?attr/materialButtonOutlinedStyle"
+                            style="?attr/materialButtonTextButtonStyle"
                             android:layout_width="wrap_content"
-                            android:layout_height="36dp"
+                            android:layout_height="32dp"
                             android:insetTop="0dp"
                             android:insetBottom="0dp"
                             android:minWidth="0dp"
                             android:minHeight="0dp"
-                            android:paddingStart="10dp"
-                            android:paddingEnd="10dp"
+                            android:paddingStart="12dp"
+                            android:paddingEnd="12dp"
                             android:text="@string/design_tab_title_component"
-                            android:textAppearance="?attr/textAppearanceLabelMedium" />
+                            android:textAppearance="?attr/textAppearanceLabelMedium"
+                            android:textColor="@color/design_tab_text"
+                            app:backgroundTint="@color/design_tab_background"
+                            app:cornerRadius="20dp"
+                            app:strokeWidth="0dp" />
                     </com.google.android.material.button.MaterialButtonToggleGroup>
                 </com.google.android.material.appbar.MaterialToolbar>
 
@@ -196,6 +214,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_gravity="bottom|end"
+                    android:animateLayoutChanges="true"
                     android:gravity="end"
                     android:orientation="vertical"
                     android:padding="16dp">

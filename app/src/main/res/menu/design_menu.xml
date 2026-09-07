@@ -1,12 +1,29 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
+    <!-- Reload source from blocks, shown directly in the toolbar on the Source tab. -->
+    <item
+        android:id="@+id/design_option_menu_reload_source"
+        android:icon="@drawable/ic_mtrl_refresh"
+        android:orderInCategory="30"
+        android:title="@string/java_editor_action_reload"
+        android:visible="false"
+        app:showAsAction="always" />
+
     <!-- Save project, shown directly in the toolbar. -->
     <item
         android:id="@+id/design_option_menu_title_save_project"
         android:icon="@drawable/selector_save_tinted"
         android:orderInCategory="31"
         android:title="@string/design_option_menu_title_save_project"
+        app:showAsAction="always" />
+
+    <!-- Project tools moved from the FAB More menu into the toolbar. -->
+    <item
+        android:id="@+id/design_option_menu_open_tools"
+        android:icon="@drawable/ic_mtrl_more_vertical"
+        android:orderInCategory="35"
+        android:title="@string/design_menu_open_tools"
         app:showAsAction="always" />
 
     <!-- Search bar for the Events workspace, hidden unless Events is open. -->
