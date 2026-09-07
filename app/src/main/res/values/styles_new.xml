@@ -32,6 +32,12 @@
         <item name="titleTextAppearance">?attr/textAppearanceBodyLarge</item>
     </style>
 
+    <style name="Widget.SketchwarePro.Button.TextButton" parent="Widget.Material3.Button.TextButton">
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="strokeWidth">0dp</item>
+    </style>
+
     <style name="Widget.SketchwarePro.NavigationView.Main" parent="Widget.Material3.NavigationView">
         <item name="dividerInsetEnd">@dimen/main_drawer_horizontal_padding</item>
         <item name="dividerInsetStart">@dimen/main_drawer_horizontal_padding</item>
@@ -53,13 +59,9 @@
     </style>
 
     <style name="ThemeOverlay.SketchwarePro.ViewEditor" parent="Base.Theme.MaterialComponents.Light" />
-
     <style name="ThemeOverlay.SketchwarePro.ViewEditor.Material3.Light" parent="ThemeOverlay.Material3.DynamicColors.Light" />
-
     <style name="ThemeOverlay.SketchwarePro.ViewEditor.Material3.Dark" parent="ThemeOverlay.Material3.DynamicColors.Dark" />
-
     <style name="ThemeOverlay.SketchwarePro.ViewEditor.Material3.NON_DYNAMIC.Light" parent="Base.Theme.Material3.Light" />
-
     <style name="ThemeOverlay.SketchwarePro.ViewEditor.Material3.NON_DYNAMIC.Dark" parent="Base.Theme.Material3.Dark" />
 
     <style name="Preference.SketchwarePro.SwitchPreferenceCompat" parent="Preference.SwitchPreferenceCompat.Material">
@@ -82,22 +84,15 @@
 
     <style name="ThemeOverlay.SketchwarePro.AlertDialog" parent="ThemeOverlay.Material3Expressive.MaterialAlertDialog.Centered">
         <item name="android:colorBackground">?attr/colorSurfaceContainer</item>
-        <item name="android:windowAnimationStyle">@style/MaterialAlertDialog.Material3.Animation
-        </item>
+        <item name="android:windowAnimationStyle">@style/MaterialAlertDialog.Material3.Animation</item>
         <item name="android:windowSoftInputMode">adjustResize</item>
         <item name="android:windowMinWidthMajor">65%</item>
         <item name="android:windowMinWidthMinor">98%</item>
         <item name="alertDialogStyle">@style/MaterialAlertDialog.SketchwarePro</item>
-
-        <!-- Expressive button styles have increased horizontal padding, which we don't need at all. -->
         <item name="buttonBarButtonStyle">@style/Widget.Material3.Button.TextButton.Dialog</item>
-        <item name="buttonBarNegativeButtonStyle">@style/Widget.Material3.Button.TextButton.Dialog
-        </item>
-        <item name="buttonBarNeutralButtonStyle">
-            @style/Widget.Material3.Button.TextButton.Dialog.Flush
-        </item>
-        <item name="buttonBarPositiveButtonStyle">@style/Widget.Material3.Button.TextButton.Dialog
-        </item>
+        <item name="buttonBarNegativeButtonStyle">@style/Widget.Material3.Button.TextButton.Dialog</item>
+        <item name="buttonBarNeutralButtonStyle">@style/Widget.Material3.Button.TextButton.Dialog.Flush</item>
+        <item name="buttonBarPositiveButtonStyle">@style/Widget.Material3.Button.TextButton.Dialog</item>
     </style>
 
     <style name="MaterialAlertDialog.SketchwarePro" parent="MaterialAlertDialog.Material3Expressive">
@@ -131,13 +126,10 @@
         <item name="shapeAppearance">?attr/shapeAppearanceCornerLarge</item>
     </style>
 
-    <style name="TextAppearance.SketchwarePro.Chip" parent="TextAppearance.SketchwarePro.BodyMedium">
-    </style>
-
+    <style name="TextAppearance.SketchwarePro.Chip" parent="TextAppearance.SketchwarePro.BodyMedium" />
     <style name="TextAppearance.SketchwarePro.BodyLargeEmphasized" parent="TextAppearance.SketchwarePro.BodyLarge">
         <item name="android:textStyle">bold</item>
     </style>
-
     <style name="ThemeOverlay.SketchwarePro.Chip.ProjectPreview" parent="">
         <item name="chipStyle">@style/Widget.SketchwarePro.Chip.ProjectPreview</item>
     </style>
