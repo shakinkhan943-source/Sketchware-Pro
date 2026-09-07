@@ -74,21 +74,24 @@
             app:cardElevation="4dp"
             app:strokeWidth="0dp">
 
-            <LinearLayout
+            <com.google.android.material.button.MaterialButtonToggleGroup
+                android:id="@+id/main_tab_group"
                 android:layout_width="wrap_content"
                 android:layout_height="match_parent"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
                 android:paddingStart="6dp"
                 android:paddingTop="6dp"
                 android:paddingEnd="6dp"
-                android:paddingBottom="6dp">
+                android:paddingBottom="6dp"
+                app:checkedButton="@id/tab_projects"
+                app:selectionRequired="true"
+                app:singleSelection="true"
+                app:innerCornerSize="28dp">
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/tab_projects"
+                    style="?attr/materialButtonTextButtonStyle"
                     android:layout_width="wrap_content"
                     android:layout_height="match_parent"
-                    android:backgroundTint="@android:color/transparent"
                     android:minWidth="0dp"
                     android:minHeight="0dp"
                     android:paddingStart="20dp"
@@ -96,20 +99,16 @@
                     android:text="@string/projects_title"
                     android:textAppearance="?attr/textAppearanceLabelLarge"
                     android:textColor="?attr/colorOnSurface"
-                    app:cornerRadius="26dp"
+                    app:cornerRadius="28dp"
                     app:insetTop="0dp"
                     app:insetBottom="0dp"
                     app:strokeWidth="0dp" />
 
-                <Space
-                    android:layout_width="4dp"
-                    android:layout_height="1dp" />
-
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/tab_store"
+                    style="?attr/materialButtonTextButtonStyle"
                     android:layout_width="wrap_content"
                     android:layout_height="match_parent"
-                    android:backgroundTint="@android:color/transparent"
                     android:minWidth="0dp"
                     android:minHeight="0dp"
                     android:paddingStart="20dp"
@@ -117,11 +116,11 @@
                     android:text="@string/main_store_title"
                     android:textAppearance="?attr/textAppearanceLabelLarge"
                     android:textColor="?attr/colorOnSurface"
-                    app:cornerRadius="26dp"
+                    app:cornerRadius="28dp"
                     app:insetTop="0dp"
                     app:insetBottom="0dp"
                     app:strokeWidth="0dp" />
-            </LinearLayout>
+            </com.google.android.material.button.MaterialButtonToggleGroup>
         </com.google.android.material.card.MaterialCardView>
 
     </androidx.coordinatorlayout.widget.CoordinatorLayout>
