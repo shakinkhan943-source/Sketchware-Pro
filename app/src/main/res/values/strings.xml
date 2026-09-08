@@ -2138,7 +2138,7 @@ Choosing a theme mode lets you personalize the app\'s appearance, notes:\n
     <string name="design_fab_actions">Project actions</string>
     <string name="design_fab_more">More</string>
     <string name="file_selector_category_activities">Activities</string>
-    <string name="file_selector_category_compose_files">Compose files</string>
+    <string name="file_selector_category_compose_files">Kotlin classes</string>
     <string name="file_selector_category_other_files">Other files</string>
     <string name="file_selector_no_files">No files to display</string>
     <string name="java_editor_action_reload">Reload from blocks</string>

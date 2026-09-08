@@ -2040,8 +2040,8 @@ public class ComponentTemplates {
                         if (_output == null) return
                         _output.clear()
                         if (_map == null || _map.isEmpty()) return
-                        for (_entry in _map.entrySet()) {
-                            _output.add(_entry.getKey())
+                        for (_entry in _map.entries) {
+                            _output.add(_entry.key)
                         }
                     }
                 }

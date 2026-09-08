@@ -98,18 +98,18 @@ public final class KotlinActivityCodeGenerator {
         source.append(ActivityCodeGenerator.EOL)
                 .append("override fun onCreate(_savedInstanceState: Bundle?) {")
                 .append(ActivityCodeGenerator.EOL)
-                .append("super.onCreate(_savedInstanceState);")
+                .append("super.onCreate(_savedInstanceState)")
                 .append(ActivityCodeGenerator.EOL)
                 .append("setContent {").append(ActivityCodeGenerator.EOL)
-                .append("SketchwareTheme {").append(ActivityCodeGenerator.EOL)
+                .append(themeFunctionName()).append(" {").append(ActivityCodeGenerator.EOL)
                 .append(projectFile.getActivityName()).append("Screen()").append(ActivityCodeGenerator.EOL)
                 .append("}").append(ActivityCodeGenerator.EOL)
                 .append("}").append(ActivityCodeGenerator.EOL);
         if (buildConfig.isFirebaseEnabled) {
-            source.append("FirebaseApp.initializeApp(this);").append(ActivityCodeGenerator.EOL);
+            source.append("FirebaseApp.initializeApp(this)").append(ActivityCodeGenerator.EOL);
         }
-        source.append("initialize(_savedInstanceState);").append(ActivityCodeGenerator.EOL)
-                .append("initializeLogic();").append(ActivityCodeGenerator.EOL)
+        source.append("initialize(_savedInstanceState)").append(ActivityCodeGenerator.EOL)
+                .append("initializeLogic()").append(ActivityCodeGenerator.EOL)
                 .append("}").append(ActivityCodeGenerator.EOL)
                 .append(ActivityCodeGenerator.EOL)
                 .append("@Composable").append(ActivityCodeGenerator.EOL)
@@ -144,6 +144,13 @@ public final class KotlinActivityCodeGenerator {
 
         String code = source.toString();
         return applyFormatting ? CodeFormatter.formatCode(code, false) : code;
+    }
+
+    private String themeFunctionName() {
+        String name = buildConfig.projectName == null ? "Project" : buildConfig.projectName.replaceAll("[^A-Za-z0-9]", "");
+        if (name.isEmpty()) name = "Project";
+        if (Character.isDigit(name.charAt(0))) name = "Project" + name;
+        return name + "Theme";
     }
 
     private void addDefaultImports() {
@@ -329,14 +336,14 @@ public final class KotlinActivityCodeGenerator {
                 .append("@Override").append(ActivityCodeGenerator.EOL)
                 .append("protected void onActivityResult(int _requestCode, int _resultCode, Intent _data) {")
                 .append(ActivityCodeGenerator.EOL)
-                .append("super.onActivityResult(_requestCode, _resultCode, _data);")
+                .append("super.onActivityResult(_requestCode, _resultCode, _data)")
                 .append(ActivityCodeGenerator.EOL)
                 .append(directLogic).append(ActivityCodeGenerator.EOL);
         if (!callbacks.trim().isEmpty()) {
             javaMethod.append("switch (_requestCode) {").append(ActivityCodeGenerator.EOL)
                     .append(callbacks).append(ActivityCodeGenerator.EOL)
                     .append("default:").append(ActivityCodeGenerator.EOL)
-                    .append("break;").append(ActivityCodeGenerator.EOL)
+                    .append("break").append(ActivityCodeGenerator.EOL)
                     .append("}").append(ActivityCodeGenerator.EOL);
         }
         javaMethod.append("}");

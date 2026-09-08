@@ -1449,7 +1449,7 @@ public class ProjectFilePaths {
                 import androidx.compose.material3.lightColorScheme;
                 import androidx.compose.ui.graphics.Color;
 
-                val SketchwareLightColors = lightColorScheme(
+                val %sLightColors = lightColorScheme(
                     primary = Color(%s),
                     onPrimary = Color(0xFFFFFFFF),
                     primaryContainer = Color(%s),
@@ -1464,7 +1464,7 @@ public class ProjectFilePaths {
                     onSurface = Color(0xFF000000)
                 )
 
-                val SketchwareDarkColors = darkColorScheme(
+                val %sDarkColors = darkColorScheme(
                     primary = Color(%s),
                     onPrimary = Color(0xFF000000),
                     primaryContainer = Color(%s),
@@ -1478,8 +1478,8 @@ public class ProjectFilePaths {
                     surface = Color(0xFF1E1E1E),
                     onSurface = Color(0xFFEEEEEE)
                 )
-                """, packageName, primary, primaryDark, accent, container,
-                container, onBackground, primary, primaryDark, accent, container);
+                """, packageName, composeIdentifier(), primary, primaryDark, accent, container,
+                container, onBackground, composeIdentifier(), primary, primaryDark, accent, container);
     }
 
     /**
@@ -1498,13 +1498,20 @@ public class ProjectFilePaths {
                 import androidx.compose.runtime.Composable;
 
                 @Composable
-                fun SketchwareTheme(content: @Composable () -> Unit) {
+                fun %sTheme(content: @Composable () -> Unit) {
                     MaterialTheme(
-                        colorScheme = if (isSystemInDarkTheme()) SketchwareDarkColors else SketchwareLightColors,
+                        colorScheme = if (isSystemInDarkTheme()) %sDarkColors else %sLightColors,
                         content = content
                     )
                 }
-                """, packageName);
+                """, packageName, composeIdentifier(), composeIdentifier(), composeIdentifier());
+    }
+
+    private String composeIdentifier() {
+        String value = projectName == null ? "Project" : projectName.replaceAll("[^A-Za-z0-9]", "");
+        if (value.isEmpty()) value = "Project";
+        if (Character.isDigit(value.charAt(0))) value = "Project" + value;
+        return value;
     }
 
     /**

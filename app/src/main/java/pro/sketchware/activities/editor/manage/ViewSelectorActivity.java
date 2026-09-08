@@ -19,6 +19,8 @@ import pro.sketchware.activities.editor.manage.view.PresetSettingActivity;
 import pro.sketchware.activities.base.BaseAppCompatActivity;
 
 import java.util.ArrayList;
+import java.io.File;
+import java.util.Comparator;
 
 import pro.sketchware.core.project.ProjectDataStore;
 import pro.sketchware.core.project.ProjectFileManager;
@@ -110,12 +112,28 @@ public class ViewSelectorActivity extends BaseAppCompatActivity {
      * XML values resources. These are the files exposed by the "Compose files" selector category.
      */
     private ArrayList<String> getComposeFiles() {
-        ArrayList<String> composeFiles = new ArrayList<>();
-        if (isComposeProject()) {
-            composeFiles.add("Theme.kt");
-            composeFiles.add("Color.kt");
+        ArrayList<String> kotlinClasses = new ArrayList<>();
+        if (!isComposeProject()) return kotlinClasses;
+        File sourceDir = new File(SketchwarePaths.getProjectJavaPath(sc_id));
+        File[] files = sourceDir.listFiles((dir, name) -> name.endsWith(".kt")
+                && !"Theme.kt".equals(name) && !"Color.kt".equals(name));
+        // These built-ins are generated on demand, so expose them even before the first build.
+        kotlinClasses.add("SketchwareUtil.kt");
+        kotlinClasses.add("FileUtil.kt");
+        if (files != null) {
+            for (File file : files) {
+                boolean activity = false;
+                for (ProjectFileBean activityFile : ProjectDataManager.getFileManager(sc_id).getActivities()) {
+                    if (file.getName().equals(activityFile.getSourceFileName())) {
+                        activity = true;
+                        break;
+                    }
+                }
+                if (!activity) kotlinClasses.add(file.getName());
+            }
         }
-        return composeFiles;
+        kotlinClasses.sort(String.CASE_INSENSITIVE_ORDER);
+        return kotlinClasses;
     }
 
     /**
@@ -305,6 +323,10 @@ public class ViewSelectorActivity extends BaseAppCompatActivity {
             selectedTab = TAB_ACTIVITY;
         }
 
+        // Java/XML projects deliberately expose only Activity and Custom View. The Kotlin
+        // classes category is a Compose-only source selector, not a third Java view type.
+        binding.optionsSelector.findViewById(R.id.option_compose).setVisibility(
+                isComposeProject() ? View.VISIBLE : View.GONE);
         binding.optionsSelector.check(switch (selectedTab) {
             case TAB_CUSTOM_VIEW -> R.id.option_custom_view;
             case TAB_COMPOSE_FILES -> R.id.option_compose;
