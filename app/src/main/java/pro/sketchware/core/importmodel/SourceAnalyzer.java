@@ -55,6 +55,13 @@ public final class SourceAnalyzer {
         while(dm.find())decl.add(dm.group(2));
         java.util.regex.Matcher fdm=java.util.regex.Pattern.compile("(?m)\\bfun\\s+([A-Za-z_]\\w*)").matcher(masked);
         while(fdm.find())decl.add(fdm.group(1));
+        // Kotlin unit literals are extension properties (16.dp, 20.sp). They are lowercase and
+        // are not followed by '(' so the general identifier heuristic below cannot see them.
+        if (lang == ImportLanguage.KOTLIN) {
+            java.util.regex.Matcher units = java.util.regex.Pattern.compile(
+                    "\\b(?:\\d+(?:\\.\\d+)?|[A-Za-z_]\\w*)\\s*\\.\\s*([a-z_]\\w*)").matcher(scan);
+            while (units.find()) names.add(units.group(1));
+        }
         java.util.regex.Matcher tm=java.util.regex.Pattern.compile("[A-Za-z_]\\w*").matcher(scan);
         while(tm.find()){
             String n=tm.group(); if(KEYWORDS.contains(n)||decl.contains(n))continue;

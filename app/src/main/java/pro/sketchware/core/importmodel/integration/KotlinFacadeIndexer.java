@@ -52,6 +52,17 @@ final class KotlinFacadeIndexer {
                         index.add(new SymbolIndex.Candidate(method, qualified, binaryName,
                                 ImportLanguage.KOTLIN, SymbolIndex.Kind.FUNCTION, origin,
                                 false, false, priority + 1));
+                        // Kotlin top-level/extension properties compile to getFoo methods but are
+                        // imported as package.foo (for example androidx.compose.ui.unit.dp/sp).
+                        if (method.length() > 3 && method.startsWith("get")
+                                && Character.isUpperCase(method.charAt(3))) {
+                            String property = Character.toLowerCase(method.charAt(3)) + method.substring(4);
+                            String propertyQualified = packageName.isEmpty()
+                                    ? property : packageName + "." + property;
+                            index.add(new SymbolIndex.Candidate(property, propertyQualified, binaryName,
+                                    ImportLanguage.KOTLIN, SymbolIndex.Kind.PROPERTY, origin,
+                                    false, true, priority + 1));
+                        }
                     }
                 } catch (Throwable ignored) {
                     // A single unreadable facade must not abort the whole index build.

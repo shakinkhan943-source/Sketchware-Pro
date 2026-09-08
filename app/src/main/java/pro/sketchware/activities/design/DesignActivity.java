@@ -821,9 +821,19 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
         if (projectFile == null) {
             return;
         }
-        java.io.File sourceFile = new java.io.File(SketchwarePaths.getProjectJavaPath(sc_id),
+        java.io.File sourceFile = findSourceFile(
+                new java.io.File(SketchwarePaths.getProjectJavaPath(sc_id)),
                 projectFile.getSourceFileName());
-        if (!sourceFile.isFile()) {
+        if (sourceFile == null) {
+            // Built/generated activities are package-nested under mysc rather than in the flat
+            // user-source directory. This is why the same action worked in SrcCodeEditor but the
+            // Design screen incorrectly reported "nothing to resolve".
+            sourceFile = findSourceFile(new java.io.File(SketchwarePaths.getMyscPath(sc_id)
+                    + java.io.File.separator + "app" + java.io.File.separator + "src"
+                    + java.io.File.separator + "main" + java.io.File.separator + "java"),
+                    projectFile.getSourceFileName());
+        }
+        if (sourceFile == null) {
             SketchwareUtil.toast(Helper.getResString(R.string.import_model_nothing_to_resolve));
             return;
         }
@@ -833,6 +843,20 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
         } else {
             pro.sketchware.core.importmodel.integration.ImportActions.organizeImports(this, sc_id, gateway);
         }
+    }
+
+    private java.io.File findSourceFile(java.io.File directory, String fileName) {
+        if (directory == null || !directory.isDirectory() || fileName == null) return null;
+        java.io.File direct = new java.io.File(directory, fileName);
+        if (direct.isFile()) return direct;
+        java.io.File[] children = directory.listFiles();
+        if (children == null) return null;
+        for (java.io.File child : children) {
+            if (!child.isDirectory()) continue;
+            java.io.File found = findSourceFile(child, fileName);
+            if (found != null) return found;
+        }
+        return null;
     }
 
     private void onRunClicked(View anchor) {

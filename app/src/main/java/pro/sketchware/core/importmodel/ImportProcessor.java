@@ -20,6 +20,16 @@ public final class ImportProcessor {
                 if(a.declarations.contains(n)||isKnown(n,map,a,r))continue;
                 List<SymbolIndex.Candidate> cs=index.find(n,r.language);
                 cs=filter(cs,r,n);
+                // In a Compose source, prefer symbols from the Compose namespace. Android's SDK
+                // contains unrelated collisions such as java.lang.reflect.Modifier and org.w3c.dom.Text;
+                // their lower classpath priority must not beat the UI DSL the file is clearly using.
+                if (r.language == ImportLanguage.KOTLIN && isComposeSource(r.source)) {
+                    List<SymbolIndex.Candidate> compose = new ArrayList<>();
+                    for (SymbolIndex.Candidate c : cs) {
+                        if (c.qualifiedName.startsWith("androidx.compose.")) compose.add(c);
+                    }
+                    if (!compose.isEmpty()) cs = compose;
+                }
                 if(cs.isEmpty()){unresolved.add(n);continue;}
                 SymbolIndex.Candidate best=cs.get(0);
                 int count=0;for(SymbolIndex.Candidate c:cs)if(c.priority==best.priority)count++;
@@ -65,6 +75,12 @@ public final class ImportProcessor {
             o.add(c);if(o.size()>=r.options.maxCandidatesPerSymbol)break;
         }return o;
     }
+    private static boolean isComposeSource(String source) {
+        return source != null && (source.contains("@Composable")
+                || source.contains("androidx.compose.")
+                || source.contains("Modifier.") && source.contains("dp"));
+    }
+
     private static boolean isImplicit(SymbolIndex.Candidate c,ImportModel.Request r){
         String q=c.qualifiedName;int p=q.lastIndexOf('.');
         if(p<0)return true;
