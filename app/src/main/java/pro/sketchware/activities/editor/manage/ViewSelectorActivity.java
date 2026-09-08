@@ -48,6 +48,8 @@ public class ViewSelectorActivity extends BaseAppCompatActivity {
     private final int TAB_ACTIVITY = ProjectFileBean.PROJECT_FILE_TYPE_ACTIVITY;
     private final int TAB_CUSTOM_VIEW = ProjectFileBean.PROJECT_FILE_TYPE_CUSTOM_VIEW;
     private final int TAB_COMPOSE_FILES = 2;
+    /** Compose projects only: the third option lists Kotlin classes (never activities). */
+    private final int TAB_CLASSES = 3;
     private ViewSelectorAdapter viewSelectorAdapter;
     private String sc_id;
     private ProjectFileBean projectFile;
@@ -56,6 +58,7 @@ public class ViewSelectorActivity extends BaseAppCompatActivity {
     private int selectedTab;
     private boolean isCustomView = false;
     private boolean sourceMode = false;
+    private boolean composeProject = false;
     private FileSelectorPopupSelectXmlBinding binding;
 
     private int getViewIcon(int i) {
@@ -119,11 +122,71 @@ public class ViewSelectorActivity extends BaseAppCompatActivity {
     }
 
     /**
+     * The "Classes" category of a Compose project lists Kotlin classes only — never activities
+     * (those live in the Activity category). It contains the generated utility classes
+     * (SketchwareUtil.kt, FileUtil.kt) plus every user class in the project's source folder.
+     */
+    private ArrayList<String> getProjectClassFiles() {
+        ArrayList<String> classes = new ArrayList<>();
+        if (!isComposeProject()) {
+            return classes;
+        }
+        classes.add("SketchwareUtil.kt");
+        classes.add("FileUtil.kt");
+
+        java.io.File sourceDir = new java.io.File(SketchwarePaths.getProjectJavaPath(sc_id));
+        java.io.File[] files = sourceDir.listFiles();
+        if (files == null) {
+            return classes;
+        }
+        // Activities are listed by the Activity category and Theme.kt/Color.kt by the Compose
+        // files category, so none of them belong in the class list.
+        java.util.Set<String> excluded = new java.util.HashSet<>();
+        for (ProjectFileBean activity : ProjectDataManager.getFileManager(sc_id).getActivities()) {
+            excluded.add(activity.getSourceFileName());
+        }
+        excluded.add("Theme.kt");
+        excluded.add("Color.kt");
+        java.util.Arrays.sort(files, (a, b) -> a.getName().compareToIgnoreCase(b.getName()));
+        for (java.io.File file : files) {
+            String name = file.getName();
+            if (file.isFile() && (name.endsWith(".kt") || name.endsWith(".java"))
+                    && !excluded.contains(name)) {
+                classes.add(name);
+            }
+        }
+        return classes;
+    }
+
+    /** Opens a class from the Classes category in the Kotlin/Java source editor. */
+    private void openClassFile(String fileName) {
+        String path = SketchwarePaths.getProjectJavaPath(sc_id) + java.io.File.separator + fileName;
+        if (!pro.sketchware.util.FileUtil.isExistFile(path)) {
+            // Generated utility classes may not exist on disk yet; generate their source on demand.
+            String code = new pro.sketchware.core.build.ProjectFilePaths(getApplicationContext(), sc_id)
+                    .getFileSrc(fileName,
+                            ProjectDataManager.getFileManager(sc_id),
+                            ProjectDataManager.getProjectDataManager(sc_id),
+                            ProjectDataManager.getLibraryManager(sc_id));
+            if (code.isEmpty()) {
+                SketchwareUtil.toast(getString(R.string.file_selector_error_open_class));
+                return;
+            }
+            pro.sketchware.util.FileUtil.writeFile(path, code);
+        }
+        Intent intent = new Intent(getApplicationContext(), pro.sketchware.activities.editor.code.SrcCodeEditor.class);
+        intent.putExtra("sc_id", sc_id);
+        intent.putExtra("title", fileName);
+        intent.putExtra("content", path);
+        startActivity(intent);
+    }
+
+    /**
      * Keeps the bottom "create" FAB and the empty-state text in sync with the selected category.
      * Compose configuration files are generated, not created, so the FAB is hidden for them.
      */
     private void updateCreateButton() {
-        if (selectedTab == TAB_COMPOSE_FILES) {
+        if (selectedTab == TAB_COMPOSE_FILES || selectedTab == TAB_CLASSES) {
             binding.createNewView.setVisibility(View.GONE);
         } else if (sourceMode && selectedTab == TAB_CUSTOM_VIEW) {
             // Source selection only creates Activities; custom views are created from the UI mode.
@@ -141,6 +204,8 @@ public class ViewSelectorActivity extends BaseAppCompatActivity {
                     : R.string.design_manager_view_message_no_view);
         } else if (selectedTab == TAB_COMPOSE_FILES) {
             binding.emptyMessage.setText(R.string.file_selector_no_files);
+        } else if (selectedTab == TAB_CLASSES) {
+            binding.emptyMessage.setText(R.string.file_selector_no_classes);
         } else {
             binding.emptyMessage.setText(R.string.design_manager_view_message_no_view);
         }
@@ -304,9 +369,20 @@ public class ViewSelectorActivity extends BaseAppCompatActivity {
         } else {
             selectedTab = TAB_ACTIVITY;
         }
+        composeProject = isComposeProject();
+
+        // The class selector is language-specific: a Java project only needs the Activity and
+        // Custom View categories, while a Compose project swaps Custom View for a Classes
+        // category listing its Kotlin classes.
+        if (composeProject) {
+            binding.optionCustomView.setText(R.string.file_selector_category_classes);
+        } else {
+            binding.optionCompose.setVisibility(View.GONE);
+            binding.optionCustomView.setText(R.string.file_selector_category_custom_view);
+        }
 
         binding.optionsSelector.check(switch (selectedTab) {
-            case TAB_CUSTOM_VIEW -> R.id.option_custom_view;
+            case TAB_CUSTOM_VIEW, TAB_CLASSES -> R.id.option_custom_view;
             case TAB_COMPOSE_FILES -> R.id.option_compose;
             default -> R.id.option_view;
         });
@@ -330,7 +406,7 @@ public class ViewSelectorActivity extends BaseAppCompatActivity {
                 } else if (checkedId == R.id.option_compose) {
                     selectedTab = TAB_COMPOSE_FILES;
                 } else if (checkedId == R.id.option_custom_view) {
-                    selectedTab = TAB_CUSTOM_VIEW;
+                    selectedTab = composeProject ? TAB_CLASSES : TAB_CUSTOM_VIEW;
                 }
                 updateCreateButton();
                 viewSelectorAdapter.notifyDataSetChanged();
@@ -524,6 +600,8 @@ public class ViewSelectorActivity extends BaseAppCompatActivity {
             int size;
             if (selectedTab == TAB_COMPOSE_FILES) {
                 size = getComposeFiles().size();
+            } else if (selectedTab == TAB_CLASSES) {
+                size = getProjectClassFiles().size();
             } else {
                 ProjectFileManager ProjectFileManager = ProjectDataManager.getFileManager(sc_id);
                 ArrayList<ProjectFileBean> list = switch (selectedTab) {
@@ -554,6 +632,10 @@ public class ViewSelectorActivity extends BaseAppCompatActivity {
                             openComposeFile(getComposeFiles().get(pos));
                             return;
                         }
+                        if (selectedTab == TAB_CLASSES) {
+                            openClassFile(getProjectClassFiles().get(pos));
+                            return;
+                        }
                         ProjectFileManager ProjectFileManager = ProjectDataManager.getFileManager(sc_id);
                         ArrayList<ProjectFileBean> list = switch (selectedTab) {
                             case TAB_ACTIVITY -> ProjectFileManager.getActivities();
@@ -582,7 +664,7 @@ public class ViewSelectorActivity extends BaseAppCompatActivity {
                     }
                 });
                 itemBinding.imgPresetSetting.setOnClickListener(v -> {
-                    if (selectedTab == TAB_COMPOSE_FILES) {
+                    if (selectedTab == TAB_COMPOSE_FILES || selectedTab == TAB_CLASSES) {
                         return;
                     }
                     if (!UIHelper.isClickThrottled()) {

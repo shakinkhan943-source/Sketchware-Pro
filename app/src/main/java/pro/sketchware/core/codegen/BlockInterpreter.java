@@ -1,6 +1,5 @@
 package pro.sketchware.core.codegen;
 
-
 import pro.sketchware.beans.BlockBean;
 
 import java.nio.CharBuffer;
@@ -13,6 +12,9 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import pro.sketchware.core.codegen.ExtraBlockInfo;
+import pro.sketchware.core.codegen.lang.CodeGenerationLanguage;
+import pro.sketchware.core.codegen.lang.KotlinCodeConverter;
+import pro.sketchware.core.codegen.lang.SyntaxRules;
 import pro.sketchware.core.codegen.BlockLoader;
 import pro.sketchware.core.build.ViewBindingBuilder;
 import pro.sketchware.core.project.BuildConfig;
@@ -20,13 +22,17 @@ import pro.sketchware.core.project.ClassInfo;
 import pro.sketchware.core.sync.CodeOwnershipRecorder;
 
 /**
- * Converts a chain of {@link BlockBean}s into executable Java source code.
+ * Converts a chain of {@link BlockBean}s into executable source code for the configured
+ * {@link CodeGenerationLanguage}.
  * <p>
  * Each block's {@code opCode} is looked up in {@link BlockCodeRegistry} to find
  * the corresponding code template. Parameters are recursively resolved: nested
  * blocks (prefixed with {@code @}) are expanded in-place, strings are escaped
  * and quoted, numbers are validated, and view references are optionally
- * transformed to ViewBinding accessors.
+ * transformed to ViewBinding accessors. The language's literal and statement
+ * rules come from {@link SyntaxRules}; the only Java-to-Kotlin translation
+ * happens inside the Kotlin generator's template renderer
+ * ({@link KotlinCodeConverter}), never as post-generation cleanup.
  * <p>
  * Usage:
  * <pre>
@@ -38,11 +44,6 @@ import pro.sketchware.core.sync.CodeOwnershipRecorder;
  * @see BlockBean
  */
 public class BlockInterpreter {
-
-    public enum SourceLanguage {
-        JAVA,
-        KOTLIN
-    }
 
     private static final Pattern PARAM_PATTERN = Pattern.compile("%m(?!\\.[\\w]+)");
     private static final Pattern SPEC_PARAM_PATTERN = Pattern.compile("%[bdsm]");
@@ -71,19 +72,20 @@ public class BlockInterpreter {
      */
     private String syncOwnerKey;
     private final boolean isActivity;
-    private final SourceLanguage sourceLanguage;
+    private final CodeGenerationLanguage sourceLanguage;
+    private final SyntaxRules syntax;
 
     public BlockInterpreter(String activityName, BuildConfig buildConfig, ArrayList<BlockBean> eventBlocks, boolean isViewBindingEnabled) {
-        this(activityName, buildConfig, eventBlocks, isViewBindingEnabled, null, SourceLanguage.JAVA);
+        this(activityName, buildConfig, eventBlocks, isViewBindingEnabled, null, CodeGenerationLanguage.JAVA);
     }
 
     public BlockInterpreter(String activityName, BuildConfig buildConfig, ArrayList<BlockBean> eventBlocks, boolean isViewBindingEnabled, String currentXmlName) {
-        this(activityName, buildConfig, eventBlocks, isViewBindingEnabled, currentXmlName, SourceLanguage.JAVA);
+        this(activityName, buildConfig, eventBlocks, isViewBindingEnabled, currentXmlName, CodeGenerationLanguage.JAVA);
     }
 
     public BlockInterpreter(String activityName, BuildConfig buildConfig,
                             ArrayList<BlockBean> eventBlocks, boolean isViewBindingEnabled,
-                            String currentXmlName, SourceLanguage sourceLanguage) {
+                            String currentXmlName, CodeGenerationLanguage sourceLanguage) {
         this.activityName = activityName;
 
         isActivity = !(activityName.endsWith("DialogFragmentActivity") || activityName.endsWith("BottomDialogFragmentActivity") || activityName.endsWith("FragmentActivity"));
@@ -93,11 +95,22 @@ public class BlockInterpreter {
         this.eventBlocks = eventBlocks;
         this.isViewBindingEnabled = isViewBindingEnabled;
         this.currentXmlName = currentXmlName;
-        this.sourceLanguage = sourceLanguage == null ? SourceLanguage.JAVA : sourceLanguage;
+        this.sourceLanguage = sourceLanguage == null ? CodeGenerationLanguage.JAVA : sourceLanguage;
+        this.syntax = this.sourceLanguage.syntax();
     }
 
     public boolean isKotlin() {
-        return sourceLanguage == SourceLanguage.KOTLIN;
+        return sourceLanguage.isKotlin();
+    }
+
+    /** The language-specific literal/statement rules this interpreter renders with. */
+    public SyntaxRules syntax() {
+        return syntax;
+    }
+
+    /** The language this interpreter emits. */
+    public CodeGenerationLanguage language() {
+        return sourceLanguage;
     }
 
     /**
@@ -304,16 +317,17 @@ public class BlockInterpreter {
              */
             try {
                 if (param.isEmpty()) {
-                    return isKotlin() ? "0.0" : "0";
+                    return syntax.wholeNumberLiteral("0");
                 }
                 if (param.contains(".")) {
                     Double.parseDouble(param);
-                    return isKotlin() ? param : param + "d";
+                    return syntax.fractionalNumberLiteral(param);
                 }
                 Integer.parseInt(param);
                 // Sketchware's numeric variable type is double. Java widens integer literals
-                // implicitly, while Kotlin requires a Double literal explicitly.
-                return isKotlin() ? param + ".0" : param;
+                // implicitly, while Kotlin requires a Double literal explicitly — the split
+                // lives in the language's syntax rules.
+                return syntax.wholeNumberLiteral(param);
             } catch (NumberFormatException e) {
                 return param;
             }

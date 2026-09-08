@@ -1,4 +1,6 @@
-package pro.sketchware.core.codegen;
+package pro.sketchware.core.codegen.lang;
+
+import pro.sketchware.core.codegen.ActivityCodeGenerator;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -8,12 +10,16 @@ import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 
 /**
- * Converts the deterministic Java snippets emitted by Sketchware's legacy block/component
- * registries to Kotlin syntax.
+ * The Kotlin rendering rules for Sketchware's legacy block/component templates.
+ *
+ * <p>The block registry, event registry, listener registry and component generator store their
+ * templates once, in Java. This class is the Kotlin generator's template syntax layer: it renders
+ * those templates as Kotlin for the Kotlin/Compose pipeline. It is a generation rule of the
+ * Kotlin path, not a post-generation cleanup pass — Java generators never call it, and no
+ * generated Kotlin is ever patched after the fact outside this boundary.</p>
  *
  * <p>This is deliberately not advertised as a general Java-to-Kotlin transpiler. It handles the
- * shapes produced by {@link BlockCodeRegistry}, {@link EventCodeRegistry},
- * {@link ListenerCodeRegistry} and {@link ComponentCodeGenerator}: declarations, primitive casts,
+ * shapes produced by the block/component registries: declarations, primitive casts,
  * constructor calls, loops, listener object expressions and method signatures. Keeping this
  * boundary in one class prevents Kotlin Activities from accidentally receiving Java syntax while
  * the registries are migrated gradually.</p>
@@ -86,6 +92,7 @@ public final class KotlinCodeConverter {
             String line = convertControlFlowLine(lines[i]);
             line = convertDeclarationLine(line, false);
             line = transformOutsideLiterals(line);
+            line = stripTrailingTerminator(line);
             line = line.replaceAll("\\breturn\\s*;", "return");
             result.append(line);
             if (i < lines.length - 1) result.append('\n');
@@ -125,6 +132,7 @@ public final class KotlinCodeConverter {
                 line = convertDeclarationLine(line, true);
             }
             line = transformOutsideLiterals(line);
+            line = stripTrailingTerminator(line);
             line = line.replaceAll("\\breturn\\s*;", "return");
             result.append(line).append('\n');
         }
@@ -321,8 +329,44 @@ public final class KotlinCodeConverter {
             converted.append(isFinal ? "val " : "var ").append(name).append(": ")
                     .append(kotlinType).append(" = ").append(convertedInitializer);
         }
-        if (trimmed.endsWith(";")) converted.append(';');
         return converted.toString();
+    }
+
+    /**
+     * Kotlin terminates statements with a newline, not a semicolon. Template lines arrive with
+     * Java's trailing {@code ;}; it is removed outside string/char literals so the emitted
+     * Kotlin is semicolon-free (interior separators such as {@code a(); b()} are kept — they are
+     * legal Kotlin).
+     */
+    private static String stripTrailingTerminator(String line) {
+        int end = line.length();
+        while (end > 0 && Character.isWhitespace(line.charAt(end - 1))) end--;
+        if (end == 0 || line.charAt(end - 1) != ';') {
+            return line;
+        }
+        boolean inString = false;
+        boolean inChar = false;
+        boolean escaped = false;
+        for (int i = 0; i < end; i++) {
+            char c = line.charAt(i);
+            if (escaped) {
+                escaped = false;
+                continue;
+            }
+            if ((inString || inChar) && c == '\\') {
+                escaped = true;
+                continue;
+            }
+            if (!inChar && c == '"') inString = !inString;
+            else if (!inString && c == '\'') inChar = !inChar;
+        }
+        if (inString || inChar) {
+            // The semicolon sits inside an unterminated literal; leave the line untouched.
+            return line;
+        }
+        int semi = end - 1;
+        while (semi > 0 && Character.isWhitespace(line.charAt(semi - 1))) semi--;
+        return line.substring(0, semi);
     }
 
     private static boolean looksLikeType(String type) {

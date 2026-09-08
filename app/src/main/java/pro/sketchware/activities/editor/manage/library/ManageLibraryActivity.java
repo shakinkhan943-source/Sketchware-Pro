@@ -117,8 +117,13 @@ public class ManageLibraryActivity extends BaseAppCompatActivity implements View
             libraryItemView = new ComposeLibraryItemView(this);
             libraryItemView.setData(composeLibraryBean);
         } else {
-            libraryItemView = new Material3LibraryItemView(this);
-            libraryItemView.setData(compatLibraryBean);
+            Material3LibraryItemView material3ItemView = new Material3LibraryItemView(this);
+            boolean composeProject = ProjectType.COMPOSE.equals(getStoredProjectType());
+            material3ItemView.setCompose(composeProject);
+            // Compose projects read their Material 3 state from the Compose bean; Java/XML
+            // projects read it from the AppCompat bean.
+            material3ItemView.setData(composeProject ? composeLibraryBean : compatLibraryBean);
+            libraryItemView = material3ItemView;
         }
         libraryItemView.setTag(type);
         //noinspection ConstantConditions since the variant if it's nullable handles nulls correctly
@@ -202,15 +207,18 @@ public class ManageLibraryActivity extends BaseAppCompatActivity implements View
     }
 
     private void toMaterial3Activity() {
-        if (ProjectType.COMPOSE.equals(getStoredProjectType())) {
-            // XML Material3 and Jetpack Compose are different UI systems; never open the XML
-            // Material3 editor for a Compose project.
-            SketchToast.toast(this, R.string.design_library_material3_not_available_compose, Toast.LENGTH_SHORT);
-            return;
-        }
-        Intent intent = new Intent(getApplicationContext(), Material3LibraryActivity.class);
+        // Split Material 3 management: a Compose project manages its own Jetpack Compose
+        // Material 3 configuration; a Java/XML project manages the XML Material 3 system.
+        boolean composeProject = ProjectType.COMPOSE.equals(getStoredProjectType());
+        Intent intent = new Intent(getApplicationContext(), composeProject
+                ? ComposeMaterial3LibraryActivity.class
+                : Material3LibraryActivity.class);
         intent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
-        intent.putExtra("compat", compatLibraryBean);
+        if (composeProject) {
+            intent.putExtra("compose", composeLibraryBean);
+        } else {
+            intent.putExtra("compat", compatLibraryBean);
+        }
         intent.putExtra("project_type", getStoredProjectType());
         material3Launcher.launch(intent);
     }
@@ -464,8 +472,10 @@ public class ManageLibraryActivity extends BaseAppCompatActivity implements View
         boolean composeProject = ProjectType.COMPOSE.equals(getStoredProjectType());
         if (composeProject) {
             // Compose-first projects own their UI system in the Compose runtime. The XML AppCompat /
-            // Material component libraries would add an unused XML UI system to the build.
+            // Material component libraries would add an unused XML UI system to the build. They do
+            // manage their own Jetpack Compose Material 3 configuration, though.
             addCustomLibraryItem(ProjectLibraryBean.PROJECT_LIB_TYPE_COMPOSE, basicCategory);
+            addCustomLibraryItem(ProjectLibraryBean.PROJECT_LIB_TYPE_MATERIAL3, basicCategory);
         } else {
             addLibraryItem(compatLibraryBean, basicCategory);
             addCustomLibraryItem(ProjectLibraryBean.PROJECT_LIB_TYPE_MATERIAL3, basicCategory);
