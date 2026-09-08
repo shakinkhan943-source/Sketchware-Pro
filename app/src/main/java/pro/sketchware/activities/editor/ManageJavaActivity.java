@@ -469,6 +469,8 @@ public class ManageJavaActivity extends BaseAppCompatActivity {
             intent.putExtra("java", "");
             intent.putExtra("title", getFileName(position));
             intent.putExtra("content", getItem(position));
+            // Lets the editor build the ImportModel index from this project's real classpath.
+            intent.putExtra("sc_id", sc_id);
 
             startActivity(intent);
         }

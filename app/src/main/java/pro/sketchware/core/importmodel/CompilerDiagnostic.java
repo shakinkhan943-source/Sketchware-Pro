@@ -1,4 +1,4 @@
-package importmodel;
+package pro.sketchware.core.importmodel;
 
 public final class CompilerDiagnostic {
     public final String symbol; public final int line,column; public final String message;

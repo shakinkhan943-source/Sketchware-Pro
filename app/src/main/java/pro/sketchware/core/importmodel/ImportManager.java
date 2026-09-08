@@ -1,4 +1,4 @@
-package importmodel;
+package pro.sketchware.core.importmodel;
 
 public final class ImportManager {
     private final SourceAnalyzer analyzer;

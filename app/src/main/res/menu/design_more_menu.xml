@@ -41,6 +41,16 @@
         app:showAsAction="never" />
 
     <item
+        android:id="@+id/design_menu_resolve_imports"
+        android:title="@string/design_menu_resolve_imports"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/design_menu_organize_imports"
+        android:title="@string/design_menu_organize_imports"
+        app:showAsAction="never" />
+
+    <item
         android:id="@+id/design_menu_import_xml"
         android:title="@string/menu_import_xml"
         android:visible="false"

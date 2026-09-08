@@ -2104,6 +2104,14 @@ Choosing a theme mode lets you personalize the app\'s appearance, notes:\n
     <string name="design_menu_show_last_error">Show last compile error</string>
     <string name="design_menu_show_signatures">Show Apk signatures</string>
     <string name="design_menu_show_source">Show source code</string>
+    <string name="design_menu_resolve_imports">Resolve imports</string>
+    <string name="design_menu_organize_imports">Organize imports</string>
+    <string name="import_model_nothing_to_resolve">No imports to resolve</string>
+    <string name="import_model_imports_already_organized">Imports are already organized</string>
+    <string name="import_model_imports_word">imports</string>
+    <string name="import_model_ambiguous_word">Ambiguous</string>
+    <string name="import_model_unresolved_word">Unresolved</string>
+    <string name="import_model_unsupported_language">Imports can only be processed in Java or Kotlin files</string>
     <string name="design_menu_xml_editor">Direct XML editor</string>
     <string name="design_option_menu_title_save_project">Save project</string>
     <string name="design_property_recent_message_nodata">Recently used properties will be displayed</string>

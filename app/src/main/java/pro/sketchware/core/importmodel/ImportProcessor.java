@@ -1,4 +1,4 @@
-package importmodel;
+package pro.sketchware.core.importmodel;
 
 import java.util.*;
 
@@ -58,9 +58,17 @@ public final class ImportProcessor {
         List<SymbolIndex.Candidate> o=new ArrayList<>();
         for(SymbolIndex.Candidate c:in){
             if(c.kind==SymbolIndex.Kind.TYPE && r.context.localNames.contains(n))continue;
+            // Symbols of an implicitly imported package (java.lang, kotlin.*, the file's own
+            // package) are already in scope and must never produce an import statement.
+            if(isImplicit(c,r))continue;
             if(c.origin==SymbolIndex.Origin.OTHER && c.priority>80)continue;
             o.add(c);if(o.size()>=r.options.maxCandidatesPerSymbol)break;
         }return o;
+    }
+    private static boolean isImplicit(SymbolIndex.Candidate c,ImportModel.Request r){
+        String q=c.qualifiedName;int p=q.lastIndexOf('.');
+        if(p<0)return true;
+        return r.context.implicitPackages.contains(q.substring(0,p));
     }
     private static boolean isKnown(String n,Map<String,SourceAnalyzer.Import> m,SourceAnalyzer.Analysis a,ImportModel.Request r){
         if(r.context.localNames.contains(n)||r.context.defaultImports.contains(n))return true;
@@ -87,10 +95,19 @@ public final class ImportProcessor {
         int start=a.importStart>=0?a.importStart:(a.packageEnd>0?a.packageEnd:0);
         int end=a.importStart>=0?a.importEnd:start;
         if(start>0)b.append(s,0,start);
-        if(!im.isEmpty()){for(SourceAnalyzer.Import x:im)b.append(x.text(l)).append(nl);b.append(nl);}
+        if(!im.isEmpty()){
+            // Keep one blank line between the package declaration and the import block.
+            if(a.importStart<0 && a.packageEnd>0)b.append(nl);
+            for(SourceAnalyzer.Import x:im)b.append(x.text(l)).append(nl);
+            b.append(nl);
+        }
         int body=end;
-        if(body<s.length() && (s.startsWith(nl,body)))body+=nl.length();
-        while(body<s.length()&&(s.charAt(body)==' '||s.charAt(body)=='\t'))body++;
+        // Only normalize the blank line that follows an import block; a file that has (and keeps)
+        // no imports at all must stay byte-identical.
+        if(!im.isEmpty() || a.importStart>=0){
+            if(body<s.length() && (s.startsWith(nl,body)))body+=nl.length();
+            while(body<s.length()&&(s.charAt(body)==' '||s.charAt(body)=='\t'))body++;
+        }
         b.append(s,body,s.length());
         return b.toString();
     }
