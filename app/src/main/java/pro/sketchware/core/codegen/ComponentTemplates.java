@@ -2035,6 +2035,12 @@ public class ComponentTemplates {
                         return _context.resources.displayMetrics.heightPixels
                     }
 
+                    fun getMaterialColor(_context: Context, _resourceId: Int): Int {
+                        val _typedValue = TypedValue()
+                        _context.theme.resolveAttribute(_resourceId, _typedValue, true)
+                        return _typedValue.data
+                    }
+
                     fun getAllKeysFromMap(_map: Map<String, Any>?, _output: ArrayList<String>?) {
                         if (_output == null) return
                         _output.clear()

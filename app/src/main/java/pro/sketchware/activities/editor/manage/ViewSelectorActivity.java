@@ -59,6 +59,8 @@ public class ViewSelectorActivity extends BaseAppCompatActivity {
     private boolean isCustomView = false;
     private boolean sourceMode = false;
     private boolean composeProject = false;
+    /** Cached content of the Classes category; refreshed when the category changes. */
+    private ArrayList<String> cachedClassFiles = new ArrayList<>();
     private FileSelectorPopupSelectXmlBinding binding;
 
     private int getViewIcon(int i) {
@@ -127,6 +129,10 @@ public class ViewSelectorActivity extends BaseAppCompatActivity {
      * (SketchwareUtil.kt, FileUtil.kt) plus every user class in the project's source folder.
      */
     private ArrayList<String> getProjectClassFiles() {
+        return cachedClassFiles;
+    }
+
+    private ArrayList<String> scanProjectClassFiles() {
         ArrayList<String> classes = new ArrayList<>();
         if (!isComposeProject()) {
             return classes;
@@ -376,6 +382,7 @@ public class ViewSelectorActivity extends BaseAppCompatActivity {
         // category listing its Kotlin classes.
         if (composeProject) {
             binding.optionCustomView.setText(R.string.file_selector_category_classes);
+            cachedClassFiles = scanProjectClassFiles();
         } else {
             binding.optionCompose.setVisibility(View.GONE);
             binding.optionCustomView.setText(R.string.file_selector_category_custom_view);
@@ -407,6 +414,9 @@ public class ViewSelectorActivity extends BaseAppCompatActivity {
                     selectedTab = TAB_COMPOSE_FILES;
                 } else if (checkedId == R.id.option_custom_view) {
                     selectedTab = composeProject ? TAB_CLASSES : TAB_CUSTOM_VIEW;
+                    if (composeProject) {
+                        cachedClassFiles = scanProjectClassFiles();
+                    }
                 }
                 updateCreateButton();
                 viewSelectorAdapter.notifyDataSetChanged();

@@ -1,6 +1,7 @@
 package pro.sketchware.core.build;
 
 import pro.sketchware.core.codegen.ActivityCodeGenerator;
+import pro.sketchware.core.codegen.ComposeThemeNames;
 import pro.sketchware.core.codegen.KotlinActivityCodeGenerator;
 import pro.sketchware.core.sync.CodeOwnershipRecorder;
 import pro.sketchware.core.sync.JavaSyncManager;
