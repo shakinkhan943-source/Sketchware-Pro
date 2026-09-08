@@ -115,9 +115,7 @@ dependencies {
     implementation libs.bundles.editor.and.lang
     implementation libs.bundles.coil
     implementation libs.bundles.bundletool
-    implementation(libs.sdklib) {
-        exclude group: "com.intellij", module: "annotations"
-    }
+    implementation libs.zipflinger
     implementation libs.bundles.shrinker
     implementation libs.zipalign.java
     implementation libs.gson

@@ -56,7 +56,8 @@ Sketchware Pro 是一款运行在 Android 设备上的**可视化 Android 应用
 | **Java 编译** | ECJ（Eclipse Compiler for Java）|
 | **Kotlin 编译** | kotlin-compiler 2.4.10（内嵌 kotlinc-for-sketchware）|
 | **DEX** | 内嵌 D8（代码编译）+ DexMerger（库合并）|
-| **资源编译** | AAPT2（sdklib）|
+| **资源编译** | AAPT2（内嵌 native 二进制 libaapt2.so，非 sdklib）|
+| **APK 打包** | zipflinger 9.4.0（替代已从 AGP 3.5 移除的 sdklib ApkBuilder）|
 | **混淆** | R8（内嵌）|
 | **脱糖** | coreLibraryDesugaring（desugar_jdk_libs_nio）|
 
@@ -959,7 +960,7 @@ ProjectBuilder.build()
 │   │   ├── R.java（资源 ID 常量）
 │   │   ├── resources.ap_（打包后的资源）
 │   │   └── proguard rules（如启用混淆）
-│   └── AAPT2 通过 sdklib 库内嵌执行（非外部命令）
+│   └── AAPT2 作为内嵌 native 二进制（libaapt2.so）执行（非外部命令）
 │
 ├── [阶段 3] Java 编译
 │   ├── ECJ（Eclipse Compiler for Java）编译 .java → .class
@@ -1209,7 +1210,7 @@ resolver/ 子模块
 构建侧唯一入口：ProjectBuilder.getSelectedComposeArtifacts()
 ├── classpath（kotlinc -cp）
 ├── AAPT2 资源/asset 合并（ResourceCompiler）
-├── APK 内 jar 资源（ApkBuilder.addResourcesFromJar）
+├── APK 内 jar 资源（zipflinger，见 ProjectBuilder.addResourcesFromJar）
 └── DEX 合并输入（getDexFilesReady）
 ```
 
