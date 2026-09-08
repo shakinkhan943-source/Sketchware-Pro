@@ -1823,41 +1823,40 @@ public class ComponentTemplates {
     /**
      * @return Content of a generated {@code SketchwareUtil.kt} file for Kotlin + Jetpack Compose
      * projects. Mirrors {@link #getSketchwareUtilCode(String, boolean)} but as a Kotlin
-     * {@code object} so Compose source stays idiomatic Kotlin. Java/XML projects keep the Java
-     * class unchanged.
+     * {@code object} written in native Kotlin: Kotlin declarations, Kotlin property access
+     * ({@code entry.key}, not the Java getter) and Kotlin collection APIs. Java/XML projects keep
+     * the Java class unchanged.
      */
     public static String getSketchwareUtilCodeKotlin(String packageName) {
         return String.format("""
-                package %s;
+                package %s
 
-                import android.app.Activity;
-                import android.content.ActivityNotFoundException;
-                import android.content.ClipboardManager;
-                import android.content.Context;
-                import android.content.Intent;
-                import android.graphics.drawable.GradientDrawable;
-                import android.net.ConnectivityManager;
-                import android.net.NetworkInfo;
-                import android.net.Uri;
-                import android.util.SparseBooleanArray;
-                import android.util.TypedValue;
-                import android.view.Gravity;
-                import android.view.View;
-                import android.view.inputmethod.InputMethodManager;
-                import android.widget.ListView;
-                import android.widget.TextView;
-                import android.widget.Toast;
+                import android.app.Activity
+                import android.content.ActivityNotFoundException
+                import android.content.ClipboardManager
+                import android.content.Context
+                import android.content.Intent
+                import android.graphics.drawable.GradientDrawable
+                import android.net.ConnectivityManager
+                import android.net.NetworkInfo
+                import android.net.Uri
+                import android.util.SparseBooleanArray
+                import android.util.TypedValue
+                import android.view.Gravity
+                import android.view.View
+                import android.view.inputmethod.InputMethodManager
+                import android.widget.ListView
+                import android.widget.TextView
+                import android.widget.Toast
 
-                import java.io.ByteArrayOutputStream;
-                import java.io.File;
-                import java.io.IOException;
-                import java.io.InputStream;
-                import java.util.ArrayList;
-                import java.util.Collections;
-                import java.util.Comparator;
-                import java.util.HashMap;
-                import java.util.Map;
-                import java.util.Random;
+                import java.io.ByteArrayOutputStream
+                import java.io.File
+                import java.io.IOException
+                import java.io.InputStream
+                import java.util.ArrayList
+                import java.util.Comparator
+                import java.util.HashMap
+                import java.util.Random
 
                 object SketchwareUtil {
 
@@ -1918,11 +1917,11 @@ public class ComponentTemplates {
                     }
 
                     fun sortListMap(_listMap: ArrayList<HashMap<String, Any>>, _key: String, _isNumber: Boolean, _ascending: Boolean) {
-                        Collections.sort(_listMap, Comparator { _compareMap1, _compareMap2 ->
+                        _listMap.sortWith(Comparator { _compareMap1, _compareMap2 ->
                             if (_isNumber) {
                                 val _count1 = (_compareMap1[_key] as Number).toInt()
                                 val _count2 = (_compareMap2[_key] as Number).toInt()
-                                if (_ascending) Integer.compare(_count1, _count2) else Integer.compare(_count2, _count1)
+                                if (_ascending) _count1.compareTo(_count2) else _count2.compareTo(_count1)
                             } else {
                                 if (_ascending) _compareMap1[_key].toString().compareTo(_compareMap2[_key].toString())
                                 else _compareMap2[_key].toString().compareTo(_compareMap1[_key].toString())
@@ -2036,12 +2035,18 @@ public class ComponentTemplates {
                         return _context.resources.displayMetrics.heightPixels
                     }
 
+                    fun getMaterialColor(_context: Context, _resourceId: Int): Int {
+                        val _typedValue = TypedValue()
+                        _context.theme.resolveAttribute(_resourceId, _typedValue, true)
+                        return _typedValue.data
+                    }
+
                     fun getAllKeysFromMap(_map: Map<String, Any>?, _output: ArrayList<String>?) {
                         if (_output == null) return
                         _output.clear()
                         if (_map == null || _map.isEmpty()) return
-                        for (_entry in _map.entrySet()) {
-                            _output.add(_entry.getKey())
+                        for (_entry in _map.entries) {
+                            _output.add(_entry.key)
                         }
                     }
                 }
@@ -2050,12 +2055,13 @@ public class ComponentTemplates {
 
     /**
      * @return Content of a generated {@code FileUtil.kt} file for Kotlin + Jetpack Compose
-     * projects. Mirrors {@link #getFileUtilCode(String)} as a Kotlin {@code object}. Java/XML
-     * projects keep the Java class unchanged.
+     * projects. Mirrors {@link #getFileUtilCode(String)} as a Kotlin {@code object} written in
+     * native Kotlin (Kotlin null-safety, Kotlin I/O idioms). Java/XML projects keep the Java
+     * class unchanged.
      */
     public static String getFileUtilCodeKotlin(String packageName) {
         return String.format("""
-                package %s;
+                package %s
 
                 import android.content.ContentResolver;
                 import android.content.ContentUris;

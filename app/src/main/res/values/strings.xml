@@ -2140,7 +2140,11 @@ Choosing a theme mode lets you personalize the app\'s appearance, notes:\n
     <string name="file_selector_category_activities">Activities</string>
     <string name="file_selector_category_compose_files">Compose files</string>
     <string name="file_selector_category_other_files">Other files</string>
+    <string name="file_selector_category_custom_view">Custom View</string>
+    <string name="file_selector_category_classes">Classes</string>
     <string name="file_selector_no_files">No files to display</string>
+    <string name="file_selector_no_classes">No classes yet. Kotlin classes you add to the project appear here.</string>
+    <string name="file_selector_error_open_class">Could not generate this class yet. Build the project once and try again.</string>
     <string name="java_editor_action_reload">Reload from blocks</string>
     <string name="java_editor_action_keep_java">Keep my Java code</string>
     <string name="java_editor_action_keep_blocks">Keep the blocks</string>
@@ -3877,6 +3881,9 @@ Please try again later"</string>
     <string name="design_library_description_compose">Build native UI with Kotlin</string>
     <string name="design_library_material3_not_available_compose">XML Material3 is not available for Jetpack Compose projects</string>
     <string name="design_library_compose_not_available_java_xml">Jetpack Compose is not available for Java/XML projects</string>
+    <string name="design_library_title_compose_material3">"Compose Material3 Manager"</string>
+    <string name="compose_material3_description">Material 3 theming for Jetpack Compose: dynamic colors and theme mode for the generated Theme.kt</string>
+    <string name="compose_material3_disabled_message">With Compose Material3 disabled, the generated Theme.kt keeps the default palette instead of your Material 3 options.</string>
     <string name="compose_enable">Enable Jetpack Compose</string>
     <string name="compose_description">Declarative UI toolkit for building native Android interfaces with Kotlin</string>
     <string name="compose_dependencies">Compose Dependencies</string>

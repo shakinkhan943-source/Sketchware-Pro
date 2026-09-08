@@ -212,7 +212,7 @@ public class BuildConfig {
     /** Optional Compose feature IDs selected by the user. */
     public ArrayList<String> composeOptionalFeatures = new ArrayList<>();
 
-    /** Theme colors shared by the generated UI. Java/XML uses them through {@code colors.xml}; Compose uses them through generated {@code SketchwareTheme.kt}. */
+    /** Theme colors shared by the generated UI. Java/XML uses them through {@code colors.xml}; Compose uses them through the generated project-named Theme.kt. */
     public int themeColorPrimary = 0xFF6200EE;
     public int themeColorPrimaryDark = 0xFF3700B3;
     public int themeColorAccent = 0xFF03DAC5;

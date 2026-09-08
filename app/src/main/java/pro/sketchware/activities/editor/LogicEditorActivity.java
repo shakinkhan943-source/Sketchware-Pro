@@ -92,6 +92,7 @@ import pro.sketchware.core.async.BackgroundTasks;
 import pro.sketchware.util.io.SharedPrefsHelper;
 import pro.sketchware.util.format.FormatUtil;
 import pro.sketchware.core.codegen.BlockInterpreter;
+import pro.sketchware.core.codegen.lang.CodeGenerationLanguage;
 import pro.sketchware.util.DeviceUtil;
 import pro.sketchware.core.project.BlockCollectionManager;
 import pro.sketchware.util.SketchToast;
@@ -2707,8 +2708,7 @@ public class LogicEditorActivity extends BaseAppCompatActivity implements View.O
         projectFilePaths.initializeMetadata(ProjectDataManager.getLibraryManager(scId), ProjectDataManager.getFileManager(scId), ProjectDataManager.getProjectDataManager(scId));
         String code = new BlockInterpreter(projectFile.getActivityName(), projectFilePaths.buildConfig,
                 blockPane.getBlocks(), isViewBindingEnabled, projectFile.getXmlName(),
-                projectFile.isKotlin() ? BlockInterpreter.SourceLanguage.KOTLIN
-                        : BlockInterpreter.SourceLanguage.JAVA).interpretBlocks();
+                CodeGenerationLanguage.fromKotlin(projectFile.isKotlin())).interpretBlocks();
         var intent = new Intent(this, CodeViewerActivity.class);
         intent.putExtra("code", code);
         intent.putExtra("sc_id", scId);

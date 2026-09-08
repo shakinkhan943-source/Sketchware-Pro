@@ -11,11 +11,21 @@ import java.util.Set;
 import pro.sketchware.beans.BlockBean;
 import pro.sketchware.beans.ComponentBean;
 import pro.sketchware.beans.ProjectFileBean;
+import pro.sketchware.core.codegen.lang.CodeGenerationLanguage;
+import pro.sketchware.core.codegen.lang.KotlinCodeConverter;
+import pro.sketchware.core.codegen.lang.SyntaxRules;
 import pro.sketchware.core.project.BuildConfig;
 import pro.sketchware.core.project.ProjectDataStore;
 
 /**
  * Generates a real Kotlin Jetpack Compose Activity.
+ *
+ * <p>This is the Kotlin generator: every line it emits itself (class shell, onCreate,
+ * Compose content, initialize/initializeLogic, onActivityResult, More Block signatures) is
+ * spelled natively in Kotlin via {@link CodeGenerationLanguage#syntax()} — no semicolons, no {@code @Override},
+ * Java-free control flow. Only legacy block/component templates are rendered to Kotlin inside
+ * the Kotlin template layer ({@link pro.sketchware.core.codegen.lang.KotlinCodeConverter}), which the
+ * {@link BlockInterpreter} applies while interpreting the blocks.</p>
  *
  * <p>Project logic continues to use the historical {@code FooActivity.java} storage key, but every
  * emitted declaration, lifecycle event and block body is Kotlin and the resulting file is
@@ -28,6 +38,7 @@ public final class KotlinActivityCodeGenerator {
     private final ProjectDataStore dataStore;
     private final String logicKey;
     private final Set<String> imports = new LinkedHashSet<>();
+    private final SyntaxRules syntax = CodeGenerationLanguage.KOTLIN.syntax();
 
     public KotlinActivityCodeGenerator(BuildConfig buildConfig, ProjectFileBean projectFile,
                                        ProjectDataStore dataStore) {
@@ -78,14 +89,13 @@ public final class KotlinActivityCodeGenerator {
         String moreBlocks = createMoreBlocks();
 
         StringBuilder source = new StringBuilder(8192);
-        source.append("package ").append(buildConfig.packageName).append(ActivityCodeGenerator.EOL)
+        // The Kotlin generator spells every shell construct natively: package/imports without
+        // semicolons, no @Override, no Java control flow.
+        source.append(syntax.packageDeclaration(buildConfig.packageName)).append(ActivityCodeGenerator.EOL)
                 .append(ActivityCodeGenerator.EOL);
         for (String importName : imports) {
             if (importName == null || importName.trim().isEmpty()) continue;
-            String normalized = importName.trim();
-            if (normalized.startsWith("import ")) normalized = normalized.substring(7).trim();
-            if (normalized.endsWith(";")) normalized = normalized.substring(0, normalized.length() - 1);
-            source.append("import ").append(normalized).append(ActivityCodeGenerator.EOL);
+            source.append(syntax.importStatement(importName)).append(ActivityCodeGenerator.EOL);
         }
         if (!customImports.isEmpty()) {
             source.append(customImports).append(ActivityCodeGenerator.EOL);
@@ -98,18 +108,18 @@ public final class KotlinActivityCodeGenerator {
         source.append(ActivityCodeGenerator.EOL)
                 .append("override fun onCreate(_savedInstanceState: Bundle?) {")
                 .append(ActivityCodeGenerator.EOL)
-                .append("super.onCreate(_savedInstanceState);")
-                .append(ActivityCodeGenerator.EOL)
+                .append("super.onCreate(_savedInstanceState)").append(ActivityCodeGenerator.EOL)
                 .append("setContent {").append(ActivityCodeGenerator.EOL)
-                .append("SketchwareTheme {").append(ActivityCodeGenerator.EOL)
+                .append(ComposeThemeNames.themeFunctionName(buildConfig.projectName)).append(" {")
+                .append(ActivityCodeGenerator.EOL)
                 .append(projectFile.getActivityName()).append("Screen()").append(ActivityCodeGenerator.EOL)
                 .append("}").append(ActivityCodeGenerator.EOL)
                 .append("}").append(ActivityCodeGenerator.EOL);
         if (buildConfig.isFirebaseEnabled) {
-            source.append("FirebaseApp.initializeApp(this);").append(ActivityCodeGenerator.EOL);
+            source.append("FirebaseApp.initializeApp(this)").append(ActivityCodeGenerator.EOL);
         }
-        source.append("initialize(_savedInstanceState);").append(ActivityCodeGenerator.EOL)
-                .append("initializeLogic();").append(ActivityCodeGenerator.EOL)
+        source.append("initialize(_savedInstanceState)").append(ActivityCodeGenerator.EOL)
+                .append("initializeLogic()").append(ActivityCodeGenerator.EOL)
                 .append("}").append(ActivityCodeGenerator.EOL)
                 .append(ActivityCodeGenerator.EOL)
                 .append("@Composable").append(ActivityCodeGenerator.EOL)
@@ -325,22 +335,23 @@ public final class KotlinActivityCodeGenerator {
         String directLogic = interpret("onActivityResult_onActivityResult");
         String callbacks = events.getOnActivityResultSwitchCases();
         if (directLogic.trim().isEmpty() && callbacks.trim().isEmpty()) return "";
-        StringBuilder javaMethod = new StringBuilder()
-                .append("@Override").append(ActivityCodeGenerator.EOL)
-                .append("protected void onActivityResult(int _requestCode, int _resultCode, Intent _data) {")
+        // Kotlin method shell, spelled natively; only the component callback bodies come from
+        // the legacy templates and are rendered to `when` branches by the Kotlin template layer.
+        StringBuilder method = new StringBuilder()
+                .append("override fun onActivityResult(_requestCode: Int, _resultCode: Int, _data: Intent?) {")
                 .append(ActivityCodeGenerator.EOL)
-                .append("super.onActivityResult(_requestCode, _resultCode, _data);")
-                .append(ActivityCodeGenerator.EOL)
-                .append(directLogic).append(ActivityCodeGenerator.EOL);
-        if (!callbacks.trim().isEmpty()) {
-            javaMethod.append("switch (_requestCode) {").append(ActivityCodeGenerator.EOL)
-                    .append(callbacks).append(ActivityCodeGenerator.EOL)
-                    .append("default:").append(ActivityCodeGenerator.EOL)
-                    .append("break;").append(ActivityCodeGenerator.EOL)
-                    .append("}").append(ActivityCodeGenerator.EOL);
+                .append("super.onActivityResult(_requestCode, _resultCode, _data)")
+                .append(ActivityCodeGenerator.EOL);
+        if (!directLogic.trim().isEmpty()) {
+            method.append(directLogic.trim()).append(ActivityCodeGenerator.EOL);
         }
-        javaMethod.append("}");
-        return KotlinCodeConverter.convertMembers(javaMethod.toString());
+        if (!callbacks.trim().isEmpty()) {
+            method.append(KotlinCodeConverter.convertMembers(
+                    "switch (_requestCode) {" + ActivityCodeGenerator.EOL
+                            + callbacks + ActivityCodeGenerator.EOL + "}"));
+        }
+        method.append("}");
+        return method.toString();
     }
 
     private String createMoreBlocks() {
@@ -358,7 +369,7 @@ public final class KotlinActivityCodeGenerator {
     private String interpret(String ownerKey) {
         ArrayList<BlockBean> blocks = dataStore.getBlocks(logicKey, ownerKey);
         return new BlockInterpreter(projectFile.getActivityName(), buildConfig, blocks, false,
-                null, BlockInterpreter.SourceLanguage.KOTLIN).interpretBlocks(ownerKey);
+                null, CodeGenerationLanguage.KOTLIN).interpretBlocks(ownerKey);
     }
 
     private static String joinNonEmpty(String... sections) {

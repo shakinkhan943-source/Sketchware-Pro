@@ -1,6 +1,7 @@
 package pro.sketchware.core.build;
 
 import pro.sketchware.core.codegen.ActivityCodeGenerator;
+import pro.sketchware.core.codegen.ComposeThemeNames;
 import pro.sketchware.core.codegen.KotlinActivityCodeGenerator;
 import pro.sketchware.core.sync.CodeOwnershipRecorder;
 import pro.sketchware.core.sync.JavaSyncManager;
@@ -42,6 +43,7 @@ import pro.sketchware.beans.ProjectFileBean;
 import pro.sketchware.beans.ProjectLibraryBean;
 import pro.sketchware.beans.SrcCodeBean;
 import pro.sketchware.beans.ViewBean;
+import pro.sketchware.util.library.ComposeMaterial3LibraryManager;
 import pro.sketchware.util.library.Material3LibraryManager;
 import java.io.File;
 import java.io.IOException;
@@ -1433,7 +1435,8 @@ public class ProjectFilePaths {
      *
      * <p>This is the Compose counterpart of {@code colors.xml}: it stores the project palette as
      * Kotlin {@code ColorScheme} values so the Compose UI never has to read the Java/XML resource
-     * system.</p>
+     * system. The value names are derived from the project name, so each project owns its theme
+     * namespace instead of a shared "Sketchware" one.</p>
      */
     private String getComposeColorCode() {
         String primary = composeColor(colorPrimary);
@@ -1441,15 +1444,17 @@ public class ProjectFilePaths {
         String accent = composeColor(colorAccent);
         String container = composeColor(colorControlHighlight);
         String onBackground = composeColor(colorControlNormal);
+        String lightColors = ComposeThemeNames.lightColorsName(applicationName);
+        String darkColors = ComposeThemeNames.darkColorsName(applicationName);
 
         return String.format("""
-                package %s;
+                package %s
 
-                import androidx.compose.material3.darkColorScheme;
-                import androidx.compose.material3.lightColorScheme;
-                import androidx.compose.ui.graphics.Color;
+                import androidx.compose.material3.darkColorScheme
+                import androidx.compose.material3.lightColorScheme
+                import androidx.compose.ui.graphics.Color
 
-                val SketchwareLightColors = lightColorScheme(
+                val %s = lightColorScheme(
                     primary = Color(%s),
                     onPrimary = Color(0xFFFFFFFF),
                     primaryContainer = Color(%s),
@@ -1464,7 +1469,7 @@ public class ProjectFilePaths {
                     onSurface = Color(0xFF000000)
                 )
 
-                val SketchwareDarkColors = darkColorScheme(
+                val %s = darkColorScheme(
                     primary = Color(%s),
                     onPrimary = Color(0xFF000000),
                     primaryContainer = Color(%s),
@@ -1478,33 +1483,78 @@ public class ProjectFilePaths {
                     surface = Color(0xFF1E1E1E),
                     onSurface = Color(0xFFEEEEEE)
                 )
-                """, packageName, primary, primaryDark, accent, container,
-                container, onBackground, primary, primaryDark, accent, container);
+                """, packageName, lightColors, primary, primaryDark, accent, container,
+                container, onBackground, darkColors, primary, primaryDark, accent, container);
     }
 
     /**
      * Generates the Compose {@code MaterialTheme} wrapper for Kotlin + Compose projects.
      *
      * <p>This is the Compose counterpart of {@code styles.xml}: it applies the palette from
-     * {@link #getComposeColorCode()} through {@code MaterialTheme}. Compose projects do not inflate
-     * the Java/XML theme resources.</p>
+     * {@link #getComposeColorCode()} through {@code MaterialTheme}, driven by the project's
+     * <b>Compose</b> Material 3 configuration ({@link ComposeMaterial3LibraryManager}) — never by
+     * the Java/XML theme system. Compose projects do not inflate the Java/XML theme resources.</p>
      */
     private String getComposeThemeCode() {
-        return String.format("""
-                package %s;
+        ComposeMaterial3LibraryManager material3Manager = new ComposeMaterial3LibraryManager(sc_id);
+        String themeFunction = ComposeThemeNames.themeFunctionName(applicationName);
+        String lightColors = ComposeThemeNames.lightColorsName(applicationName);
+        String darkColors = ComposeThemeNames.darkColorsName(applicationName);
 
-                import androidx.compose.foundation.isSystemInDarkTheme;
-                import androidx.compose.material3.MaterialTheme;
-                import androidx.compose.runtime.Composable;
+        // Theme mode from the Compose Material 3 configuration: follow the system, or force one
+        // appearance. With Material 3 options disabled the theme falls back to the system default.
+        String darkThemeExpression;
+        if (material3Manager.isMaterial3Enabled()) {
+            darkThemeExpression = switch (material3Manager.getTheme()) {
+                case ComposeMaterial3LibraryManager.THEME_DARK -> "true";
+                case ComposeMaterial3LibraryManager.THEME_LIGHT -> "false";
+                default -> "isSystemInDarkTheme()";
+            };
+        } else {
+            darkThemeExpression = "isSystemInDarkTheme()";
+        }
 
-                @Composable
-                fun SketchwareTheme(content: @Composable () -> Unit) {
-                    MaterialTheme(
-                        colorScheme = if (isSystemInDarkTheme()) SketchwareDarkColors else SketchwareLightColors,
-                        content = content
-                    )
-                }
-                """, packageName);
+        boolean dynamicColors = material3Manager.isMaterial3Enabled()
+                && material3Manager.isDynamicColorsEnabled();
+
+        StringBuilder body = new StringBuilder();
+        if (dynamicColors) {
+            body.append("    val context = LocalContext.current").append(ActivityCodeGenerator.EOL);
+        }
+        body.append("    MaterialTheme(").append(ActivityCodeGenerator.EOL);
+        if (dynamicColors) {
+            body.append("        colorScheme = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {").append(ActivityCodeGenerator.EOL)
+                    .append("            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)").append(ActivityCodeGenerator.EOL)
+                    .append("        } else {").append(ActivityCodeGenerator.EOL)
+                    .append("            if (darkTheme) ").append(darkColors).append(" else ").append(lightColors).append(ActivityCodeGenerator.EOL)
+                    .append("        },").append(ActivityCodeGenerator.EOL);
+        } else {
+            body.append("        colorScheme = if (darkTheme) ").append(darkColors)
+                    .append(" else ").append(lightColors).append(",").append(ActivityCodeGenerator.EOL);
+        }
+        body.append("        content = content").append(ActivityCodeGenerator.EOL)
+                .append("    )");
+
+        StringBuilder theme = new StringBuilder();
+        theme.append("package ").append(packageName).append(ActivityCodeGenerator.EOL)
+                .append(ActivityCodeGenerator.EOL)
+                .append("import androidx.compose.foundation.isSystemInDarkTheme").append(ActivityCodeGenerator.EOL)
+                .append("import androidx.compose.material3.MaterialTheme").append(ActivityCodeGenerator.EOL)
+                .append("import androidx.compose.runtime.Composable").append(ActivityCodeGenerator.EOL);
+        if (dynamicColors) {
+            theme.append("import android.os.Build").append(ActivityCodeGenerator.EOL)
+                    .append("import androidx.compose.material3.dynamicDarkColorScheme").append(ActivityCodeGenerator.EOL)
+                    .append("import androidx.compose.material3.dynamicLightColorScheme").append(ActivityCodeGenerator.EOL)
+                    .append("import androidx.compose.ui.platform.LocalContext").append(ActivityCodeGenerator.EOL);
+        }
+        theme.append(ActivityCodeGenerator.EOL)
+                .append("@Composable").append(ActivityCodeGenerator.EOL)
+                .append("fun ").append(themeFunction).append("(content: @Composable () -> Unit) {")
+                .append(ActivityCodeGenerator.EOL)
+                .append("    val darkTheme = ").append(darkThemeExpression).append(ActivityCodeGenerator.EOL)
+                .append(body).append(ActivityCodeGenerator.EOL)
+                .append("}").append(ActivityCodeGenerator.EOL);
+        return theme.toString();
     }
 
     /**

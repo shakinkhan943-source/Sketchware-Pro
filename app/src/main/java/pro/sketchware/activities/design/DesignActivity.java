@@ -302,8 +302,9 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
 
     /**
      * Keeps the Java/UI/Event/Component workspace toggle in sync with the active destination.
-     * While an Events/Components workspace is open, the toggle reflects the workspace the user
-     * returns to. Kotlin/Compose files have no XML layout, so their UI tab is hidden entirely.
+     * The chips are the primary navigation control, so the chip of the destination that is
+     * actually on screen is the one that stays checked — including the Event/Component workspaces.
+     * Kotlin/Compose files have no XML layout, so their UI tab is hidden entirely.
      */
     private void updateWorkspaceSwitch() {
         if (workspaceSwitch == null) {
@@ -318,10 +319,7 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
         // Compose projects own their UI in Kotlin source, so the UI toggle only exists for
         // Java + XML projects.
         uiTab.setVisibility(isKotlin ? View.GONE : View.VISIBLE);
-        int primaryDestination = isOverlayDestination(currentDestination)
-                ? previousPrimaryDestination
-                : currentDestination;
-        int checkedId = switch (primaryDestination) {
+        int checkedId = switch (currentDestination) {
             case DESTINATION_UI -> R.id.tab_ui;
             case DESTINATION_EVENTS -> R.id.tab_event;
             case DESTINATION_COMPONENTS -> R.id.tab_component;
@@ -568,6 +566,13 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
             return;
         }
         if (destination == currentDestination) {
+            // Self-heal: if the state already points here but the wrong fragment is displayed
+            // (e.g. after a restore), re-display it instead of silently ignoring the request.
+            Fragment target = getTargetFragmentFor(destination);
+            if (target == null || !target.isAdded() || target.isHidden()) {
+                displayDestination(destination);
+                updateDestinationChrome();
+            }
             return;
         }
 
@@ -590,6 +595,21 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
             refreshCurrentDestination();
         }
         invalidateOptionsMenu();
+    }
+
+    /**
+     * Resolves the workspace fragment that belongs to a destination, or {@code null} when the
+     * fragment has not been created yet.
+     */
+    @Nullable
+    private Fragment getTargetFragmentFor(int destination) {
+        return switch (destination) {
+            case DESTINATION_SOURCE -> javaTabAdapter;
+            case DESTINATION_UI -> viewTabAdapter;
+            case DESTINATION_EVENTS -> eventTabAdapter;
+            case DESTINATION_COMPONENTS -> componentTabAdapter;
+            default -> null;
+        };
     }
 
     private void updateDestinationChrome() {
@@ -801,9 +821,19 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
         if (projectFile == null) {
             return;
         }
-        java.io.File sourceFile = new java.io.File(SketchwarePaths.getProjectJavaPath(sc_id),
+        java.io.File sourceFile = findSourceFile(
+                new java.io.File(SketchwarePaths.getProjectJavaPath(sc_id)),
                 projectFile.getSourceFileName());
-        if (!sourceFile.isFile()) {
+        if (sourceFile == null) {
+            // Built/generated activities are package-nested under mysc rather than in the flat
+            // user-source directory. This is why the same action worked in SrcCodeEditor but the
+            // Design screen incorrectly reported "nothing to resolve".
+            sourceFile = findSourceFile(new java.io.File(SketchwarePaths.getMyscPath(sc_id)
+                    + java.io.File.separator + "app" + java.io.File.separator + "src"
+                    + java.io.File.separator + "main" + java.io.File.separator + "java"),
+                    projectFile.getSourceFileName());
+        }
+        if (sourceFile == null) {
             SketchwareUtil.toast(Helper.getResString(R.string.import_model_nothing_to_resolve));
             return;
         }
@@ -813,6 +843,20 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
         } else {
             pro.sketchware.core.importmodel.integration.ImportActions.organizeImports(this, sc_id, gateway);
         }
+    }
+
+    private java.io.File findSourceFile(java.io.File directory, String fileName) {
+        if (directory == null || !directory.isDirectory() || fileName == null) return null;
+        java.io.File direct = new java.io.File(directory, fileName);
+        if (direct.isFile()) return direct;
+        java.io.File[] children = directory.listFiles();
+        if (children == null) return null;
+        for (java.io.File child : children) {
+            if (!child.isDirectory()) continue;
+            java.io.File found = findSourceFile(child, fileName);
+            if (found != null) return found;
+        }
+        return null;
     }
 
     private void onRunClicked(View anchor) {
@@ -1164,8 +1208,14 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
         prefP12 = new SharedPrefsHelper(getApplicationContext(), "P12");
 
         Toolbar toolbar = findViewById(R.id.toolbar);
-        // Compact toolbar: no project name/ID title, just actions.
+        // Compact toolbar: no project name/ID title, just actions. The action bar title is
+        // disabled explicitly: otherwise the activity label ("Sketchware Pro") bleeds into the
+        // editor toolbar whenever the title is (re)applied, e.g. while switching sections.
         setSupportActionBar(toolbar);
+        if (getSupportActionBar() != null) {
+            getSupportActionBar().setDisplayShowTitleEnabled(false);
+        }
+        toolbar.setTitle("");
         toolbar.setNavigationOnClickListener(v -> getOnBackPressedDispatcher().onBackPressed());
 
         drawer = findViewById(R.id.drawer_layout);
@@ -1179,6 +1229,13 @@ public class DesignActivity extends BaseAppCompatActivity implements View.OnClic
         findViewById(R.id.file_name_container).setOnClickListener(this);
 
         workspaceSwitch = findViewById(R.id.workspace_switch);
+        // Chips must stay responsive even if the checked state has already drifted: clicking the
+        // chip of a section that is not on screen always switches to it, and clicking the chip of
+        // the visible section is a harmless no-op.
+        findViewById(R.id.tab_java).setOnClickListener(v -> showEditorDestination(DESTINATION_SOURCE));
+        findViewById(R.id.tab_ui).setOnClickListener(v -> showEditorDestination(DESTINATION_UI));
+        findViewById(R.id.tab_event).setOnClickListener(v -> showEditorDestination(DESTINATION_EVENTS));
+        findViewById(R.id.tab_component).setOnClickListener(v -> showEditorDestination(DESTINATION_COMPONENTS));
         workspaceSwitch.addOnButtonCheckedListener((group, checkedId, isChecked) -> {
             if (!isChecked || isUpdatingWorkspaceSwitch) {
                 return;

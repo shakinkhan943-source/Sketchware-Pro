@@ -146,8 +146,7 @@ public class EventCodeGenerator {
     private BlockInterpreter createBlockInterpreter(ArrayList<BlockBean> blocks) {
         return new BlockInterpreter(projectFileBean.getActivityName(), buildConfig, blocks,
                 isViewBindingEnabled, projectFileBean.getXmlName(),
-                projectFileBean.isKotlin() ? BlockInterpreter.SourceLanguage.KOTLIN
-                        : BlockInterpreter.SourceLanguage.JAVA);
+                pro.sketchware.core.codegen.lang.CodeGenerationLanguage.fromKotlin(projectFileBean.isKotlin()));
     }
 
     private void processEvents(ArrayList<EventBean> events, HashMap<String, ArrayList<BlockBean>> logicBlocks) {

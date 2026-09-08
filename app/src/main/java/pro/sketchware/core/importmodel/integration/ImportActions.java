@@ -42,11 +42,17 @@ public final class ImportActions {
         final String source = gateway.getSource();
         final ImportLanguage language = gateway.getLanguage();
 
+        final pro.sketchware.dialogs.ProgressDialog progress =
+                new pro.sketchware.dialogs.ProgressDialog(activity);
+        progress.setMessage(resolve ? "Resolving imports…" : "Organizing imports…");
+        progress.show();
+
         BackgroundTasks.callIoIfAlive(TaskHost.of(activity), TAG,
                 () -> resolve
                         ? ImportService.resolveImports(scId, source, language)
                         : ImportService.organizeImports(scId, source, language),
                 result -> {
+                    progress.dismiss();
                     if (result == null) return;
                     if (result.changed) {
                         gateway.applySource(result);
@@ -54,6 +60,7 @@ public final class ImportActions {
                     SketchwareUtil.toast(summary(result, resolve));
                 },
                 error -> {
+                    progress.dismiss();
                     LogUtil.e(TAG, "Import processing failed", error);
                     SketchwareUtil.toastError(Helper.getResString(R.string.common_error_unknown));
                 });
