@@ -24,11 +24,11 @@ import android.text.format.Formatter;
 import android.util.Log;
 import android.widget.Toast;
 
-import com.android.sdklib.build.ApkBuilder;
-import com.android.sdklib.build.ApkCreationException;
-import com.android.sdklib.build.DuplicateFileException;
-import com.android.sdklib.build.SealedApkException;
 import com.android.tools.r8.CompilationFailedException;
+import com.android.zipflinger.Source;
+import com.android.zipflinger.Sources;
+import com.android.zipflinger.ZipArchive;
+import com.android.zipflinger.ZipSource;
 import com.github.megatronking.stringfog.plugin.StringFogClassInjector;
 import com.github.megatronking.stringfog.plugin.StringFogMappingPrinter;
 import com.iyxan23.zipalignjava.InvalidZipException;
@@ -57,8 +57,11 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.zip.Deflater;
 
 import mod.agus.jcoderz.dex.Dex;
 import mod.agus.jcoderz.dex.TableOfContents;
@@ -1049,32 +1052,52 @@ public class ProjectBuilder {
     public void buildApk() throws SketchwareException {
         long savedTimeMillis = System.currentTimeMillis();
         String firstDexPath = dexesToAddButNotMerge.isEmpty() ? projectFilePaths.classesDexPath : dexesToAddButNotMerge.remove(0).getAbsolutePath();
-        try {
-            ApkBuilder apkBuilder = new ApkBuilder(new File(projectFilePaths.unsignedUnalignedApkPath), new File(projectFilePaths.resourcesApkPath), new File(firstDexPath), null, null, System.out);
+        File apkFile = new File(projectFilePaths.unsignedUnalignedApkPath);
+        File resApkFile = new File(projectFilePaths.resourcesApkPath);
 
+        // The legacy ApkBuilder truncated any existing output; ZipArchive opens an existing file
+        // in-place (incremental), so a stale APK from a previous build must be removed first.
+        if (apkFile.exists() && !apkFile.delete()) {
+            throw new SketchwareException("Failed to delete existing APK file " + apkFile.getAbsolutePath());
+        }
+
+        // Tracks every entry already written to the APK (including the resources.ap_ entries)
+        // so duplicates can be reported with the same detail as the old DuplicateFileException.
+        Map<String, File> addedEntries = new HashMap<>();
+
+        try (ZipArchive apk = new ZipArchive(apkFile.toPath())) {
+            /* Package resources (AAPT2 link output): copy all entries, preserving compression. */
+            addZipEntries(apk, resApkFile, addedEntries);
+
+            /* The main DEX file at the root of the APK. */
+            addFileToArchive(apk, new File(firstDexPath), "classes.dex", addedEntries);
+
+            /* Add built-in libraries' resources from their JARs. */
             for (BuiltInLibrary library : builtInLibraryManager.getLibraries()) {
-                apkBuilder.addResourcesFromJar(BuiltInLibraries.getLibraryClassesJarPath(library.getName()));
+                addResourcesFromJar(apk, BuiltInLibraries.getLibraryClassesJarPath(library.getName()), addedEntries);
             }
 
+            /* Add Compose bundle artifacts' resources from their JARs. */
             for (ComposeBuiltInLibraries.ComposeArtifact artifact : getSelectedComposeArtifacts()) {
-                apkBuilder.addResourcesFromJar(ComposeBuiltInLibraries.getLibraryClassesJarPath(artifact.id));
+                addResourcesFromJar(apk, ComposeBuiltInLibraries.getLibraryClassesJarPath(artifact.id), addedEntries);
             }
 
+            /* Add local libraries' resources from their JARs. */
             for (String jarPath : localLibraryManager.getJarLocalLibrary().split(":")) {
                 if (!jarPath.trim().isEmpty()) {
-                    apkBuilder.addResourcesFromJar(new File(jarPath));
+                    addResourcesFromJar(apk, new File(jarPath), addedEntries);
                 }
             }
 
             /* Add project's native libraries */
             File nativeLibrariesDirectory = new File(SketchwarePaths.getProjectNativeLibsPath(projectFilePaths.sc_id));
             if (nativeLibrariesDirectory.exists()) {
-                apkBuilder.addNativeLibraries(nativeLibrariesDirectory);
+                addNativeLibraries(apk, nativeLibrariesDirectory, addedEntries);
             }
 
             /* Add Local libraries' native libraries */
             for (String nativeLibraryDirectory : localLibraryManager.getNativeLibs()) {
-                apkBuilder.addNativeLibraries(new File(nativeLibraryDirectory));
+                addNativeLibraries(apk, new File(nativeLibraryDirectory), addedEntries);
             }
 
             if (dexesToAddButNotMerge.isEmpty()) {
@@ -1082,32 +1105,176 @@ public class ProjectBuilder {
                 for (String dexFile : dexFiles) {
                     String dexFileName = new File(dexFile).getName();
                     if (!dexFileName.equals("classes.dex")) {
-                        apkBuilder.addFile(new File(dexFile), dexFileName);
+                        addFileToArchive(apk, new File(dexFile), dexFileName, addedEntries);
                     }
                 }
             } else {
                 int dexNumber = 2;
 
                 for (File dexFile : dexesToAddButNotMerge) {
-                    apkBuilder.addFile(dexFile, "classes" + dexNumber + ".dex");
+                    addFileToArchive(apk, dexFile, "classes" + dexNumber + ".dex", addedEntries);
                     dexNumber++;
                 }
             }
-
-            apkBuilder.setDebugMode(false);
-            apkBuilder.sealApk();
-        } catch (ApkCreationException | SealedApkException e) {
-            throw new SketchwareException(e.getMessage());
-        } catch (DuplicateFileException e) {
-            String message = "Duplicate files from two libraries detected \r\n";
-            message += "File1: " + e.getFile1() + " \r\n";
-            message += "File2: " + e.getFile2() + " \r\n";
-            message += "Archive path: " + e.getArchivePath();
-            throw new SketchwareException(message);
+        } catch (IOException e) {
+            throw new SketchwareException("Failed to build APK: " + e.getMessage());
         }
         Log.d(TAG, "Building APK took " + (System.currentTimeMillis() - savedTimeMillis) + " ms");
         Log.d(TAG, "Time passed since starting to compile resources until building the unsigned APK: " +
                 (System.currentTimeMillis() - timestampResourceCompilationStarted) + " ms");
+    }
+
+    /**
+     * Copies every entry of {@code zipFile} (the AAPT2-linked {@code resources.ap_}) into the APK,
+     * preserving each entry's path and compression.
+     */
+    private void addZipEntries(ZipArchive apk, File zipFile, Map<String, File> addedEntries) throws SketchwareException, IOException {
+        ZipSource source = ZipSource.selectAll(zipFile.toPath());
+        for (String entryName : source.entries().keySet()) {
+            File duplicate = addedEntries.putIfAbsent(entryName, zipFile);
+            if (duplicate != null) {
+                throw duplicateEntryException(duplicate, zipFile, entryName);
+            }
+        }
+        apk.add(source);
+    }
+
+    /**
+     * Adds a single file to the APK at {@code archivePath}, mirroring the old
+     * {@code ApkBuilder.addFile(...)} behaviour (deflated at level 9, duplicate-checked).
+     */
+    private void addFileToArchive(ZipArchive apk, File file, String archivePath, Map<String, File> addedEntries) throws SketchwareException, IOException {
+        File duplicate = addedEntries.putIfAbsent(archivePath, file);
+        if (duplicate != null) {
+            throw duplicateEntryException(duplicate, file, archivePath);
+        }
+        apk.add(Sources.from(file, archivePath, Deflater.BEST_COMPRESSION));
+    }
+
+    /**
+     * Adds the non-class resources of a library JAR to the APK. Mirrors the old
+     * {@code ApkBuilder.addResourcesFromJar(...)}, which skipped META-INF, {@code .class}
+     * files and other known non-packaged files/folders.
+     */
+    private void addResourcesFromJar(ZipArchive apk, File jarFile, Map<String, File> addedEntries) throws SketchwareException, IOException {
+        ZipSource source = new ZipSource(jarFile.toPath());
+        boolean hasEntries = false;
+
+        for (String entryName : source.entries().keySet()) {
+            if (entryName.endsWith("/") || !shouldPackageEntry(entryName)) {
+                continue;
+            }
+
+            File duplicate = addedEntries.putIfAbsent(entryName, jarFile);
+            if (duplicate != null) {
+                throw duplicateEntryException(duplicate, jarFile, entryName);
+            }
+
+            source.select(entryName, entryName, ZipSource.COMPRESSION_NO_CHANGE, Source.NO_ALIGNMENT);
+            hasEntries = true;
+        }
+
+        if (hasEntries) {
+            apk.add(source);
+        }
+    }
+
+    /**
+     * Adds the native libraries of a library directory to the APK under {@code lib/<abi>/}.
+     * Only {@code .so} and {@code .bc} files are packaged, matching the legacy
+     * {@code ApkBuilder.addNativeLibraries(...)} in non-debug mode.
+     */
+    private void addNativeLibraries(ZipArchive apk, File nativeFolder, Map<String, File> addedEntries) throws SketchwareException, IOException {
+        if (!nativeFolder.isDirectory()) {
+            if (nativeFolder.exists()) {
+                throw new SketchwareException(nativeFolder + " is not a folder");
+            }
+            throw new SketchwareException(nativeFolder + " does not exist");
+        }
+
+        File[] abiList = nativeFolder.listFiles();
+        if (abiList == null) {
+            return;
+        }
+
+        for (File abi : abiList) {
+            if (!abi.isDirectory()) {
+                continue; // ignore files
+            }
+            File[] libs = abi.listFiles();
+            if (libs == null) {
+                continue;
+            }
+            for (File lib : libs) {
+                if (lib.isFile() && isNativeLibraryFile(lib.getName())) {
+                    String archivePath = "lib/" + abi.getName() + "/" + lib.getName();
+                    addFileToArchive(apk, lib, archivePath, addedEntries);
+                }
+            }
+        }
+    }
+
+    private static boolean isNativeLibraryFile(String fileName) {
+        String lower = fileName.toLowerCase(Locale.ROOT);
+        return lower.endsWith(".so") || lower.endsWith(".bc");
+    }
+
+    /**
+     * Port of the legacy {@code ApkBuilder.checkFolderForPackaging} + {@code checkFileForPackaging}:
+     * decides whether an entry from a library JAR belongs in the APK.
+     */
+    private static boolean shouldPackageEntry(String archivePath) {
+        String[] segments = archivePath.split("/");
+        for (int i = 0; i < segments.length - 1; i++) {
+            if (!shouldPackageFolder(segments[i])) {
+                return false;
+            }
+        }
+        return shouldPackageFile(segments[segments.length - 1]);
+    }
+
+    private static boolean shouldPackageFolder(String folderName) {
+        return !folderName.equalsIgnoreCase("CVS")
+                && !folderName.equalsIgnoreCase(".svn")
+                && !folderName.equalsIgnoreCase("SCCS")
+                && !folderName.equalsIgnoreCase("META-INF")
+                && !folderName.startsWith("_");
+    }
+
+    private static boolean shouldPackageFile(String fileName) {
+        String[] fileSegments = fileName.split("\\.");
+        String fileExt = "";
+        if (fileSegments.length > 1) {
+            fileExt = fileSegments[fileSegments.length - 1];
+        }
+
+        // Ignore hidden files and backup files.
+        if (fileName.isEmpty() || fileName.charAt(0) == '.' || fileName.charAt(fileName.length() - 1) == '~') {
+            return false;
+        }
+
+        return !"aidl".equalsIgnoreCase(fileExt)
+                && !"rs".equalsIgnoreCase(fileExt)
+                && !"fs".equalsIgnoreCase(fileExt)
+                && !"rsh".equalsIgnoreCase(fileExt)
+                && !"d".equalsIgnoreCase(fileExt)
+                && !"java".equalsIgnoreCase(fileExt)
+                && !"scala".equalsIgnoreCase(fileExt)
+                && !"class".equalsIgnoreCase(fileExt)
+                && !"scc".equalsIgnoreCase(fileExt)
+                && !"swp".equalsIgnoreCase(fileExt)
+                && !"thumbs.db".equalsIgnoreCase(fileName)
+                && !"picasa.ini".equalsIgnoreCase(fileName)
+                && !"package.html".equalsIgnoreCase(fileName)
+                && !"overview.html".equalsIgnoreCase(fileName);
+    }
+
+    private SketchwareException duplicateEntryException(File existing, File added, String archivePath) {
+        String message = "Duplicate files from two libraries detected \r\n";
+        message += "File1: " + existing + " \r\n";
+        message += "File2: " + added + " \r\n";
+        message += "Archive path: " + archivePath;
+        return new SketchwareException(message);
     }
 
     /**

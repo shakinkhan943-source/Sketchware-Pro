@@ -50,7 +50,11 @@ protobufJava = "3.19.2"
 r8 = "9.1.31"
 recyclerview = "1.4.0"
 scpkixJdk15on = "1.47.0.2"
-sdklib = "25.3.0"
+# APK assembler for on-device builds (replaces com.android.tools:sdklib's ApkBuilder,
+# which was deleted after AGP 3.5). zipflinger is Google's maintained zip library used
+# by AGP itself; it is Android-runtime safe because java.nio.file is already desugared
+# via desugar_jdk_libs_nio.
+zipflinger = "9.4.0"
 swiperefreshlayout = "1.1.0"
 viewpager = "1.1.0"
 viewpager2 = "1.1.0"
@@ -127,7 +131,7 @@ r8 = { module = "com.android.tools:r8", version.ref = "r8" }
 
 scpkix-jdk15on = { module = "com.madgag:scpkix-jdk15on", version.ref = "scpkixJdk15on" }
 
-sdklib = { module = "com.android.tools:sdklib", version.ref = "sdklib" }
+zipflinger = { module = "com.android:zipflinger", version.ref = "zipflinger" }
 
 woodstox-core = { module = "com.fasterxml.woodstox:woodstox-core", version.ref = "woodstoxCore" }
 
