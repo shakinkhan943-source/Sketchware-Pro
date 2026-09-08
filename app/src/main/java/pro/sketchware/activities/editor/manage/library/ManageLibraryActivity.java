@@ -27,6 +27,7 @@ import pro.sketchware.activities.editor.manage.library.compose.ComposeLibraryAct
 import pro.sketchware.activities.editor.manage.library.compose.ComposeLibraryItemView;
 import pro.sketchware.activities.editor.manage.library.firebase.ManageFirebaseActivity;
 import pro.sketchware.activities.editor.manage.library.googlemap.ManageGoogleMapActivity;
+import pro.sketchware.activities.editor.manage.library.material3.ComposeMaterial3LibraryActivity;
 import pro.sketchware.activities.editor.manage.library.material3.Material3LibraryActivity;
 import pro.sketchware.activities.editor.manage.library.material3.Material3LibraryItemView;
 import pro.sketchware.activities.base.BaseAppCompatActivity;

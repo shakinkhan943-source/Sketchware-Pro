@@ -13,7 +13,7 @@ import pro.sketchware.beans.ComponentBean;
 import pro.sketchware.beans.ProjectFileBean;
 import pro.sketchware.core.codegen.lang.CodeGenerationLanguage;
 import pro.sketchware.core.codegen.lang.KotlinCodeConverter;
-import pro.sketchware.core.codegen.lang.KotlinSyntax;
+import pro.sketchware.core.codegen.lang.SyntaxRules;
 import pro.sketchware.core.project.BuildConfig;
 import pro.sketchware.core.project.ProjectDataStore;
 
@@ -22,7 +22,7 @@ import pro.sketchware.core.project.ProjectDataStore;
  *
  * <p>This is the Kotlin generator: every line it emits itself (class shell, onCreate,
  * Compose content, initialize/initializeLogic, onActivityResult, More Block signatures) is
- * spelled natively in Kotlin via {@link KotlinSyntax} — no semicolons, no {@code @Override},
+ * spelled natively in Kotlin via {@link CodeGenerationLanguage#syntax()} — no semicolons, no {@code @Override},
  * Java-free control flow. Only legacy block/component templates are rendered to Kotlin inside
  * the Kotlin template layer ({@link pro.sketchware.core.codegen.lang.KotlinCodeConverter}), which the
  * {@link BlockInterpreter} applies while interpreting the blocks.</p>
@@ -38,7 +38,7 @@ public final class KotlinActivityCodeGenerator {
     private final ProjectDataStore dataStore;
     private final String logicKey;
     private final Set<String> imports = new LinkedHashSet<>();
-    private final KotlinSyntax syntax = KotlinSyntax.INSTANCE;
+    private final SyntaxRules syntax = CodeGenerationLanguage.KOTLIN.syntax();
 
     public KotlinActivityCodeGenerator(BuildConfig buildConfig, ProjectFileBean projectFile,
                                        ProjectDataStore dataStore) {
